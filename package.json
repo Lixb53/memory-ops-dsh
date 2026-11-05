@@ -1,0 +1,24 @@
+{
+  "name": "memory-ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "记忆库：人机共读的个人记忆系统。人负责确认与退役，agent 负责按索引取用；两套界面共用同一份 Markdown 真相源。",
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@11.13.1",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter ./packages/dsh-plugin run build",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "pnpm -r run lint",
+    "check": "pnpm run typecheck && pnpm run test",
+    "clean": "pnpm -r exec rm -rf node_modules lib dist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

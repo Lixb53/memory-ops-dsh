@@ -1,0 +1,26 @@
+{
+  "name": "@memory-ops/core",
+  "version": "0.1.0",
+  "description": "记忆库核心：Markdown 真相源的解析、原子写入、检索与统计口径。零运行时依赖，两端共用。",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./parse": "./src/parse.ts",
+    "./store": "./src/store.ts",
+    "./search": "./src/search.ts",
+    "./privacy": "./src/privacy.ts",
+    "./actions": "./src/actions.ts"
+  },
+  "files": ["src"],
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}
