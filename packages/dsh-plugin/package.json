@@ -45,7 +45,8 @@
   "scripts": {
     "build": "node ../../scripts/build-plugin.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "pretest": "node ../../scripts/build-plugin.mjs"
   },
   "dependencies": {
     "@memory-ops/core": "workspace:*"
