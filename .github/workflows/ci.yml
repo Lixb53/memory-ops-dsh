@@ -14,9 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 版本由 package.json 的 packageManager 字段决定，此处不再重复声明
+      # （两处都写会触发 ERR_PNPM_BAD_PM_VERSION）。
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
 
       - uses: actions/setup-node@v4
         with:
