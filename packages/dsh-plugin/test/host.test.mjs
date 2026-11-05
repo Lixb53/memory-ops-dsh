@@ -26,7 +26,17 @@ before(async () => {
 })
 
 after(async () => {
-  await fsp.rm(root, { recursive: true, force: true })
+  // 插件 apply 里会异步建骨架（ensureLayout），与这里的清理存在竞态：
+  // 直接 rm 可能撞上刚建好的空目录。重试几次比等定时器更可靠。
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await fsp.rm(root, { recursive: true, force: true, maxRetries: 3 })
+      return
+    } catch (error) {
+      if (attempt === 4) throw error
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+  }
 })
 
 /** 挂一个假宿主，收集注册项。 */
