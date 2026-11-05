@@ -11,7 +11,7 @@ import type { ClientContext } from './index.ts'
 import { MemoryOpsPage, PanelIcon, PANEL_ID } from './panel.ts'
 import { SessionMemoryView } from './session-view.ts'
 import { CapturePane, CAPTURE_KIND } from './capture-tab.ts'
-import { registerRememberSource } from './remember.ts'
+import { registerRemember } from './remember.ts'
 
 /** 注册结果：成功返回 disposer，失败返回空 disposer 并记一条日志。 */
 function safe(label: string, run: () => (() => void) | void): () => void {
@@ -100,7 +100,9 @@ export function registerCaptureTab(ctx: ClientContext): () => void {
 
 /** 表面 4：`/remember` 命令。 */
 export function registerRememberCommand(ctx: ClientContext): () => void {
-  return safe('inputTriggers', () => registerRememberSource(ctx))
+  // registerRemember 内部同时注册「浮层」与「触发源」两件事，
+  // 两者都要成功才有完整交互，所以整体包一层 safe 即可。
+  return safe('inputTriggers + overlay', () => registerRemember(ctx))
 }
 
 export { PANEL_ID }

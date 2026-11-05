@@ -89,11 +89,36 @@ ${body}
   await fsp.writeFile(path.join(outDir, 'client.js'), wrapped, 'utf8')
 }
 
+/**
+ * 额外产出 client-logic.mjs：浏览器半体里的**纯逻辑**（无 React、无 DOM）。
+ *
+ * 为什么单独产出一份：`/remember` 的「回车是否一定打开弹窗」必须能自动化验证，
+ * 而 client.js 是浏览器 bundle，node 里加载不了。这一份只含纯函数，
+ * 供 test/remember.test.mjs 直接 import。
+ */
+async function buildClientLogic() {
+  await build({
+    entryPoints: [path.join(packageDir, 'src', 'client', 'remember-logic.ts')],
+    outfile: path.join(outDir, 'client-logic.mjs'),
+    bundle: true,
+    platform: 'neutral',
+    format: 'esm',
+    target: 'es2022',
+    sourcemap: false,
+    minify: false,
+    legalComments: 'inline',
+    banner: {
+      js: '/**\n * @memory-ops/dsh-plugin — 纯逻辑（无 React / 无 DOM）。\n * 由 scripts/build-plugin.mjs 生成，请勿手改；仅供测试与复用。\n */',
+    },
+  })
+}
+
 async function main() {
   await fsp.rm(outDir, { recursive: true, force: true })
   await fsp.mkdir(outDir, { recursive: true })
   await buildHost()
   await buildClientWrapped()
+  await buildClientLogic()
   const files = await fsp.readdir(outDir)
   for (const file of files) {
     const stat = await fsp.stat(path.join(outDir, file))
