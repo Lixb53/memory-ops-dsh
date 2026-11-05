@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Memory Ops">
+  <!--
+    记忆库图标：三张叠放的记忆卡 + 顶部索引线。
+    意象取自产品主张——L0 常驻 / L1 索引 / L2 详情是三层，而不是一坨文本。
+    墨水蓝 #1f4e79 是产品强调色；琥珀 #96570a 只标记「待确认」那一层。
+  -->
+  <defs>
+    <linearGradient id="mo-card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a6699"/>
+      <stop offset="100%" stop-color="#1f4e79"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="12" width="52" height="38" rx="6" fill="none" stroke="#1f4e79" stroke-width="2.4" opacity="0.42"/>
+  <rect x="9.5" y="17" width="45" height="34" rx="5" fill="none" stroke="#1f4e79" stroke-width="2.4" opacity="0.66"/>
+  <rect x="13" y="22" width="38" height="29" rx="4.5" fill="url(#mo-card)"/>
+  <path d="M19 30h26" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" opacity="0.92"/>
+  <path d="M19 37h18" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" opacity="0.7"/>
+  <circle cx="42.5" cy="44" r="3" fill="#f2b53c"/>
+  <path d="M22 52h20" stroke="#1f4e79" stroke-width="2.4" stroke-linecap="round" opacity="0.5"/>
+</svg>

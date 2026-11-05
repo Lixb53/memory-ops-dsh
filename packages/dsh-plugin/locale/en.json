@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "title": "Memory Ops",
+    "description": "A human-machine shared personal memory system: you confirm and retire, the agent reads by index. Five sidebar panes, a session memory tab, a quick-capture tab, and a /remember command, plus memory_recall and memory_write tools."
+  },
+  "panel": {
+    "title": "Memory Ops",
+    "description": "Inspect and operate personal memory: confirm inferences, retire expired entries, fill the gaps."
+  },
+  "tab": {
+    "project": "Project",
+    "stream": "Stream",
+    "memory": "Memory",
+    "misses": "Misses",
+    "overview": "Overview",
+    "session": "Memory",
+    "capture": "Capture"
+  },
+  "action": {
+    "capture": "Capture",
+    "confirm": "Confirm",
+    "reject": "Reject",
+    "archive": "Archive",
+    "keep": "Keep 90 days",
+    "promote": "Promote",
+    "delete": "Delete",
+    "edit": "Edit source",
+    "export": "Export"
+  },
+  "state": {
+    "hypothesis": "Candidate",
+    "observed": "Observed",
+    "reinforced": "Reinforced",
+    "confirmed": "Confirmed",
+    "rejected": "Rejected",
+    "stale": "Needs review",
+    "archived": "Archived"
+  }
+}

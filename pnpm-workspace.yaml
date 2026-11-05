@@ -1,2 +1,10 @@
 packages:
   - 'packages/*'
+
+allowBuilds:
+  esbuild: set this to true or false
+
+# esbuild 的 postinstall 只做「把自己平台的二进制软链到位」这件事，
+# 不装它构建就跑不起来；除此之外本仓不信任任何构建脚本。
+onlyBuiltDependencies:
+  - esbuild

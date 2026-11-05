@@ -1,0 +1,289 @@
+/**
+ * host 半体测试：路由注册、围栏、工具契约。
+ *
+ * 这一层不依赖真实 DSH 宿主：用一个假 ctx 提供 `webServer` 与 `tools`，
+ * 断言「注册了什么」和「拦住了什么」。真机验证另跑，两者都要。
+ */
+
+import assert from 'node:assert/strict'
+import fsp from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { after, before, describe, it } from 'node:test'
+
+import { apply, BRIDGE_PREFIX } from '../lib/index.js'
+
+let root
+
+before(async () => {
+  root = await fsp.mkdtemp(path.join(os.tmpdir(), 'memory-ops-host-'))
+  await fsp.mkdir(path.join(root, 'personal'), { recursive: true })
+  await fsp.writeFile(
+    path.join(root, 'personal', 'index.md'),
+    '---\nid: personal.index\ntitle: 个人索引\nlayer: l0\nstatus: active\n---\n\n# 索引\n\n- 身份\n',
+    'utf8',
+  )
+})
+
+after(async () => {
+  await fsp.rm(root, { recursive: true, force: true })
+})
+
+/** 挂一个假宿主，收集注册项。 */
+function mount(config = {}) {
+  const routes = []
+  const tools = []
+  const child = {
+    webServer: {
+      register(route) {
+        routes.push(route)
+        return () => {}
+      },
+    },
+    tools: {
+      register(definition) {
+        tools.push(definition)
+        return () => {}
+      },
+    },
+    inject(_services, run) {
+      return run(child)
+    },
+    get() {
+      return undefined
+    },
+  }
+  const ctx = {
+    inject(_services, run) {
+      return run(child)
+    },
+    get() {
+      return undefined
+    },
+  }
+  apply(ctx, { root, ...config })
+  return { routes, tools }
+}
+
+/** 造一个最小的 req/res 对。 */
+function makeCall({ method = 'POST', url = '/', body = '', remote = '127.0.0.1' }) {
+  const chunks = body === '' ? [] : [Buffer.from(body, 'utf8')]
+  const req = {
+    method,
+    url,
+    socket: { remoteAddress: remote },
+    async* [Symbol.asyncIterator]() {
+      for (const chunk of chunks) yield chunk
+    },
+  }
+  const captured = { status: 0, headers: {}, payload: '' }
+  const res = {
+    writeHead(status, headers) {
+      captured.status = status
+      captured.headers = headers
+    },
+    end(payload) {
+      captured.payload = payload
+    },
+  }
+  return { req, res, captured }
+}
+
+describe('host 路由', () => {
+  it('注册 29 条 exact 路由，路径不重复', () => {
+    const { routes } = mount()
+    assert.equal(routes.length, 29)
+    const paths = routes.map(route => route.path)
+    assert.equal(new Set(paths).size, paths.length)
+    for (const route of routes) {
+      assert.equal(route.kind, 'exact')
+      assert.equal(route.path.startsWith(`${BRIDGE_PREFIX}/`), true)
+    }
+  })
+
+  it('healthCheck 返回根目录与路由数', async () => {
+    const { routes } = mount()
+    const route = routes.find(item => item.path.endsWith('/healthCheck'))
+    const { req, res, captured } = makeCall({ method: 'GET', url: `${BRIDGE_PREFIX}/healthCheck` })
+    await route.handler(req, res)
+    const payload = JSON.parse(captured.payload)
+    assert.equal(payload.ok, true)
+    assert.equal(payload.root, root)
+    assert.equal(payload.routes, 29)
+  })
+
+  it('非回环请求一律 403', async () => {
+    const { routes } = mount()
+    const route = routes.find(item => item.path.endsWith('/snapshot'))
+    const { req, res, captured } = makeCall({
+      url: `${BRIDGE_PREFIX}/snapshot`, body: '{}', remote: '192.168.1.9',
+    })
+    await route.handler(req, res)
+    assert.equal(captured.status, 403)
+    assert.match(JSON.parse(captured.payload).error, /回环/)
+  })
+
+  it('方法不匹配返回 405', async () => {
+    const { routes } = mount()
+    const route = routes.find(item => item.path.endsWith('/snapshot'))
+    const { req, res, captured } = makeCall({ method: 'GET', url: `${BRIDGE_PREFIX}/snapshot` })
+    await route.handler(req, res)
+    assert.equal(captured.status, 405)
+  })
+
+  it('snapshot 返回真实条目', async () => {
+    const { routes } = mount()
+    const route = routes.find(item => item.path.endsWith('/snapshot'))
+    const { req, res, captured } = makeCall({ url: `${BRIDGE_PREFIX}/snapshot`, body: '{}' })
+    await route.handler(req, res)
+    const payload = JSON.parse(captured.payload)
+    assert.equal(payload.ok, true)
+    assert.equal(payload.entries.length >= 1, true)
+    assert.equal(payload.stats.layers.l0.files >= 1, true)
+  })
+
+  it('坏 JSON 请求体返回 500 而不是崩掉进程', async () => {
+    const { routes } = mount()
+    const route = routes.find(item => item.path.endsWith('/snapshot'))
+    const { req, res, captured } = makeCall({ url: `${BRIDGE_PREFIX}/snapshot`, body: '{坏' })
+    await route.handler(req, res)
+    assert.equal(captured.status, 500)
+    assert.equal(JSON.parse(captured.payload).ok, false)
+  })
+
+  it('隐私拦截返回 400 且带脱敏文本', async () => {
+    const { routes } = mount()
+    const route = routes.find(item => item.path.endsWith('/capture'))
+    const { req, res, captured } = makeCall({
+      url: `${BRIDGE_PREFIX}/capture`,
+      body: JSON.stringify({ content: 'key: sk-abcdefghijklmnopqrstuvwx' }),
+    })
+    await route.handler(req, res)
+    assert.equal(captured.status, 400)
+    const payload = JSON.parse(captured.payload)
+    assert.equal(payload.blocked, true)
+    assert.equal(payload.masked.includes('sk-abcdefghijklmnopqrstuvwx'), false)
+  })
+})
+
+describe('agent 工具契约', () => {
+  it('注册 memory_recall 与 memory_write', () => {
+    const { tools } = mount()
+    assert.deepEqual(tools.map(tool => tool.name).sort(), ['memory_recall', 'memory_write'])
+  })
+
+  it('每个工具都声明 output { schema, render }', () => {
+    const { tools } = mount()
+    for (const tool of tools) {
+      assert.equal(typeof tool.output.render, 'function', `${tool.name} 缺 render`)
+      assert.equal(typeof tool.output.schema, 'object', `${tool.name} 缺 schema`)
+      assert.equal(tool.output.schema.type, 'object')
+      assert.equal(typeof tool.execute, 'function')
+      assert.equal(typeof tool.description, 'string')
+      assert.equal(tool.description.length > 20, true)
+    }
+  })
+
+  it('参数 schema 只用宿主支持的子集关键字', () => {
+    const { tools } = mount()
+    const allowed = new Set([
+      'type', 'oneOf', 'properties', 'required', 'additionalProperties', 'items',
+      'enum', 'const', 'description', 'title',
+    ])
+    function walk(node, where) {
+      if (typeof node !== 'object' || node === null) return
+      for (const key of Object.keys(node)) {
+        assert.equal(allowed.has(key), true, `${where}.${key} 不在支持子集内`)
+      }
+      for (const [key, value] of Object.entries(node.properties ?? {})) {
+        walk(value, `${where}.properties.${key}`)
+      }
+      if (node.items !== undefined) walk(node.items, `${where}.items`)
+    }
+    for (const tool of tools) {
+      walk(tool.parameters, `${tool.name}.parameters`)
+      walk(tool.output.schema, `${tool.name}.output`)
+    }
+  })
+
+  it('memory_recall 命中真实条目', async () => {
+    const { tools } = mount()
+    const recall = tools.find(tool => tool.name === 'memory_recall')
+    const value = await recall.execute({ query: '索引' }, { agent: { id: 'test' } })
+    assert.equal(value.matched, true)
+    assert.equal(value.hits.length >= 1, true)
+    assert.match(value.text, /记忆库命中/)
+    // render 必须产出文本块
+    const blocks = recall.output.render({}, value)
+    assert.equal(blocks[0].type, 'text')
+    assert.equal(blocks[0].text, value.text)
+  })
+
+  it('memory_recall 未命中时提示写回，并记 miss', async () => {
+    const { tools } = mount()
+    const recall = tools.find(tool => tool.name === 'memory_recall')
+    const value = await recall.execute({ query: '绝对不存在的词zzz' }, { agent: { id: 'test' } })
+    assert.equal(value.matched, false)
+    assert.match(value.text, /未命中/)
+    const misses = await fsp.readFile(path.join(root, '.state', 'misses.json'), 'utf8')
+    assert.equal(misses.includes('绝对不存在的词zzz'), true)
+  })
+
+  it('memory_write 无证据拒收（G2）', async () => {
+    const { tools } = mount()
+    const write = tools.find(tool => tool.name === 'memory_write')
+    const value = await write.execute(
+      { mode: 'entry', content: '一条结论', origin: 'G2' },
+      { agent: { id: 'test' } },
+    )
+    assert.equal(value.ok, false)
+    assert.match(value.message, /证据必填/)
+  })
+
+  it('memory_write G1 直述可豁免证据', async () => {
+    const { tools } = mount()
+    const write = tools.find(tool => tool.name === 'memory_write')
+    const value = await write.execute(
+      { mode: 'entry', content: '用户直述的偏好', title: '偏好', origin: 'G1', path: 'personal/notes/g1.md' },
+      { agent: { id: 'test' } },
+    )
+    assert.equal(value.ok, true)
+    const raw = await fsp.readFile(path.join(root, 'personal', 'notes', 'g1.md'), 'utf8')
+    assert.match(raw, /status: confirmed/)
+    assert.match(raw, /origin: G1/)
+  })
+
+  it('memory_write inbox 模式进记录流', async () => {
+    const { tools } = mount()
+    const write = tools.find(tool => tool.name === 'memory_write')
+    const value = await write.execute(
+      { mode: 'inbox', content: '一个想法', kind: '想法' },
+      { agent: { id: 'test' } },
+    )
+    assert.equal(value.ok, true)
+    assert.match(value.path, /INBOX\.md$/)
+  })
+
+  it('memory_write 隐私拦截返回脱敏文本', async () => {
+    const { tools } = mount()
+    const write = tools.find(tool => tool.name === 'memory_write')
+    const value = await write.execute(
+      { mode: 'inbox', content: 'token: ghp_abcdefghijklmnopqrstuvwxyz0123' },
+      { agent: { id: 'test' } },
+    )
+    assert.equal(value.ok, false)
+    assert.equal(value.blocked, true)
+    assert.equal(value.masked.includes('ghp_abcdefghijklmnopqrstuvwxyz0123'), false)
+  })
+
+  it('origin 非法被拒', async () => {
+    const { tools } = mount()
+    const write = tools.find(tool => tool.name === 'memory_write')
+    const value = await write.execute(
+      { mode: 'inbox', content: 'x', origin: 'G9' },
+      { agent: { id: 'test' } },
+    )
+    assert.equal(value.ok, false)
+    assert.match(value.message, /origin 必须是/)
+  })
+})

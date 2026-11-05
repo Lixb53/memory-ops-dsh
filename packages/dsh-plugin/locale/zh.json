@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "title": "记忆库",
+    "description": "人机共读的个人记忆系统：人负责确认与退役，agent 负责按索引取用。侧栏 5 分区（本项目/记录流/记忆/未命中/总览）+ 会话记忆 tab + 右侧栏快速捕获 + /remember，含 memory_recall 与 memory_write 工具。"
+  },
+  "panel": {
+    "title": "记忆库",
+    "description": "查看与运维个人记忆：确认推断、归档到期条目、补齐未命中。"
+  },
+  "tab": {
+    "project": "本项目",
+    "stream": "记录流",
+    "memory": "记忆",
+    "misses": "未命中",
+    "overview": "总览",
+    "session": "记忆",
+    "capture": "快速捕获"
+  },
+  "action": {
+    "capture": "记一条",
+    "confirm": "确认",
+    "reject": "驳回",
+    "archive": "归档",
+    "keep": "再留 90 天",
+    "promote": "提升到档案",
+    "delete": "删除",
+    "edit": "编辑源码",
+    "export": "导出"
+  },
+  "state": {
+    "hypothesis": "候选",
+    "observed": "观察中",
+    "reinforced": "已强化",
+    "confirmed": "已确认",
+    "rejected": "已驳回",
+    "stale": "待复核",
+    "archived": "已归档"
+  }
+}

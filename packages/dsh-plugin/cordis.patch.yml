@@ -1,0 +1,9 @@
+# dsh-memory-ops bundle patch：把本插件行插入 profile 阵容。
+#
+# 作为 profile bundle 层（package.json 的 dsh.bundle.patch）叠加到 dsh-base 之上。
+# 行内容为按包名注册的裸插件行：exports "." 的 node 半体运行在宿主进程，
+# exports "./client" 的浏览器半体由宿主经 combo 路由下发给页面。
+- insert:
+    - id: dsh-memory-ops
+      name: '@memory-ops/dsh-plugin'
+      config: {}
