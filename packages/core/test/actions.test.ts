@@ -309,6 +309,77 @@ describe('统计与导出', () => {
     assert.equal(result.cacheNote.includes('KV cache'), true)
   })
 
+  it('项目视图的统计只算该项目（不是全库）', async () => {
+    const { actions, store } = await freshActions('scoped-stats')
+    // 两个项目各有 l0 索引
+    await store.createEntry({
+      relPath: 'work/alpha/index.md',
+      frontmatter: { title: 'alpha 索引', layer: 'l0' },
+      body: '\n# alpha\n',
+    })
+    await store.createEntry({
+      relPath: 'work/beta/index.md',
+      frontmatter: { title: 'beta 索引', layer: 'l0' },
+      body: '\n# beta 索引内容更长一些以拉开差距\n',
+    })
+    await store.createEntry({
+      relPath: 'work/alpha/issues/a.md',
+      frontmatter: { title: 'alpha 的坑', layer: 'l2' },
+      body: '\n坑\n',
+    })
+
+    const alpha = assertOk<{ stats: { layers: { l0: { tokens: number } } }; statsScope: string; projectIndex: { path: string }[]; entries: unknown[] }>(
+      await actions.snapshot({ project: 'alpha' }),
+    )
+    const beta = assertOk<typeof alpha>(await actions.snapshot({ project: 'beta' }))
+    const all = assertOk<typeof alpha>(await actions.snapshot())
+
+    // 口径标记
+    assert.equal(alpha.statsScope, 'scoped')
+    assert.equal(all.statsScope, 'all')
+
+    // 各项目只算自己的 l0
+    assert.equal(alpha.stats.layers.l0.tokens > 0, true)
+    assert.equal(beta.stats.layers.l0.tokens > 0, true)
+    assert.equal(all.stats.layers.l0.tokens, alpha.stats.layers.l0.tokens + beta.stats.layers.l0.tokens)
+
+    // projectIndex 只含本项目的索引文件
+    assert.deepEqual(alpha.projectIndex.map(item => item.path), ['work/alpha/index.md'])
+    assert.deepEqual(beta.projectIndex.map(item => item.path), ['work/beta/index.md'])
+  })
+
+  it('项目里没有任何记忆时，索引为 0（不是显示全库的 286）', async () => {
+    const { actions, store } = await freshActions('scoped-empty')
+    await store.createEntry({
+      relPath: 'work/other/index.md',
+      frontmatter: { title: '别的项目', layer: 'l0' },
+      body: '\n# x\n',
+    })
+    const result = assertOk<{ stats: { layers: { l0: { tokens: number } } }; entries: unknown[]; projectIndex: unknown[] }>(
+      await actions.snapshot({ project: 'empty-project' }),
+    )
+    assert.equal(result.entries.length, 0)
+    assert.equal(result.stats.layers.l0.tokens, 0)
+    assert.equal(result.projectIndex.length, 0)
+  })
+
+  it('待处理队列也跟着项目过滤', async () => {
+    const { actions, store } = await freshActions('scoped-queue')
+    await store.createEntry({
+      relPath: 'work/alpha/p.md',
+      frontmatter: { title: 'alpha 待确认', status: 'hypothesis' },
+      body: 'x',
+    })
+    await store.createEntry({
+      relPath: 'work/beta/p.md',
+      frontmatter: { title: 'beta 待确认', status: 'hypothesis' },
+      body: 'y',
+    })
+    const alpha = assertOk<{ queue: { path: string }[] }>(await actions.snapshot({ project: 'alpha' }))
+    assert.equal(alpha.queue.length, 1)
+    assert.equal(alpha.queue[0]!.path, 'work/alpha/p.md')
+  })
+
   it('常驻前缀拆成「每请求付费」与「按需加载」两栏', async () => {
     const { actions, store } = await freshActions('resident')
     await store.createEntry({

@@ -113,7 +113,6 @@ export function createActions({ store, now = () => Date.now() }: {
       const entries = await store.scan()
       const events = await store.readEvents()
       const misses = await store.readMisses()
-      const stats = store.summarize(entries, events, misses, { nowMs: now() })
 
       const filtered = entries.filter((entry) => {
         if (project !== undefined && project !== null && project !== '' && entry.project !== project) return false
@@ -121,7 +120,15 @@ export function createActions({ store, now = () => Date.now() }: {
         return true
       })
 
-      const queue = entries
+      // **统计必须跟着过滤走**。
+      // 早先用全量 entries 算 stats，导致「本项目」分区在该项目 0 条记忆时
+      // 仍显示常驻前缀 286——一个自相矛盾的画面（0 条 + 286 tokens）。
+      // 项目视图要回答的是「这个项目占多少」，不是「整个库占多少」。
+      const scoped = project !== undefined && project !== null && project !== ''
+        || domain !== undefined && domain !== null && domain !== ''
+      const stats = store.summarize(scoped ? filtered : entries, events, misses, { nowMs: now() })
+
+      const queue = filtered
         .filter(entry => needsDecision(entry, now()) || entry.status === 'stale')
         .map((entry) => {
           const expiry = expiryOf(entry, now())
@@ -155,6 +162,15 @@ export function createActions({ store, now = () => Date.now() }: {
         entries: filtered.map(entry => projectEntry(entry, now())),
         stats,
         queue,
+        /**
+         * 统计口径：`all` = 全库；`scoped` = 仅当前 project/domain。
+         * UI 据此说明「这个数字覆盖了什么」，避免与总览的全库数字混淆。
+         */
+        statsScope: scoped ? 'scoped' : 'all',
+        /** 当前项目自己的常驻索引（layer: l0）文件，供「本项目」分区展示。 */
+        projectIndex: filtered
+          .filter(entry => entry.layer === 'l0')
+          .map(entry => ({ path: entry.path, title: entry.title, tokens: entry.tokens })),
         generatedAt: new Date(now()).toISOString(),
       }
     })

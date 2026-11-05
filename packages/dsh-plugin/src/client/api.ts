@@ -102,6 +102,10 @@ export interface StatsView {
 
 export interface SnapshotView {
   root: string
+  /** 统计口径：all=全库，scoped=仅当前 project/domain。 */
+  statsScope: 'all' | 'scoped'
+  /** 当前项目自己的 layer: l0 索引文件。 */
+  projectIndex: { path: string; title: string; tokens: number }[]
   projectScoped: boolean
   project: string | null
   domain: string | null

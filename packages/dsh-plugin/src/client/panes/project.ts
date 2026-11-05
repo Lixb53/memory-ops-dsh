@@ -64,11 +64,31 @@ export function ProjectPane({ project, sessionId, onOpenMemory, onGoto }: {
         value: percent(data.stats.rates.hitRate),
         note: '30 天',
       }),
+      // 这一格必须说清「谁的前缀」：项目视图量的是该项目的索引，
+      // 不是全库（全库数字在「总览」）。两者混用会得出错误结论。
       createElement(Kpi, {
-        label: '常驻前缀',
+        label: '本项目索引',
         value: count(data.stats.layers.l0.tokens),
-        note: 'tokens/请求',
+        note: data.statsScope === 'scoped' ? 'tokens · 被 read 时才付费' : '全库索引',
       })),
+
+    // 本项目索引文件：让「151」这个数字可追溯到具体文件
+    (data.projectIndex ?? []).length === 0
+      ? null
+      : createElement('div', { className: 'dmo-note' },
+        '本项目索引：',
+        (data.projectIndex ?? []).map((item, index) => createElement('span', { key: item.path },
+          index === 0 ? '' : ' · ',
+          createElement('span', {
+            className: 'dmo-link',
+            role: 'button',
+            tabIndex: 0,
+            onClick: () => { onOpenMemory(item.path) },
+            onKeyDown: (event: { key: string }) => {
+              if (event.key === 'Enter' || event.key === ' ') onOpenMemory(item.path)
+            },
+          }, item.title),
+          ` ${count(item.tokens)}`))),
 
     // 待确认优先置顶：一条一次点击
     queue.length === 0 ? null : createElement('div', { style: { marginBottom: 10 } },
