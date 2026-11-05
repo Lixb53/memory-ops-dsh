@@ -15,6 +15,16 @@ import { createActions } from '../src/actions.ts'
 import { createStore } from '../src/store.ts'
 import { INBOX_HEADER } from '../src/parse.ts'
 
+/** 测试用的最小结果类型（避免为断言引入完整返回类型）。 */
+interface InboxData { entries: { lineIndex: number; content: string; state: string; destination: string }[]; throughput: { total: number } }
+interface MissesData { total: number; pipeline: Record<string, unknown[]>; conversion: number | null; verifyDays: number }
+interface OverviewData { kpi: Record<string, number | null>; budget: unknown[]; cacheNote: string; domains: unknown[]; rates: Record<string, number | null>; files: number; tokens: number }
+interface HealthData { overLimit: number; lineLimit: number; silenced: unknown[]; stale: unknown[]; rates: Record<string, number | null>; counts: Record<string, number> }
+interface SessionMemoryData { reasons: { why: string }[]; injected: number; cited: number; missed: number }
+interface ExportData { filename: string; content: string; count: number }
+interface DetailData { entry: { body: string; tokens: number }; trust: Record<string, unknown>; references: unknown[] }
+interface SearchData { matched: boolean; hits: { path: string }[]; total: number; cost: number }
+
 let root: string
 
 before(async () => {
@@ -37,12 +47,25 @@ async function freshActions(name: string, now?: () => number) {
   return { actions: createActions({ store, now }), store, dir }
 }
 
+/** 断言成功分支并收窄类型（失败直接抛，避免后续属性访问变成 any）。 */
+function assertOk<T>(result: unknown): T {
+  const record = result as { ok?: boolean; error?: string }
+  assert.equal(record?.ok, true, record?.error ?? '期望成功')
+  return result as T
+}
+
+/** 断言失败分支并收窄类型。 */
+function assertBlocked(result: { ok: boolean; blocked?: boolean; reason?: string; masked?: string; audit?: { findings: string[] } }) {
+  assert.equal(result.ok, false)
+  assert.equal(result.blocked, true)
+  assert.match(result.reason ?? '', /敏感|密钥|私钥|IP/)
+  return result
+}
+
 describe('隐私闸门', () => {
   it('密钥被拒写，并给出脱敏文本', async () => {
     const { actions } = await freshActions('privacy-key')
-    const result = await actions.capture({ content: '我的 key 是 sk-abcdefghijklmnopqrstuvwx 记得' })
-    assert.equal(result.ok, false)
-    assert.equal(result.blocked, true)
+    const result = assertBlocked(await actions.capture({ content: '我的 key 是 sk-abcdefghijklmnopqrstuvwx 记得' }))
     assert.match(result.reason ?? '', /密钥/)
     assert.equal(result.masked?.includes('sk-abcdefghijklmnopqrstuvwx'), false)
   })
@@ -50,39 +73,34 @@ describe('隐私闸门', () => {
   it('私钥块被拒写', async () => {
     const { actions } = await freshActions('privacy-pem')
     const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----'
-    const result = await actions.capture({ content: pem })
-    assert.equal(result.blocked, true)
+    assertBlocked(await actions.capture({ content: pem }))
   })
 
   it('内网 IP 被拒写', async () => {
     const { actions } = await freshActions('privacy-ip')
-    const result = await actions.capture({ content: '服务在 192.168.1.20:8080' })
-    assert.equal(result.blocked, true)
+    assertBlocked(await actions.capture({ content: '服务在 192.168.1.20:8080' }))
   })
 
   it('审计记录不含原文', async () => {
     const { actions } = await freshActions('privacy-audit')
     const secret = 'sk-abcdefghijklmnopqrstuvwx'
-    const result = await actions.capture({ content: `key: ${secret}` })
-    assert.equal(result.audit?.findings.length! > 0, true)
+    const result = assertBlocked(await actions.capture({ content: `key: ${secret}` }))
+    assert.equal((result.audit?.findings.length ?? 0) > 0, true)
     assert.equal(JSON.stringify(result.audit).includes(secret), false)
   })
 
   it('普通中文内容不误伤', async () => {
     const { actions } = await freshActions('privacy-clean')
-    const result = await actions.capture({ content: '今天想清楚一件事：先给结论，别铺垫' })
-    assert.equal(result.ok, true)
+    const result = assertOk(await actions.capture({ content: '今天想清楚一件事：先给结论，别铺垫' }))
   })
 
   it('改正文同样过闸门', async () => {
     const { actions, store } = await freshActions('privacy-body')
     await store.createEntry({ relPath: 'personal/notes/p.md', frontmatter: { title: 'P' }, body: 'x' })
-    const result = await actions.writeBody({
+    assertBlocked(await actions.writeBody({
       path: 'personal/notes/p.md',
       body: 'token: ghp_abcdefghijklmnopqrstuvwxyz0123',
-    })
-    assert.equal(result.ok, false)
-    assert.equal(result.blocked, true)
+    }))
   })
 })
 
@@ -90,8 +108,7 @@ describe('记录流能力', () => {
   it('捕获后立刻出现在记录流', async () => {
     const { actions } = await freshActions('inbox-capture')
     await actions.capture({ content: '想法一条', kind: '想法' })
-    const list = await actions.inbox({ domain: 'personal' })
-    assert.equal(list.ok, true)
+    const list = assertOk<InboxData>(await actions.inbox({ domain: 'personal' }))
     assert.equal(list.entries.length, 1)
     assert.equal(list.entries[0]!.content, '想法一条')
   })
@@ -105,33 +122,32 @@ describe('记录流能力', () => {
 
   it('批量捕获按换行拆条', async () => {
     const { actions } = await freshActions('inbox-batch')
-    const result = await actions.captureBatch({ text: '第一条\n第二条\n第三条' })
-    assert.equal(result.ok, true)
-    assert.equal(result.accepted.length, 3)
+    const result = assertOk<{ accepted?: string[] }>(await actions.captureBatch({ text: '第一条\n第二条\n第三条' }))
+    assert.equal(result.accepted?.length, 3)
   })
 
   it('批量捕获里被闸门拦下的单独列出', async () => {
     const { actions } = await freshActions('inbox-batch-blocked')
     const result = await actions.captureBatch({ text: '正常一条\nsk-abcdefghijklmnopqrstuvwx' })
-    assert.equal(result.accepted.length, 1)
-    assert.equal(result.blocked.length, 1)
+    assert.equal(result.accepted?.length, 1)
+    assert.equal(result.blocked?.length, 1)
   })
 
   it('批量改状态', async () => {
     const { actions, store } = await freshActions('inbox-batch-state')
     await actions.captureBatch({ text: 'A\nB' })
-    const list = await actions.inbox({ domain: 'personal' })
+    const list = assertOk<InboxData>(await actions.inbox({ domain: 'personal' }))
     const indexes = list.entries.map(entry => entry.lineIndex)
     const result = await actions.batchInboxState({ lineIndexes: indexes, state: 'done' })
-    assert.equal(result.updated.length, 2)
-    const after = await actions.inbox({ domain: 'personal' })
+    assert.equal(result.ok, true)
+    const after = assertOk<InboxData>(await actions.inbox({ domain: 'personal' }))
     assert.equal(after.entries.every(entry => entry.state === 'done'), true)
   })
 
   it('提升到档案：新建条目并把 INBOX 标 done + 去向', async () => {
     const { actions, store } = await freshActions('inbox-promote')
     await actions.capture({ content: '值得沉淀的结论', kind: '决策' })
-    const list = await actions.inbox({ domain: 'personal' })
+    const list = assertOk<InboxData>(await actions.inbox({ domain: 'personal' }))
     const lineIndex = list.entries[0]!.lineIndex
     const result = await actions.promoteInbox({
       lineIndex, target: 'personal/notes/沉淀.md',
@@ -139,7 +155,7 @@ describe('记录流能力', () => {
     assert.equal(result.ok, true)
     const entry = await store.readEntry('personal/notes/沉淀.md')
     assert.equal(entry.status, 'confirmed')
-    const after = await actions.inbox({ domain: 'personal' })
+    const after = assertOk<InboxData>(await actions.inbox({ domain: 'personal' }))
     assert.equal(after.entries[0]!.state, 'done')
     assert.equal(after.entries[0]!.destination, 'personal/notes/沉淀.md')
   })
@@ -165,14 +181,12 @@ describe('状态机与证据', () => {
       frontmatter: { title: '推断', status: 'hypothesis' },
       body: 'x',
     })
-    const rejected = await actions.reject({ path: 'personal/patterns.md', reason: '不是这样' })
-    assert.equal(rejected.ok, true)
+    const rejected = assertOk(await actions.reject({ path: 'personal/patterns.md', reason: '不是这样' }))
     const entry = await store.readEntry('personal/patterns.md')
     assert.equal(entry.status, 'rejected')
     assert.equal(entry.refutedReason, '不是这样')
 
-    const undone = await actions.undoReject({ path: 'personal/patterns.md' })
-    assert.equal(undone.ok, true)
+    const undone = assertOk(await actions.undoReject({ path: 'personal/patterns.md' }))
     assert.equal((await store.readEntry('personal/patterns.md')).status, 'reinforced')
   })
 
@@ -210,15 +224,14 @@ describe('检索记账', () => {
       frontmatter: { title: '记忆面板假空态', layer: 'l2', tags: ['DSH', 'cwd'] },
       body: '\nDSH 槽位不下发 cwd，面板拿不到项目上下文。\n',
     })
-    const hit = await actions.search({ query: '假空态' })
-    assert.equal(hit.ok, true)
+    const hit = assertOk<SearchData>(await actions.search({ query: '假空态' }))
     assert.equal(hit.matched, true)
     assert.equal(hit.hits[0]!.path, 'work/sz-web/issues/面板假空态.md')
 
     const events = await store.readEvents()
     assert.equal(events.some(event => event.kind === 'recall'), true)
 
-    const miss = await actions.search({ query: '从来没记过的词' })
+    const miss = assertOk<SearchData>(await actions.search({ query: '从来没记过的词' }))
     assert.equal(miss.matched, false)
     assert.equal((await store.readMisses()).length, 1)
   })
@@ -233,7 +246,7 @@ describe('检索记账', () => {
     const { actions, store } = await freshActions('search-project')
     await store.createEntry({ relPath: 'work/a/x.md', frontmatter: { title: '甲项目坑' }, body: '甲' })
     await store.createEntry({ relPath: 'work/b/y.md', frontmatter: { title: '乙项目坑' }, body: '乙' })
-    const result = await actions.search({ query: '项目坑', project: 'a' })
+    const result = assertOk<SearchData>(await actions.search({ query: '项目坑', project: 'a' }))
     assert.equal(result.hits.length, 1)
     assert.equal(result.hits[0]!.path, 'work/a/x.md')
   })
@@ -246,20 +259,18 @@ describe('未命中流水线', () => {
     await store.recordMiss({ query: 'grep read' })
     await store.recordMiss({ query: 'grep read' })
 
-    let board = await actions.misses()
+    let board = assertOk<MissesData>(await actions.misses())
     assert.equal(board.pipeline['should-fill'].length, 1)
 
-    const draft = await actions.missDraft({ query: 'grep read', type: '问题' })
-    assert.equal(draft.ok, true)
-    board = await actions.misses()
+    const draft = assertOk(await actions.missDraft({ query: 'grep read', type: '问题' }))
+    board = assertOk<MissesData>(await actions.misses())
     assert.equal(board.pipeline.drafting.length, 1)
 
-    const confirmed = await actions.missConfirm({
+    const confirmed = assertOk<{ entry: { path: string } }>(await actions.missConfirm({
       query: 'grep read',
       content: 'grep 读大文件要用 -m 限制匹配数，否则结果集爆炸。',
-    })
-    assert.equal(confirmed.ok, true)
-    board = await actions.misses()
+    }))
+    board = assertOk<MissesData>(await actions.misses())
     assert.equal(board.pipeline.verifying.length, 1)
 
     // 草稿落库时是 observed（待验证），不是 confirmed
@@ -272,9 +283,7 @@ describe('未命中流水线', () => {
   it('草稿确认时同样过隐私闸门', async () => {
     const { actions, store } = await freshActions('miss-privacy')
     await store.recordMiss({ query: 'q' })
-    const result = await actions.missConfirm({ query: 'q', content: 'token: ghp_abcdefghijklmnopqrstuvwxyz0123' })
-    assert.equal(result.ok, false)
-    assert.equal(result.blocked, true)
+    assertBlocked(await actions.missConfirm({ query: 'q', content: 'token: ghp_abcdefghijklmnopqrstuvwxyz0123' }))
   })
 
   it('批量生成草稿', async () => {
@@ -294,10 +303,9 @@ describe('统计与导出', () => {
       frontmatter: { title: '索引', layer: 'l0', status: 'confirmed' },
       body: 'x',
     })
-    const result = await actions.overview()
-    assert.equal(result.ok, true)
+    const result = assertOk<OverviewData>(await actions.overview())
     assert.equal(result.budget.length, 3)
-    assert.equal(result.kpi.residentBudget > 0, true)
+    assert.equal((result.kpi.residentBudget ?? 0) > 0, true)
     assert.equal(result.cacheNote.includes('KV cache'), true)
   })
 
@@ -306,13 +314,12 @@ describe('统计与导出', () => {
     await store.createEntry({ relPath: 'personal/a.md', frontmatter: { title: '甲' }, body: '甲内容' })
     await store.createEntry({ relPath: 'work/sz-web/b.md', frontmatter: { title: '乙' }, body: '乙内容' })
 
-    const md = await actions.export({ format: 'markdown', domain: 'personal' })
-    assert.equal(md.ok, true)
+    const md = assertOk<ExportData>(await actions.export({ format: 'markdown', domain: 'personal' }))
     assert.match(md.filename, /^memory-ops-personal-.*\.md$/)
     assert.equal(md.content.includes('甲内容'), true)
     assert.equal(md.content.includes('乙内容'), false)
 
-    const json = await actions.export({ format: 'json' })
+    const json = assertOk<ExportData>(await actions.export({ format: 'json' }))
     const parsed = JSON.parse(json.content) as unknown[]
     assert.equal(parsed.length > 0, true)
   })
@@ -324,8 +331,7 @@ describe('统计与导出', () => {
       frontmatter: { title: '超长' },
       body: Array.from({ length: 100 }, () => '行').join('\n'),
     })
-    const result = await actions.health()
-    assert.equal(result.ok, true)
+    const result = assertOk<HealthData>(await actions.health())
     assert.equal(result.overLimit, 1)
     assert.equal(result.lineLimit, 80)
   })
@@ -337,8 +343,7 @@ describe('统计与导出', () => {
       frontmatter: { title: '缓存失效', tags: ['cache'] },
       body: '前缀变更作废缓存。',
     })
-    const result = await actions.sessionMemory({ query: '缓存', project: 'sz-web' })
-    assert.equal(result.ok, true)
+    const result = assertOk<SessionMemoryData>(await actions.sessionMemory({ query: '缓存', project: 'sz-web' }))
     assert.equal(result.reasons.length, 1)
     assert.match(result.reasons[0]!.why, /关键词命中/)
   })

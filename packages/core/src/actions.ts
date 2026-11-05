@@ -21,11 +21,34 @@ import type { MemoryEntry, Store } from './store.ts'
 export interface ActionFailure {
   ok: false
   error?: string
+  /** 命中隐私闸门。 */
   blocked?: boolean
+  /** 拦截原因（人可读）。 */
   reason?: string
+  /** 脱敏后的可用文本。 */
   masked?: string
+  /** 审计记录（不含原文）。 */
   audit?: ReturnType<typeof auditRecord>
   hint?: string
+}
+
+/** 捕获成功的结果。 */
+export interface CaptureSuccess {
+  ok: true
+  captured: { path: string; row: unknown }
+  privacy: { blocked: false }
+}
+
+/** 捕获结果。 */
+export type CaptureOutcome = CaptureSuccess | ActionFailure
+
+/** 批量捕获结果。 */
+export interface CaptureBatchOutcome {
+  ok: boolean
+  accepted?: string[]
+  blocked?: { line: string; reason: string }[]
+  total?: number
+  error?: string
 }
 
 /** 统一包装：所有能力都返回 `{ ok, ... }`。 */
@@ -191,10 +214,7 @@ export function createActions({ store, now = () => Date.now() }: {
   /** 捕获一条（带隐私闸门）。 */
   async function capture({ content, kind = '想法', domain = 'personal', session = 'plugin' }: {
     content: string; kind?: string; domain?: string; session?: string
-  }): Promise<
-    { ok: true; captured: { path: string; row: unknown }; privacy: { blocked: false } }
-    | ActionFailure
-  > {
+  }): Promise<CaptureOutcome> {
     const text = String(content ?? '').trim()
     if (text === '') return { ok: false, error: '内容不能为空' }
     if (!INBOX_KINDS.includes(kind as InboxKind)) {
@@ -215,13 +235,13 @@ export function createActions({ store, now = () => Date.now() }: {
       const result = await store.appendInbox({ domain, kind, content: text })
       await store.appendEvent({ session, kind: 'capture', query: text.slice(0, 80), ids: [] })
       return { captured: result, privacy: { blocked: false as const } }
-    }) as Promise<{ ok: true; captured: { path: string; row: unknown }; privacy: { blocked: false } } | ActionFailure>
+    }) as Promise<CaptureOutcome>
   }
 
   /** 批量捕获（换行或分号分隔）。 */
   async function captureBatch({ text, kind = '想法', domain = 'personal', session = 'plugin' }: {
     text: string; kind?: string; domain?: string; session?: string
-  }) {
+  }): Promise<CaptureBatchOutcome> {
     const lines = String(text ?? '')
       .split(/\n|;/)
       .map(line => line.trim())
