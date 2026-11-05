@@ -72,8 +72,15 @@ interface TriggerSource {
   ): Promise<PickOutcomeLike | undefined>
 }
 
-/** `'handled'` 是宿主认可的返回值：清空输入框并把提交交给本插件。 */
-const HANDLED: PickOutcomeLike = { kind: 'handled' }
+/**
+ * `'handled'` 是宿主认可的返回值：清空输入框并把提交交给本插件。
+ *
+ * **必须返回字符串字面量本身，不能包成对象**——宿主的 PickOutcome 是
+ * `{claim} | {insert} | {text} | 'handled' | undefined` 的联合类型，
+ * 返回 `{kind:'handled'}` 会被当成「未知形态」而落回默认发送路径，
+ * 结果是命令被当普通消息发出去（实测踩过：回车后消息直接进了对话）。
+ */
+const HANDLED = 'handled' as unknown as PickOutcomeLike
 
 /** 注册 `/remember` 触发源与浮层。 */
 export function registerRemember(ctx: ClientContext): () => void {
@@ -97,12 +104,20 @@ export function registerRemember(ctx: ClientContext): () => void {
   }
 
   // ---- 触发源 ----
+  //
+  // **必须用 ctx.inject 等就绪，不能用 ctx.get 直接取**。
+  // `inputTriggers` 是延迟提供的客户端服务：apply 执行时它还没 provide，
+  // 直接 get 会拿到 undefined，于是注册被静默跳过——表现为
+  // 「输入 /remember 回车后没有任何拦截，消息被当普通文本发出去」。
+  // 这是本次实测踩到的第二个坑（第一个是 'handled' 不能包成对象）。
   try {
-    const inputTriggers = ctx.get('inputTriggers') as {
-      registerSource(source: TriggerSource): () => void
-    } | undefined
-    if (inputTriggers !== undefined && typeof inputTriggers.registerSource === 'function') {
-      disposers.push(inputTriggers.registerSource({
+    const dispose = ctx.inject(['inputTriggers'], (triggerCtx) => {
+      const inputTriggers = (triggerCtx as unknown as { inputTriggers?: {
+        registerSource(source: TriggerSource): () => void
+      } }).inputTriggers
+      if (inputTriggers === undefined || typeof inputTriggers.registerSource !== 'function') return
+
+      return inputTriggers.registerSource({
         trigger: '/',
         name: COMMAND_NAME,
         order: 40,
@@ -130,8 +145,9 @@ export function registerRemember(ctx: ClientContext): () => void {
           openRememberDialog(session.sessionId ?? 'default', parsed.content)
           return HANDLED
         },
-      }))
-    }
+      })
+    })
+    if (typeof dispose === 'function') disposers.push(dispose)
   } catch (error) {
     console.error('[memory-ops] /remember 触发源注册失败：', error)
   }

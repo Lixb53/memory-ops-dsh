@@ -90,6 +90,35 @@ ${body}
 }
 
 /**
+ * 把 `react` 解析成空 stub。
+ *
+ * 用途仅限可测产物：`remember.ts` 顶层 import 了 React（组件用），
+ * 但测试只关心 registerRemember 的注册行为。本仓不装 react
+ * （客户端产物由宿主模块表提供），所以给一个只有最小符号的空壳。
+ */
+function reactStubPlugin() {
+  return {
+    name: 'react-stub',
+    setup(buildApi) {
+      buildApi.onResolve({ filter: /^react(-dom)?(\/.*)?$/ }, () => ({ path: 'react-stub', namespace: 'react-stub' }))
+      buildApi.onLoad({ filter: /.*/, namespace: 'react-stub' }, () => ({
+        contents: [
+          'const noop = () => null;',
+          'export const createElement = noop;',
+          'export const useState = (initial) => [typeof initial === "function" ? initial() : initial, noop];',
+          'export const useEffect = noop;',
+          'export const useRef = (value) => ({ current: value });',
+          'export const useMemo = (fn) => fn();',
+          'export const useCallback = (fn) => fn;',
+          'export default { createElement, useState, useEffect, useRef };',
+        ].join('\n'),
+        loader: 'js',
+      }))
+    },
+  }
+}
+
+/**
  * 额外产出 client-logic.mjs：浏览器半体里的**纯逻辑**（无 React、无 DOM）。
  *
  * 为什么单独产出一份：`/remember` 的「回车是否一定打开弹窗」必须能自动化验证，
@@ -98,7 +127,7 @@ ${body}
  */
 async function buildClientLogic() {
   await build({
-    entryPoints: [path.join(packageDir, 'src', 'client', 'remember-logic.ts')],
+    entryPoints: [path.join(packageDir, 'src', 'client', 'testable.ts')],
     outfile: path.join(outDir, 'client-logic.mjs'),
     bundle: true,
     platform: 'neutral',
@@ -107,8 +136,12 @@ async function buildClientLogic() {
     sourcemap: false,
     minify: false,
     legalComments: 'inline',
+    // remember.ts 引了 React（组件用），但测试只调 registerRemember 与纯函数。
+    // 本仓不装 react（客户端产物从宿主模块表取），所以这里把 react 解析到一个
+    // 空 stub：模块能加载，组件永远不会被调用，测试断言的是注册行为。
+    plugins: [reactStubPlugin()],
     banner: {
-      js: '/**\n * @memory-ops/dsh-plugin — 纯逻辑（无 React / 无 DOM）。\n * 由 scripts/build-plugin.mjs 生成，请勿手改；仅供测试与复用。\n */',
+      js: '/**\n * @memory-ops/dsh-plugin — 可测逻辑（React 已外置）。\n * 由 scripts/build-plugin.mjs 生成，请勿手改；仅供测试与复用。\n */',
     },
   })
 }
