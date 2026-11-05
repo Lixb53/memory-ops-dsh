@@ -135,6 +135,31 @@ export interface InboxView {
   states: string[]
 }
 
+/** 常驻前缀的一项（skill description 或 l0 索引文件）。 */
+export interface ResidentItem {
+  kind: 'catalog' | 'index'
+  id: string
+  path: string
+  title: string
+  tokens: number
+  bytes: number
+  lines: number
+  overLineLimit: boolean
+  /** 是否每请求付费。 */
+  billed: boolean
+  note: string
+}
+
+/** 常驻前缀拆解。 */
+export interface ResidentBreakdown {
+  items: ResidentItem[]
+  catalogTokens: number
+  indexTokens: number
+  frameTokens: number
+  billedTokens: number
+  onDemandTokens: number
+}
+
 export interface OverviewView {
   kpi: {
     residentTokens: number
@@ -144,6 +169,7 @@ export interface OverviewView {
     expireRate: number | null
     pending: number
   }
+  resident: ResidentBreakdown
   budget: { layer: string; name: string; tokens: number; files: number; limit: number | null }[]
   domains: StatsView['domains']
   rates: StatsView['rates']

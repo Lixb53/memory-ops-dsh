@@ -17,6 +17,21 @@ import { inspectText, auditRecord } from './privacy.ts'
 import { parseSections } from './parse.ts'
 import type { MemoryEntry, Store } from './store.ts'
 
+/** 一个常驻 skill 的 description（每请求付费的那部分）。 */
+export interface ResidentSkill {
+  name: string
+  path: string
+  description: string
+  descriptionTokens: number
+}
+
+/**
+ * `<available_skills>` 目录的固定框架文字（实测 171 tokens）。
+ * 这部分与 skill 数量无关，是宿主注入的固定开销；
+ * 记在这里是为了让「常驻前缀」的口径可复算，而不是凭印象。
+ */
+export const SKILL_CATALOG_FRAME_TOKENS = 171
+
 /** 统一的失败结果。 */
 export interface ActionFailure {
   ok: false
@@ -145,14 +160,75 @@ export function createActions({ store, now = () => Date.now() }: {
     })
   }
 
+  /**
+   * 常驻前缀逐项拆解 —— 回答「这 N 个 tokens 到底是什么」。
+   *
+   * 拆成三类，因为它们**付费方式完全不同**，混在一起就会得出错误结论：
+   *   1. `catalog`：skill description + `<available_skills>` 框架，**每个请求都付费**
+   *   2. `index`：`layer: l0` 的索引文件，只在被 read 时才进上下文
+   *   3. `frame`：其余固定文字
+   *
+   * 为什么必须拆开：product.md 把「两个 skill description」与「L0 索引文件」
+   * 都记作「常驻前缀 286 tokens」，但实测前者是 190 + 171 框架 = 361，
+   * 后者是 286。两个数字对不上，说明口径本身有歧义——而这个歧义会直接
+   * 导致「该优化哪个」判断错。
+   */
+  function residentBreakdown(entries: MemoryEntry[], skills: ResidentSkill[]) {
+    const indexItems = entries
+      .filter(entry => entry.layer === 'l0')
+      .map(entry => ({
+        kind: 'index' as const,
+        id: entry.id,
+        path: entry.path,
+        title: entry.title,
+        tokens: entry.tokens,
+        bytes: entry.bytes,
+        lines: entry.lines,
+        overLineLimit: entry.overLineLimit,
+        // 索引是否真的进上下文，取决于它有没有被 skill 目录引用
+        billed: false,
+        note: '仅在被 read 时进上下文',
+      }))
+
+    const catalogItems = skills.map(skill => ({
+      kind: 'catalog' as const,
+      id: `skill.${skill.name}`,
+      path: skill.path,
+      title: skill.name,
+      tokens: skill.descriptionTokens,
+      bytes: skill.description.length,
+      lines: 1,
+      overLineLimit: false,
+      billed: true,
+      note: 'skill description，每请求付费',
+    }))
+
+    const indexTokens = indexItems.reduce((sum, item) => sum + item.tokens, 0)
+    const catalogTokens = catalogItems.reduce((sum, item) => sum + item.tokens, 0)
+
+    return {
+      items: [...catalogItems, ...indexItems],
+      catalogTokens,
+      indexTokens,
+      frameTokens: SKILL_CATALOG_FRAME_TOKENS,
+      /** 真正每请求付费的部分：catalog + 框架。 */
+      billedTokens: catalogTokens + SKILL_CATALOG_FRAME_TOKENS,
+      /** 标了 l0 但按需加载的部分。 */
+      onDemandTokens: indexTokens,
+    }
+  }
+
   /** 总览：KPI + 预算账本 + 三率 + 域统计。 */
-  async function overview() {
+  async function overview({ skillDescriptions = [] }: {
+    skillDescriptions?: ResidentSkill[]
+  } = {}) {
     return guard(async () => {
       const entries = await store.scan()
       const events = await store.readEvents()
       const misses = await store.readMisses()
       const stats = store.summarize(entries, events, misses, { nowMs: now() })
       const l0 = stats.layers.l0.tokens
+      const resident = residentBreakdown(entries, skillDescriptions)
       return {
         kpi: {
           residentTokens: l0,
@@ -162,6 +238,7 @@ export function createActions({ store, now = () => Date.now() }: {
           expireRate: stats.rates.expireRate,
           pending: stats.counts.pending,
         },
+        resident,
         budget: [
           { layer: 'L0', name: '常驻层', tokens: l0, files: stats.layers.l0.files, limit: RESIDENT_TOKEN_BUDGET },
           { layer: 'L1', name: '索引层', tokens: stats.layers.l1.tokens, files: stats.layers.l1.files, limit: 2048 },

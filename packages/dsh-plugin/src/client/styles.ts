@@ -31,6 +31,18 @@ const CSS = `
 .dmo-kpi-label { font-size: 11px; color: var(--dsw-alias-label-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dmo-kpi-value { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 1px; }
 .dmo-kpi-note { font-size: 10px; color: var(--dsw-alias-label-secondary); }
+.dmo-kpi-btn { appearance: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.dmo-kpi-btn:hover { border-color: var(--dsw-alias-border-l2); }
+.dmo-kpi-btn:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dmo-kpi-more { float: right; font-size: 10px; color: var(--dsw-alias-brand-primary); font-weight: 600; }
+
+/* —— 常驻前缀构成 —— */
+.dmo-resident-group { margin: 8px 0; }
+.dmo-resident-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.dmo-resident-row { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0 4px 8px; border-left: 2px solid var(--dsw-alias-border-l1); }
+.dmo-resident-main { flex: 1 1 auto; min-width: 0; }
+.dmo-link { color: var(--dsw-alias-brand-primary); cursor: pointer; }
+.dmo-link:hover { text-decoration: underline; }
 
 /* —— 卡片 —— */
 .dmo-card { border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; padding: 8px 9px; margin-bottom: 7px; background: var(--dsw-alias-bg-layer-1); }

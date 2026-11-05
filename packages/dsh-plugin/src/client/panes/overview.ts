@@ -7,7 +7,7 @@
 
 import { createElement, useState, type ReactNode } from 'react'
 
-import { call, type OverviewView, type SnapshotView } from '../api.ts'
+import { call, type OverviewView, type ResidentBreakdown, type SnapshotView } from '../api.ts'
 import { useBridge } from '../data.ts'
 import {
   Badge, BudgetRow, Button, Empty, ErrorState, Kpi, Skeleton, Stepper,
@@ -17,6 +17,7 @@ import {
 /** 总览分区。 */
 export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) => void }): ReactNode {
   const [exporting, setExporting] = useState(false)
+  const [showResident, setShowResident] = useState(false)
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
   const overview = useBridge<OverviewView>('overview', {})
   const snapshot = useBridge<SnapshotView>('snapshot', {})
@@ -66,14 +67,30 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
   return createElement('div', null,
     // KPI：常驻前缀排第一
     createElement('div', { className: 'dmo-kpis' },
-      createElement(Kpi, {
-        label: '常驻前缀',
-        value: count(data.kpi.residentTokens),
-        note: `tokens/请求 · 预算 ${count(data.kpi.residentBudget)}`,
-      }),
+      createElement('button', {
+        type: 'button',
+        className: 'dmo-kpi dmo-kpi-btn',
+        'aria-expanded': showResident,
+        title: '点开看常驻前缀由哪些内容构成',
+        onClick: () => { setShowResident(value => !value) },
+      },
+      createElement('div', { className: 'dmo-kpi-label' },
+        '常驻前缀',
+        createElement('span', { className: 'dmo-kpi-more' }, showResident ? '收起' : '构成')),
+      createElement('div', { className: 'dmo-kpi-value' }, count(data.kpi.residentTokens)),
+      createElement('div', { className: 'dmo-kpi-note' },
+        `L0 文件 · 预算 ${count(data.kpi.residentBudget)}`)),
       createElement(Kpi, { label: '命中率', value: percent(data.kpi.hitRate), note: '30 天' }),
       createElement(Kpi, { label: '待你处理', value: count(data.kpi.pending), note: '需拍板' }),
       createElement(Kpi, { label: '过期率', value: percent(data.kpi.expireRate), note: 'stale+archived' })),
+
+    // 常驻前缀构成：把「286 是什么」摊开
+    showResident
+      ? createElement(ResidentPanel, {
+        resident: data.resident,
+        onOpenMemory,
+      })
+      : null,
 
     // 预算账本
     createElement('div', { className: 'dmo-budget' },
@@ -154,4 +171,79 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
       createElement(Button, { small: true, disabled: exporting, onClick: () => { doExport('json') } }, '导出 JSON')),
     createElement('div', { className: 'dmo-note' },
       `库根目录：${orEmpty(data.files > 0 ? snapshot.data?.root : snapshot.data?.root)} · ${count(data.files)} 篇 · ${count(data.tokens)} tokens`))
+}
+
+/**
+ * 常驻前缀构成面板。
+ *
+ * 分三栏并各自标注付费方式，因为这三类**付费频率完全不同**：
+ * catalog 每请求付费，index 只在被 read 时付费，frame 是固定开销。
+ * 混在一起看，就会得出「常驻 286 太多」或「才 286 不用管」这类错误结论。
+ */
+function ResidentPanel({ resident, onOpenMemory }: {
+  resident: ResidentBreakdown | undefined
+  onOpenMemory: (path: string) => void
+}): ReactNode {
+  if (resident === undefined) {
+    return createElement('div', { className: 'dmo-degrade' },
+      '未能读取常驻前缀构成：宿主未提供 skills 服务。数字仍然可信，只是无法拆分。')
+  }
+
+  const catalogs = resident.items.filter(item => item.kind === 'catalog')
+  const indexes = resident.items.filter(item => item.kind === 'index')
+
+  return createElement('div', { className: 'dmo-budget' },
+    createElement('div', { className: 'dmo-lane-head' }, '常驻前缀构成'),
+    createElement('div', { className: 'dmo-note', style: { marginTop: 0 } },
+      '每请求真正付费的只有 skill 目录；L0 索引文件在被 read 之前不进上下文。'),
+
+    // ① 每请求付费
+    createElement('div', { className: 'dmo-resident-group' },
+      createElement('div', { className: 'dmo-resident-head' },
+        createElement(Badge, { tone: 'warn' }, '每请求付费'),
+        createElement('span', { className: 'dmo-lane-count' },
+          `${count(resident.billedTokens)} tokens`)),
+      catalogs.length === 0
+        ? createElement('div', { className: 'dmo-note' },
+          '宿主没有注入任何 skill（或未提供 skills 服务）。')
+        : catalogs.map(item => createElement('div', { key: item.id, className: 'dmo-resident-row' },
+          createElement('div', { className: 'dmo-resident-main' },
+            createElement('div', { className: 'dmo-row-text' }, item.title),
+            createElement('div', { className: 'dmo-row-sub' }, item.note)),
+          createElement('span', { className: 'dmo-budget-num' }, count(item.tokens)))),
+      createElement('div', { className: 'dmo-resident-row' },
+        createElement('div', { className: 'dmo-resident-main' },
+          createElement('div', { className: 'dmo-row-text' }, '目录框架文字'),
+          createElement('div', { className: 'dmo-row-sub' },
+            '<available_skills> 的固定说明，与 skill 数量无关')),
+        createElement('span', { className: 'dmo-budget-num' }, count(resident.frameTokens)))),
+
+    // ② 按需加载
+    createElement('div', { className: 'dmo-resident-group' },
+      createElement('div', { className: 'dmo-resident-head' },
+        createElement(Badge, { tone: 'idle' }, '按需加载'),
+        createElement('span', { className: 'dmo-lane-count' },
+          `${count(resident.onDemandTokens)} tokens`)),
+      indexes.length === 0
+        ? createElement('div', { className: 'dmo-note' }, '没有标记 layer: l0 的索引文件。')
+        : indexes.map(item => createElement('div', { key: item.id, className: 'dmo-resident-row' },
+          createElement('div', { className: 'dmo-resident-main' },
+            createElement('div', {
+              className: 'dmo-row-text dmo-link',
+              role: 'button',
+              tabIndex: 0,
+              title: '打开该索引文件',
+              onClick: () => { onOpenMemory(item.path) },
+              onKeyDown: (event: { key: string }) => {
+                if (event.key === 'Enter' || event.key === ' ') onOpenMemory(item.path)
+              },
+            }, item.title),
+            createElement('div', { className: 'dmo-row-sub' },
+              `${item.path} · ${count(item.lines)} 行 · ${item.note}`,
+              item.overLineLimit ? ' · 超 80 行' : '')),
+          createElement('span', { className: 'dmo-budget-num' }, count(item.tokens))))),
+
+    createElement('div', { className: 'dmo-note', style: { marginBottom: 0 } },
+      '要压缩常驻成本，动的是 skill description；改索引文件不影响每请求开销，' +
+      '但改任何一个都会作废当前会话缓存。'))
 }

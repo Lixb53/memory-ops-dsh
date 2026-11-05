@@ -309,6 +309,48 @@ describe('统计与导出', () => {
     assert.equal(result.cacheNote.includes('KV cache'), true)
   })
 
+  it('常驻前缀拆成「每请求付费」与「按需加载」两栏', async () => {
+    const { actions, store } = await freshActions('resident')
+    await store.createEntry({
+      relPath: 'personal/index.md',
+      frontmatter: { title: '个人索引', layer: 'l0' },
+      body: '\n# 索引\n',
+    })
+    const result = assertOk<OverviewData & {
+      resident: {
+        catalogTokens: number; indexTokens: number; frameTokens: number
+        billedTokens: number; onDemandTokens: number
+        items: { kind: string; billed: boolean }[]
+      }
+    }>(await actions.overview({
+      skillDescriptions: [
+        { name: 'personal-memory', path: '/x/SKILL.md', description: '读我的个人画像时使用', descriptionTokens: 12 },
+      ],
+    }))
+    // catalog（skill description）是每请求付费的部分
+    assert.equal(result.resident.catalogTokens, 12)
+    assert.equal(result.resident.billedTokens, 12 + result.resident.frameTokens)
+    // l0 索引文件按需加载，不计入每请求付费
+    assert.equal(result.resident.indexTokens > 0, true)
+    assert.equal(result.resident.onDemandTokens, result.resident.indexTokens)
+    // 两类都要在 items 里出现，且 billed 标记正确
+    const catalog = result.resident.items.filter(item => item.kind === 'catalog')
+    const index = result.resident.items.filter(item => item.kind === 'index')
+    assert.equal(catalog.length, 1)
+    assert.equal(catalog[0]!.billed, true)
+    assert.equal(index.length, 1)
+    assert.equal(index[0]!.billed, false)
+  })
+
+  it('没有 skill 时 catalog 为 0，但框架开销仍计入', async () => {
+    const { actions } = await freshActions('resident-empty')
+    const result = assertOk<{ resident: { catalogTokens: number; billedTokens: number; frameTokens: number } }>(
+      await actions.overview(),
+    )
+    assert.equal(result.resident.catalogTokens, 0)
+    assert.equal(result.resident.billedTokens, result.resident.frameTokens)
+  })
+
   it('导出 markdown 与 json，按域过滤', async () => {
     const { actions, store } = await freshActions('export')
     await store.createEntry({ relPath: 'personal/a.md', frontmatter: { title: '甲' }, body: '甲内容' })

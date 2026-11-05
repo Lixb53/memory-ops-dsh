@@ -8,20 +8,40 @@
  * 围栏：只接受 127.0.0.1 / ::1；不提供执行命令的端点；请求体限长。
  */
 
-import type { Actions } from '@memory-ops/core/actions'
+import type { Actions, ResidentSkill } from '@memory-ops/core/actions'
+import { estimateTokens } from '@memory-ops/core/schema'
 
 /** 一条能力的传输声明。 */
 export interface RouteSpec {
   /** HTTP 方法：读用 POST（参数在体里），健康检查用 GET。 */
   method: 'GET' | 'POST'
-  run: (actions: Actions, body: Record<string, unknown>) => Promise<unknown> | unknown
+  run: (
+    actions: Actions,
+    body: Record<string, unknown>,
+    env: BridgeEnv,
+  ) => Promise<unknown> | unknown
+}
+
+/** 桥运行时可用的宿主能力（可选，取不到就降级）。 */
+export interface BridgeEnv {
+  /**
+   * 读当前会话可见的 skill description。
+   *
+   * 为什么从这里读而不是扫文件：`ctx.skills.list()` 返回的正是宿主
+   * 实际注入 `<available_skills>` 的那一份（含 description 截断规则），
+   * 自己扫 SKILL.md 会算出与真实付费量不一致的数字。
+   */
+  listSkills?: () => ResidentSkill[]
 }
 
 /** 能力表：路由名 → 实现。与 product.md §8.1 的「30 条」对齐。 */
 export const ROUTES: Readonly<Record<string, RouteSpec>> = {
   // —— 读 ——
   snapshot: { method: 'POST', run: (a, b) => a.snapshot(b as never) },
-  overview: { method: 'POST', run: a => a.overview() },
+  overview: {
+    method: 'POST',
+    run: (a, _b, env) => a.overview({ skillDescriptions: env.listSkills?.() ?? [] }),
+  },
   inbox: { method: 'POST', run: (a, b) => a.inbox(b as never) },
   search: { method: 'POST', run: (a, b) => a.search(b as never) },
   detail: { method: 'POST', run: (a, b) => a.detail(b as never) },
@@ -104,7 +124,11 @@ async function readBody(req: AsyncIterable<Buffer | string>, limit = 2 * 1024 * 
 }
 
 /** 建桥。 */
-export function createBridge({ actions, prefix }: { actions: Actions; prefix: string }) {
+export function createBridge({ actions, prefix, env = {} }: {
+  actions: Actions
+  prefix: string
+  env?: BridgeEnv
+}) {
   /** 单条能力的处理器。 */
   function handlerFor(routeName: string) {
     const route = ROUTES[routeName]
@@ -126,7 +150,7 @@ export function createBridge({ actions, prefix }: { actions: Actions; prefix: st
       }
       try {
         const body = route.method === 'POST' ? await readBody(request) : {}
-        const result = await route.run(actions, body)
+        const result = await route.run(actions, body, env)
         const failed = typeof result === 'object' && result !== null && (result as { ok?: boolean }).ok === false
         json(response, failed ? 400 : 200, result ?? { ok: true })
       } catch (error) {

@@ -13,8 +13,9 @@
 
 import { createActions } from '@memory-ops/core/actions'
 import { createStore, defaultRoot } from '@memory-ops/core/store'
-import { createBridge } from './bridge.ts'
+import { createBridge, type BridgeEnv } from './bridge.ts'
 import { registerTools } from './tools.ts'
+import { estimateTokens } from '@memory-ops/core/schema'
 
 export const name = 'dsh-memory-ops'
 
@@ -47,9 +48,35 @@ export function apply(ctx: PluginContext, config: PluginConfig = {}): () => void
 
   const disposers: (() => void)[] = []
 
+  // skill description 的读取器：由 `ctx.skills` 提供，取不到时返回空数组，
+  // 总览会明确标注「未能读取」，而不是悄悄算成 0。
+  let skillsReadable = false
+  const env: BridgeEnv = {
+    listSkills: () => {
+      const skills = ctx.get?.('skills') as {
+        list?: (options?: unknown) => { name: string; description: string; path?: string }[]
+      } | undefined
+      if (skills === undefined || typeof skills.list !== 'function') return []
+      try {
+        const rows = skills.list({ modelInvocableOnly: true })
+        skillsReadable = true
+        return rows.map(row => ({
+          name: row.name,
+          path: row.path ?? '',
+          description: row.description,
+          descriptionTokens: estimateTokens(row.description),
+        }))
+      } catch {
+        return []
+      }
+    },
+  }
+  // 启动时探测一次，让 UI 能区分「没有 skill」与「读不到 skill」
+  env.listSkills?.()
+
   // ---- HTTP 桥 ----
   ctx.inject(['webServer'], (serverCtx) => {
-    const dispose = createBridge({ actions, prefix: BRIDGE_PREFIX })
+    const dispose = createBridge({ actions, prefix: BRIDGE_PREFIX, env })
       .attach(serverCtx as unknown as Parameters<ReturnType<typeof createBridge>['attach']>[0])
     return dispose
   })
