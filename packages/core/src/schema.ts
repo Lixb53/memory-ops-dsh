@@ -80,6 +80,30 @@ export const RETIRE_AFTER_DAYS = 134
 /** 驳回静默期。 */
 export const REJECT_SILENCE_DAYS = 30
 
+/**
+ * stale 条目在检索里的降权系数（product.md §11.6 承诺的 0.4）。
+ *
+ * 为什么是「降权」而不是「排除」：待复核不等于错，它只是「可能过期」。
+ * 直接排除会让用户搜不到自己确认过的东西，那比搜到一条过期条目更糟。
+ * 所以 stale 仍可检索，只是排在同分条目之后。
+ */
+export const STALE_WEIGHT = 0.4
+
+/**
+ * 自动爬升阈值：跨会话被引用多少次可以进 reinforced。
+ *
+ * 口径来自 product.md §11.4 的状态迁移图：
+ *   「跨会话重复≥2 → observed」「重复≥3 且无反驳 → reinforced」。
+ * 这里取 3，且**必须来自不同 session**——同一会话里问三次不等于被反复验证。
+ */
+export const REINFORCE_MIN_SESSIONS = 3
+
+/**
+ * 自动爬升的起始态：只有这两态会被自动推进。
+ * confirmed 是人拍的板，任何自动逻辑都不许往回改。
+ */
+export const AUTO_PROMOTABLE_STATES: readonly ConfidenceState[] = ['hypothesis', 'observed']
+
 /** 未命中验证窗口。 */
 export const MISS_VERIFY_DAYS = 7
 

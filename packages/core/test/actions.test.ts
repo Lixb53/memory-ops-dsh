@@ -304,7 +304,8 @@ describe('统计与导出', () => {
       body: 'x',
     })
     const result = assertOk<OverviewData>(await actions.overview())
-    assert.equal(result.budget.length, 3)
+    // L0 常驻前缀 / L1 索引层 / L2 详情层 / L0* 索引文件合计（易混数字单列）
+    assert.equal(result.budget.length, 4)
     assert.equal((result.kpi.residentBudget ?? 0) > 0, true)
     assert.equal(result.cacheNote.includes('KV cache'), true)
   })

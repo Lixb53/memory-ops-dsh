@@ -221,6 +221,27 @@ export interface MemoryStats {
   expiry: (Expiry & { id: string })[]
 }
 
+/**
+ * 归一 frontmatter 里的 `anchor` 字段。
+ *
+ * 为什么要兼容两种形态：`serializeFrontmatter` 把对象数组写成块列表
+ * （`anchor:` + `  - path: ...`），解析回来**必然是数组**；而手写的单行锚点
+ * 或早期数据可能是裸对象。早先这里只收对象、把数组判成 null，
+ * 结果是「写进去的锚点读不出来」——锚点展示与校验全部失效，
+ * 且因为真实库里还没有文件带 anchor，这个 bug 一直没有暴露。
+ */
+function normalizeAnchor(raw: unknown): Record<string, string> | null {
+  const first = Array.isArray(raw) ? raw[0] : raw
+  if (typeof first !== 'object' || first === null) return null
+  const record = first as Record<string, unknown>
+  const shaped: Record<string, string> = {}
+  for (const [key, value] of Object.entries(record)) {
+    if (value === undefined || value === null) continue
+    shaped[key] = String(value)
+  }
+  return Object.keys(shaped).length === 0 ? null : shaped
+}
+
 /** 建一个绑定到某个根目录的 store。 */
 export function createStore({ root, now = () => Date.now() }: { root?: string; now?: () => number } = {}) {
   const base = path.resolve(root ?? defaultRoot())
@@ -248,7 +269,7 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     const evidence = Array.isArray(meta.evidence)
       ? meta.evidence.filter((item): item is Record<string, string> => typeof item === 'object' && item !== null)
       : []
-    const anchor = typeof meta.anchor === 'object' && !Array.isArray(meta.anchor) ? meta.anchor : null
+    const anchor = normalizeAnchor(meta.anchor)
     return {
       path: relPath,
       id: identityOf(relPath, meta),
@@ -407,6 +428,39 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
       const meta = parseFrontmatter(frontmatter) as Record<string, unknown>
       meta.updated = new Date(now()).toISOString().slice(0, 10)
       await atomicWrite(absolute, `${serializeFrontmatter(meta)}\n${String(body ?? '').replace(/^\n+/, '')}`)
+      return readEntry(relPath)
+    })
+  }
+
+  /**
+   * 只合并 frontmatter 字段，**不碰 updated**。
+   *
+   * 与 `patchMeta` 的区别：
+   *   1. 不刷新 `updated`——修补缺失字段不是「人动了这条记忆」，
+   *      刷日期会伪造「刚更新过」，把 134 天退役倒计时偷偷清零；
+   *   2. 已有**合法**值一律保留，只补空洞。但「合法」由调用方通过
+   *      `overwrite` 显式指定：像 `status: active` 这种不在枚举内的脏值，
+   *      光看「非空」会把脏值当成既有结论保下来，结果修补完还在坏。
+   */
+  async function mergeMeta(
+    relPath: string,
+    patch: Record<string, unknown>,
+    { overwrite = [] }: { overwrite?: string[] } = {},
+  ): Promise<MemoryEntry> {
+    const absolute = absoluteOf(relPath)
+    return withLock(absolute, async () => {
+      const source = await fsp.readFile(absolute, 'utf8')
+      const { frontmatter, body } = splitFrontmatter(source)
+      const meta = parseFrontmatter(frontmatter) as Record<string, unknown>
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) continue
+        if (!overwrite.includes(key)) {
+          const current = meta[key]
+          if (typeof current === 'string' && current.trim() !== '') continue
+        }
+        meta[key] = value
+      }
+      await atomicWrite(absolute, `${serializeFrontmatter(meta)}\n${body.replace(/^\n+/, '')}`)
       return readEntry(relPath)
     })
   }
@@ -708,6 +762,7 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     deleteMiss,
     writeBody,
     patchMeta,
+    mergeMeta,
     createEntry,
     inboxPathOf,
     appendInbox,

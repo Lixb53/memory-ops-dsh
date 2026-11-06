@@ -10,7 +10,7 @@
  *   3. 每次检索都记账：命中记 cite，未命中记 miss
  */
 
-import { estimateTokens, truncate } from './schema.ts'
+import { STALE_WEIGHT, estimateTokens, truncate } from './schema.ts'
 import type { MemoryEntry } from './store.ts'
 
 /** 一条命中。 */
@@ -81,7 +81,16 @@ function snippetOf(entry: MemoryEntry, terms: string[]): string {
   return truncate(entry.title, 120)
 }
 
-/** 相关度：标题命中权重最高，其次标签，最后正文；pinned 与层加权。 */
+/**
+ * 相关度：标题命中权重最高，其次标签，最后正文；pinned 与层加权。
+ *
+ * 状态加权：`stale`（待复核）与 `rejected`（已驳回）乘 0.4，见 product.md §11.6。
+ * 为什么是乘系数而不是排除：
+ *   - 排除 stale 会让用户搜不到自己确认过的东西，比搜到一条过期条目更糟；
+ *   - rejected 也不许消失——被驳回的推断仍然是「库里有记录的事实」，
+ *     只是不该再被当作结论推荐。乘 0.4 让它自然沉到后面。
+ * 这条逻辑在 v3 就写进了文档，但一直没实现，导致「降权」只是文案。
+ */
 function scoreOf(entry: MemoryEntry, terms: string[]): number {
   const title = normalize(entry.title)
   const tags = normalize(entry.tags.join(' '))
@@ -95,6 +104,9 @@ function scoreOf(entry: MemoryEntry, terms: string[]): number {
   if (entry.pinned) score += 3
   if (entry.layer === 'l0') score += 2
   if (entry.layer === 'l1') score += 1
+  if (entry.status === 'stale' || entry.status === 'rejected') {
+    score = score * STALE_WEIGHT
+  }
   return score
 }
 

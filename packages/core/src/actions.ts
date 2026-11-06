@@ -8,13 +8,17 @@
 
 import {
   CONFIDENCE_STATES, INBOX_KINDS, INBOX_STATES, STATE_CONFIDENCE, MISS_VERIFY_DAYS,
-  FILE_LINE_LIMIT, FILE_TOKEN_SOFT_LIMIT, RESIDENT_TOKEN_BUDGET,
+  FILE_LINE_LIMIT, FILE_TOKEN_SOFT_LIMIT, RESIDENT_TOKEN_BUDGET, REINFORCE_MIN_SESSIONS,
   canTransition, estimateTokens, expiryOf, needsDecision, orEmpty, truncate,
   type InboxKind, type InboxState, type ConfidenceState,
 } from './schema.ts'
 import { searchEntries, searchCost, type SearchHit } from './search.ts'
 import { inspectText, auditRecord } from './privacy.ts'
 import { parseSections } from './parse.ts'
+import {
+  compactBody, hashOf, needsCompact, planPromotions, planRepairs, verifyAnchors, weeklyReview,
+  type AnchorReader,
+} from './maintenance.ts'
 import type { MemoryEntry, Store } from './store.ts'
 
 /** 一个常驻 skill 的 description（每请求付费的那部分）。 */
@@ -103,9 +107,17 @@ function projectEntry(entry: MemoryEntry, nowMs: number) {
 }
 
 /** 建能力集合。 */
-export function createActions({ store, now = () => Date.now() }: {
+export function createActions({ store, now = () => Date.now(), readExternal }: {
   store: Store
   now?: () => number
+  /**
+   * 读「真相源之外」的文件——锚点校验要用。
+   *
+   * 为什么不直接用 fs：core 的其余部分只碰 `~/.memory-ops/`，
+   * 而锚点指向的是**代码仓库**里的文件（`anchor.path` 相对某个仓库根）。
+   * 把它抽成注入项，测试就能用假仓库，而不用在真磁盘上造一棵目录树。
+   */
+  readExternal?: AnchorReader
 }) {
   /** 读全量并附派生字段。 */
   async function snapshot({ project, domain }: { project?: string | null; domain?: string | null } = {}) {
@@ -235,8 +247,10 @@ export function createActions({ store, now = () => Date.now() }: {
   }
 
   /** 总览：KPI + 预算账本 + 三率 + 域统计。 */
-  async function overview({ skillDescriptions = [] }: {
+  async function overview({ skillDescriptions = [], skillsError = '' }: {
     skillDescriptions?: ResidentSkill[]
+    /** 为什么没读到 skill（空字符串表示没出问题）。 */
+    skillsError?: string
   } = {}) {
     return guard(async () => {
       const entries = await store.scan()
@@ -247,20 +261,112 @@ export function createActions({ store, now = () => Date.now() }: {
       const resident = residentBreakdown(entries, skillDescriptions)
       return {
         kpi: {
-          residentTokens: l0,
+          /**
+           * **`residentTokens` 是每请求付费的常驻前缀，不是 L0 索引体积。**
+           *
+           * 这里曾经取 `l0`（所有 `layer: l0` 文件之和），于是顶栏第一格显示的
+           * 是「索引层 286」，而卡片上挂的却是「361」这个基准——两个数字对不上，
+           * 且按它去优化会去删索引表，一分钱每请求成本都省不下来。
+           * 详见 product.md §十二：361 = catalog 190 + 框架 171；286 = 索引文件之和。
+           */
+          residentTokens: resident.billedTokens,
+          /** 索引层体积单列一格，两个数字各自有名字，不再互相冒充。 */
+          indexTokens: l0,
           residentBudget: RESIDENT_TOKEN_BUDGET,
           hitRate: stats.rates.hitRate,
           confirmRate: stats.rates.confirmRate,
           expireRate: stats.rates.expireRate,
           pending: stats.counts.pending,
         },
-        resident,
+        resident: {
+          ...resident,
+          /**
+           * 三态，UI 必须区分：
+           *   `ok`     有 catalog，数字可信
+           *   `empty`  读到了但一个都没有（可能真是没装 skill）
+           *   `error`  没读到（宿主没给服务 / list 抛错），此时 171 只是框架开销
+           *
+           * 不区分三态的话，「读不到」会伪装成「没有」，用户会以为 171 就是全部。
+           */
+          state: skillsError !== '' ? 'error' : (skillDescriptions.length === 0 ? 'empty' : 'ok'),
+          error: skillsError,
+        },
+        /**
+         * 预算账本 —— 三段各自的**付费方式**才是重点，不是数字本身。
+         *
+         * 这里曾经把 L0 的 `tokens` 填成 `l0` 文件之和（索引层 316），
+         * 而 KPI 的「常驻前缀」是 billedTokens（每请求 171）。
+         * 同一屏两个 L0 数字对不上，用户没法判断该信哪个、该优化哪个。
+         *
+         * 现在每段都带 `billing` 与 `advice`：说清「什么时候付费」和「超了该怎么办」。
+         * 数字只有在能指导决策时才有价值。
+         */
         budget: [
-          { layer: 'L0', name: '常驻层', tokens: l0, files: stats.layers.l0.files, limit: RESIDENT_TOKEN_BUDGET },
-          { layer: 'L1', name: '索引层', tokens: stats.layers.l1.tokens, files: stats.layers.l1.files, limit: 2048 },
-          { layer: 'L2', name: '详情层', tokens: stats.layers.l2.tokens, files: stats.layers.l2.files, limit: null },
+          {
+            layer: 'L0',
+            name: '常驻前缀',
+            tokens: resident.billedTokens,
+            files: skillDescriptions.length,
+            limit: RESIDENT_TOKEN_BUDGET,
+            billing: 'per-request',
+            note: 'skill description + 目录框架，每个请求都付费',
+            advice: '超了要压缩 skill description（改它才会省每请求成本）',
+          },
+          {
+            layer: 'L1',
+            name: '索引层',
+            tokens: stats.layers.l1.tokens,
+            files: stats.layers.l1.files,
+            limit: 2048,
+            billing: 'on-demand',
+            note: '被 read 时才进上下文，不在每请求前缀里',
+            advice: '超了拆索引文件；这只影响检索定位精度，不影响每请求账单',
+          },
+          {
+            layer: 'L2',
+            name: '详情层',
+            tokens: stats.layers.l2.tokens,
+            files: stats.layers.l2.files,
+            limit: null,
+            billing: 'on-demand',
+            note: '单篇命中才读，总量大不直接等于贵',
+            advice: '关注单篇体积（超 80 行 / 1200 tokens），而不是总量',
+          },
+          {
+            /** 汇总行：把「L0 索引文件之和」这个容易混淆的数字单独摆出来。 */
+            layer: 'L0*',
+            name: '索引文件合计',
+            tokens: l0,
+            files: stats.layers.l0.files,
+            limit: null,
+            billing: 'on-demand',
+            note: '标记 layer: l0 的文件之和，与「常驻前缀」不是同一个数',
+            advice: '这个数字大不代表每请求贵；删它不会省每请求成本',
+          },
         ],
-        domains: stats.domains,
+        /**
+         * 域统计**带明细**。
+         *
+         * 原来只给「sz-web 35 篇 / 63,030 tokens」——用户看到了数字却不知道是哪 35 篇，
+         * 这个数字就无法验证、无法下钻、也就无法据此做任何事。
+         * 所以每个域都带上自己的文件清单（按 tokens 降序，最重的排前面）。
+         */
+        domains: stats.domains.map(domain => ({
+          ...domain,
+          entries: entries
+            .filter(entry => entry.domain === domain.key)
+            .sort((a, b) => b.tokens - a.tokens)
+            .map(entry => ({
+              id: entry.id,
+              path: entry.path,
+              title: entry.title,
+              layer: entry.layer,
+              status: entry.status,
+              tokens: entry.tokens,
+              lines: entry.lines,
+              overLineLimit: entry.overLineLimit,
+            })),
+        })),
         rates: stats.rates,
         counts: stats.counts,
         misses: stats.misses,
@@ -623,6 +729,12 @@ export function createActions({ store, now = () => Date.now() }: {
           wastedTokens: (miss.count ?? 1) * 120,
         })
       }
+      // **按频率降序**：未命中表的价值全在「哪条问得最多」。
+      // 早先直接按 misses.json 的写入顺序渲染，等于把最有价值的信息埋在列表末尾。
+      // 同频时用最近一次时间兜底，保证顺序稳定（避免每次刷新都跳）。
+      for (const bucket of Object.values(pipeline)) {
+        bucket.sort((a, b) => b.count - a.count || String(b.lastAt).localeCompare(String(a.lastAt)))
+      }
       return {
         pipeline,
         total: list.length,
@@ -831,6 +943,221 @@ export function createActions({ store, now = () => Date.now() }: {
     })
   }
 
+  /**
+   * 锚点校验作业（product.md §11.7 M3）。
+   *
+   * 回答的不是「这条记忆对不对」，而是「**它引用的代码还在不在**」。
+   * `dryRun=true` 时只报告不改状态——UI 默认走这一步，让人先看清再决定。
+   */
+  async function verifyAnchorJob({ baseDir = '', apply = false, session = 'plugin' }: {
+    baseDir?: string; apply?: boolean; session?: string
+  } = {}) {
+    return guard(async () => {
+      const entries = await store.scan()
+      // 没注入 readExternal 时不假装校验过：明确降级为「无法校验」，
+      // 而不是把所有锚点判成 fresh（那会让用户以为一切正常）。
+      const reader: AnchorReader = readExternal ?? (async () => null)
+      const report = await verifyAnchors(entries, reader, { baseDir })
+      const changed: { path: string; from: string; to: string }[] = []
+      const failed: { path: string; error?: string }[] = []
+
+      if (apply) {
+        for (const check of report.checks) {
+          // 只处理「明确失效」的两种；unverifiable 不自动降级（缺数据不是证据）
+          if (check.state !== 'stale' && check.state !== 'missing') continue
+          const entry = entries.find(item => item.path === check.path)
+          if (entry === undefined) continue
+          if (entry.status === 'stale') continue
+          if (!canTransition(entry.status, 'stale')) {
+            failed.push({ path: check.path, error: `${entry.status} 不能迁到 stale` })
+            continue
+          }
+          try {
+            await store.patchMeta(check.path, { status: 'stale' })
+            const updated = await store.patchMeta(check.path, {
+              anchor_checked_at: new Date(now()).toISOString(),
+              anchor_state: check.state,
+            })
+            changed.push({ path: updated.path, from: entry.status, to: 'stale' })
+          } catch (error) {
+            failed.push({ path: check.path, error: error instanceof Error ? error.message : String(error) })
+          }
+        }
+        await store.appendEvent({
+          session,
+          kind: 'anchor-verify',
+          query: `stale ${report.summary.stale} · missing ${report.summary.missing}`,
+        })
+      }
+
+      return { ...report, applied: apply, changed, failed }
+    })
+  }
+
+  /** 减重：列超限条目 + 预览/执行机械压缩。 */
+  async function compact({ paths = [], apply = false, session = 'plugin' }: {
+    paths?: string[]; apply?: boolean; session?: string
+  } = {}) {
+    return guard(async () => {
+      const entries = await store.scan()
+      const targets = paths.length > 0
+        ? entries.filter(entry => paths.includes(entry.path))
+        : entries.filter(entry => needsCompact(entry))
+
+      const previews = targets.map((entry) => {
+        const result = compactBody(entry.body)
+        return {
+          path: entry.path,
+          title: entry.title,
+          before: entry.lines,
+          after: entry.lines - result.removed,
+          removed: result.removed,
+          changes: result.changes,
+          /** 压缩后仍超限 → 该人工拆分，这里只给建议。 */
+          stillOverLimit: entry.lines - result.removed > FILE_LINE_LIMIT,
+          splitSuggestions: result.splitSuggestions,
+        }
+      })
+
+      const written: { path: string; removed: number }[] = []
+      const failed: { path: string; error?: string }[] = []
+      if (apply) {
+        for (const entry of targets) {
+          const result = compactBody(entry.body)
+          // 压缩不改变语义，但它确实动了正文——所以有节省才写，没节省就别碰文件时间戳
+          if (result.removed <= 0) continue
+          try {
+            await store.writeBody(entry.path, result.body)
+            written.push({ path: entry.path, removed: result.removed })
+          } catch (error) {
+            failed.push({ path: entry.path, error: error instanceof Error ? error.message : String(error) })
+          }
+        }
+        if (written.length > 0) {
+          await store.appendEvent({
+            session,
+            kind: 'compact',
+            query: `${written.length} 篇，去 ${written.reduce((sum, item) => sum + item.removed, 0)} 行`,
+          })
+        }
+      }
+
+      return {
+        candidates: previews,
+        total: previews.length,
+        /** 只做无损压缩，节省通常有限；这里如实报出来，避免让人误以为一键就合规。 */
+        removableLines: previews.reduce((sum, item) => sum + item.removed, 0),
+        applied: apply,
+        written,
+        failed,
+        lineLimit: FILE_LINE_LIMIT,
+      }
+    })
+  }
+
+  /** 每周复盘：这周动了什么 + 下周该做什么。 */
+  async function review({ days = 7 }: { days?: number } = {}) {
+    return guard(async () => {
+      const entries = await store.scan()
+      const events = await store.readEvents()
+      const misses = await store.readMisses()
+      return weeklyReview(entries, events, misses, { nowMs: now(), days })
+    })
+  }
+
+  /**
+   * 自动爬升：只出计划，`apply=true` 才落库。
+   *
+   * 为什么默认不自动落：爬升会改 status，而 status 决定这条记忆被不被信任。
+   * 一个「自己给自己升可信度」的系统，正是 product.md §11.3 拒绝「自动提取并直接写库」
+   * 的同一个理由。所以默认 dry-run，由人点一下。
+   */
+  async function promote({ apply = false, session = 'plugin' }: {
+    apply?: boolean; session?: string
+  } = {}) {
+    return guard(async () => {
+      const entries = await store.scan()
+      const events = await store.readEvents()
+      const plans = planPromotions(entries, events)
+      const changed: { path: string; from: string; to: string }[] = []
+      const failed: { path: string; error?: string }[] = []
+      if (apply) {
+        for (const plan of plans) {
+          if (!canTransition(plan.from, plan.to)) {
+            failed.push({ path: plan.path, error: `${plan.from} 不能迁到 ${plan.to}` })
+            continue
+          }
+          try {
+            await store.patchMeta(plan.path, {
+              status: plan.to,
+              confidence: STATE_CONFIDENCE[plan.to],
+              promoted_at: new Date(now()).toISOString(),
+            })
+            changed.push({ path: plan.path, from: plan.from, to: plan.to })
+          } catch (error) {
+            failed.push({ path: plan.path, error: error instanceof Error ? error.message : String(error) })
+          }
+        }
+        if (changed.length > 0) {
+          await store.appendEvent({ session, kind: 'promote-auto', query: `${changed.length} 条` })
+        }
+      }
+      return { plans, applied: apply, changed, failed, minSessions: REINFORCE_MIN_SESSIONS }
+    })
+  }
+
+  /**
+   * 修补 frontmatter：把「手写的 Markdown 笔记」变成「可治理的记忆」。
+   *
+   * 这是「插件装了、数据也在、但什么都不工作」的解药。缺 `status` 会让
+   * 待你处理队列永远为空，缺 `layer` 会让预算账本三段全错。
+   *
+   * **只补空字段与非法的值，绝不覆盖已有值，绝不改正文。** 默认 dry-run。
+   */
+  async function repairMeta({ apply = false, paths = [], session = 'plugin' }: {
+    apply?: boolean; paths?: string[]; session?: string
+  } = {}) {
+    return guard(async () => {
+      const entries = await store.scan()
+      const today = new Date(now()).toISOString().slice(0, 10)
+      const plan = planRepairs(entries, today)
+      const targets = paths.length === 0
+        ? plan.fixes
+        : plan.fixes.filter(fix => paths.includes(fix.path))
+
+      const written: { path: string; fields: string[] }[] = []
+      const failed: { path: string; error?: string }[] = []
+
+      if (apply) {
+        for (const fix of targets) {
+          try {
+            // patchMeta 只改 frontmatter，不动正文——这是本条能力的硬边界
+            await store.mergeMeta(fix.path, fix.patch, { overwrite: fix.overwrite })
+            written.push({ path: fix.path, fields: Object.keys(fix.patch) })
+          } catch (error) {
+            failed.push({ path: fix.path, error: error instanceof Error ? error.message : String(error) })
+          }
+        }
+        if (written.length > 0) {
+          await store.appendEvent({
+            session,
+            kind: 'repair-meta',
+            query: `${written.length} 篇`,
+          })
+        }
+      }
+
+      return {
+        fixes: targets,
+        healthy: plan.healthy,
+        total: plan.total,
+        applied: apply,
+        written,
+        failed,
+      }
+    })
+  }
+
   /** 索引表：L1 层，回答「我能查什么 / 该读哪个文件」。 */
   async function index({ domain }: { domain?: string | null } = {}) {
     return guard(async () => {
@@ -859,6 +1186,7 @@ export function createActions({ store, now = () => Date.now() }: {
     batchInboxState, promoteInbox, search, detail, writeBody, setStatus, confirm,
     reject, undoReject, archive, keep, batchArchive, misses, missDraft, missConfirm,
     missBatchDraft, missDelete, export: exportData, sessionMemory, health, index,
+    verifyAnchor: verifyAnchorJob, compact, review, promote, repairMeta,
     store,
   }
 }
