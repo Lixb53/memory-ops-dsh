@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>记忆库 · Web 管理端 v3</title>
+<style>
+:root{
+  --bg:#ffffff; --bg-subtle:#fbfbf9; --surface:#ffffff; --surface-hover:#f4f4f0;
+  --border:#e5e4df; --border-strong:#d2d1ca;
+  --fg:#14171c; --fg-2:#545c68; --fg-3:#5f6773; --fg-inv:#ffffff;
+  --accent:#1f4e79; --accent-hover:#17395a; --accent-soft:#edf2f7;
+  --infer:#96570a; --infer-soft:#fdf6e9; --infer-line:#d9b26a;
+  --ok:#0d6b3f; --ok-soft:#e9f4ee;
+  --danger:#a92a1e; --danger-soft:#fceceb;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --shadow:0 4px 16px rgba(20,23,28,.10);
+}
+html[data-theme="dark"]{
+  --bg:#161619; --bg-subtle:#1b1b1f; --surface:#1e1e21; --surface-hover:#26262a;
+  --border:#2c2c31; --border-strong:#3a3a41;
+  --fg:#e9e9ee; --fg-2:#b3b3bd; --fg-3:#9296a1; --fg-inv:#151517;
+  --accent:#7fb3dd; --accent-hover:#9ac6ea; --accent-soft:#1e2a36;
+  --infer:#e0a95e; --infer-soft:#2e2418; --infer-line:#7a5a24;
+  --ok:#5fc98f; --ok-soft:#16291f;
+  --danger:#ef8b80; --danger-soft:#301a18;
+  --shadow:0 4px 16px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;font-synthesis:none}
+body{margin:0;background:var(--bg-subtle);color:var(--fg);font-family:var(--font);
+  font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p,blockquote{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:var(--accent)}
+[hidden]{display:none!important}
+.icon{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;stroke-width:1.5;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12px;color:var(--fg-3)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+.app{max-width:1440px;margin:0 auto;min-height:100vh;background:var(--bg);
+  border-left:1px solid var(--border);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.topbar{height:56px;flex:0 0 56px;display:flex;align-items:center;gap:16px;padding:0 24px;
+  border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20;background:var(--bg)}
+.brand{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;letter-spacing:-.01em}
+.brand-mark{width:24px;height:24px;border-radius:6px;background:var(--accent);color:var(--fg-inv);
+  display:grid;place-items:center;flex:0 0 24px}
+.nav{display:flex;gap:2px;margin-left:8px;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav-item{height:32px;padding:0 12px;border-radius:8px;font-size:13px;color:var(--fg-2);
+  display:flex;align-items:center;gap:6px;white-space:nowrap;transition:background 120ms}
+.nav-item:hover{background:var(--surface-hover)}
+.nav-item[aria-selected="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav-item .n{font-size:12px;font-weight:600;color:var(--infer);font-variant-numeric:tabular-nums}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.btn{height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surface);font-size:13px;display:inline-flex;align-items:center;gap:6px;
+  transition:background 120ms,border-color 120ms}
+.btn:hover{background:var(--surface-hover)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--fg-inv)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-sm{height:32px;padding:0 12px;font-size:13px;border-radius:6px}
+.btn-ghost{border-color:transparent;background:none;color:var(--fg-2)}
+.btn-ghost:hover{background:var(--surface-hover);color:var(--fg)}
+.btn-danger{color:var(--danger);border-color:var(--danger)}
+.btn-danger:hover{background:var(--danger);color:#fff;border-color:var(--danger)}
+.icon-btn{width:36px;height:36px;padding:0;justify-content:center;border-radius:8px}
+
+.state-switch{display:flex;align-items:center;gap:4px;padding:3px;border:1px solid var(--border);
+  border-radius:8px;background:var(--bg-subtle)}
+.state-switch button{height:30px;min-width:44px;padding:0 10px;border-radius:6px;font-size:12px;color:var(--fg-3)}
+.state-switch button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:600;
+  box-shadow:0 1px 2px rgba(0,0,0,.06)}
+
+.mobile-nav{display:none}
+
+.page{padding:24px;display:none}
+.page[data-active="true"]{display:block}
+.page-head{display:flex;align-items:flex-end;gap:16px;padding-bottom:16px;flex-wrap:wrap}
+.page-head h1{font-size:20px;font-weight:600;letter-spacing:-.02em;line-height:1.3}
+.page-head p{font-size:13px;color:var(--fg-3);margin-top:3px;line-height:1.5}
+.page-meta{margin-left:auto;font-size:12px;color:var(--fg-3)}
+
+.dash{display:grid;grid-template-columns:minmax(0,1fr) 308px;gap:24px;align-items:start}
+.dash-main{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--border);
+  border-radius:12px;overflow:hidden;background:var(--surface)}
+.kpi{padding:14px 16px;border-left:1px solid var(--border);display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi:first-child{border-left:0}
+.kpi-label{font-size:12px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi-value{font-size:26px;font-weight:600;line-height:1.15;letter-spacing:-.02em;display:flex;align-items:baseline;gap:4px}
+.kpi-value i{font-size:12px;font-weight:400;font-style:normal;color:var(--fg-3)}
+.kpi-value.is-warn{color:var(--infer)}
+.kpi-value.is-ok{color:var(--ok)}
+.kpi-note{font-size:12px;color:var(--fg-3);line-height:1.45}
+.kpi-note.is-warn{color:var(--infer)}
+.kpi-note.is-ok{color:var(--ok)}
+.kpi-spark{display:flex;align-items:flex-end;gap:2px;height:20px;margin-top:2px}
+.kpi-spark span{flex:1;background:var(--accent-soft);border-radius:1px;min-height:2px}
+.kpi-spark span.on{background:var(--accent)}
+
+.card{border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden}
+.card-head{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.card-title{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.card-sub{font-size:12px;color:var(--fg-3)}
+.card-head-btn{margin-left:auto}
+.pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;
+  font-size:12px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
+.pill-infer{background:var(--infer-soft);color:var(--infer)}
+.pill-ok{background:var(--ok-soft);color:var(--ok)}
+.pill-mute{background:var(--surface-hover);color:var(--fg-3);font-weight:400}
+
+/* 预算账本 */
+.budget{padding:4px 0 0}
+.budget-row{display:grid;grid-template-columns:104px minmax(0,1fr) 148px;gap:12px;align-items:center;
+  padding:10px 16px;border-top:1px solid var(--border)}
+.budget-row:first-child{border-top:0}
+.budget-name{font-size:13px;font-weight:600}
+.budget-name small{display:block;font-size:12px;font-weight:400;color:var(--fg-3);margin-top:1px}
+.budget-bar{height:6px;border-radius:3px;background:var(--border);overflow:hidden}
+.budget-bar span{display:block;height:100%;background:var(--accent)}
+.budget-bar span.is-warn{background:var(--infer)}
+.budget-meta{font-size:12px;color:var(--fg-3);text-align:right;font-variant-numeric:tabular-nums}
+.budget-foot{padding:10px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--fg-3);
+  line-height:1.5;background:var(--bg-subtle)}
+
+/* 拍板队列 */
+.task{display:flex;gap:12px;padding:14px 16px;border-top:1px solid var(--border);align-items:flex-start}
+.task:first-child{border-top:0}
+.task:hover{background:var(--surface-hover)}
+.task-rail{width:3px;border-radius:2px;background:var(--infer);align-self:stretch;flex:0 0 3px}
+.task-rail.is-danger{background:var(--danger)}
+.task-rail.is-ok{background:var(--ok)}
+.task-main{flex:1;min-width:0}
+.task-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.task-title{font-size:14px;font-weight:600;line-height:1.5}
+.task-body{font-size:13px;color:var(--fg-2);margin-top:4px;line-height:1.55}
+.evidence{margin-top:8px;padding:8px 10px;border-left:2px solid var(--infer-line);
+  background:var(--infer-soft);border-radius:0 6px 6px 0;font-size:12px;color:var(--fg-2);line-height:1.55}
+.evidence q{quotes:"「" "」";display:block}
+.evidence q + q{margin-top:6px}
+.evidence .ev-meta{display:block;margin-top:3px;font-family:var(--mono);font-size:12px;color:var(--fg-3)}
+.task-actions{display:flex;gap:6px;flex:0 0 auto;align-items:center;flex-wrap:wrap}
+.act-note{font-size:12px;color:var(--fg-3);white-space:nowrap}
+
+/* 行列表 */
+.rows{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 92px 72px 88px 64px;gap:12px;align-items:center;
+  padding:10px 16px;border-top:1px solid var(--border);text-align:left;width:100%;min-height:44px}
+.row:first-child{border-top:0}
+.row:hover{background:var(--surface-hover)}
+.row-title{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-title .flag{display:inline-flex;align-items:center;height:18px;padding:0 6px;margin-right:6px;
+  border-radius:4px;font-size:12px;font-weight:600;vertical-align:1px}
+.row-cat{font-size:12px;color:var(--fg-3)}
+.row-meta{font-size:12px;color:var(--fg-3);text-align:right;font-variant-numeric:tabular-nums}
+.tag{display:inline-flex;align-items:center;justify-content:center;height:20px;padding:0 8px;
+  border-radius:4px;font-size:12px;font-weight:600;width:fit-content;white-space:nowrap}
+.tag-fact{background:var(--ok-soft);color:var(--ok)}
+.tag-infer{background:var(--infer-soft);color:var(--infer)}
+.tag-danger{background:var(--danger-soft);color:var(--danger)}
+.tag-mute{background:var(--surface-hover);color:var(--fg-3)}
+
+/* 侧栏 */
+.side{display:flex;flex-direction:column;gap:16px}
+.side-card{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:14px 16px}
+.side-title{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.side-title h2{font-size:13px;font-weight:600}
+.bar{height:4px;border-radius:2px;background:var(--border);overflow:hidden;margin:6px 0}
+.bar-fill{height:100%;background:var(--accent)}
+.bar-fill.is-warn{background:var(--infer)}
+.dom{margin-bottom:14px}
+.dom:last-child{margin-bottom:0}
+.dom-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.dom-name{font-size:12px;font-weight:600}
+.dom-num{font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums}
+.dom-note{font-size:12px;color:var(--fg-3);margin-top:2px}
+.dom-note.is-warn{color:var(--infer)}
+.health{display:flex;flex-direction:column;gap:0}
+.health-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  padding:7px 0;border-top:1px solid var(--border);font-size:12px}
+.health-row:first-child{border-top:0}
+.health-name{color:var(--fg-2)}
+.health-val{font-variant-numeric:tabular-nums;color:var(--fg-3)}
+.health-val.is-warn{color:var(--infer);font-weight:600}
+.consol{font-size:12px;color:var(--fg-2);line-height:1.7}
+.consol b{font-weight:600;color:var(--fg)}
+
+/* 未命中 */
+.miss-head{display:flex;align-items:flex-end;gap:16px;padding-bottom:16px;flex-wrap:wrap}
+.miss-head h1{font-size:20px;font-weight:600;letter-spacing:-.02em}
+.miss-head p{font-size:13px;color:var(--fg-3);margin-top:3px;line-height:1.55}
+.miss-head .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.miss-bands{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--border);
+  border-radius:12px;overflow:hidden;background:var(--surface);margin-bottom:16px}
+.band{padding:11px 12px;border-left:1px solid var(--border);text-align:center}
+.band:first-child{border-left:0}
+.band-v{font-size:18px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums}
+.band-l{font-size:12px;color:var(--fg-3);margin-top:2px}
+.band-hint{font-size:12px;color:var(--fg-3);margin-top:1px}
+
+.trend{display:flex;align-items:flex-end;gap:16px;padding:14px 16px;border:1px solid var(--border);
+  border-radius:12px;background:var(--surface);margin-bottom:20px}
+.trend-main{flex:1;min-width:0}
+.trend-title{font-size:13px;font-weight:600;margin-bottom:8px}
+.trend-bars{display:flex;align-items:flex-end;gap:3px;height:52px}
+.trend-bars span{flex:1;background:var(--infer-soft);border-radius:2px 2px 0 0;position:relative;min-height:2px}
+.trend-bars span.b{background:var(--infer);opacity:.4}
+.trend-bars span.c{background:var(--infer)}
+.trend-axis{display:flex;justify-content:space-between;font-size:12px;color:var(--fg-3);margin-top:4px}
+.trend-side{flex:0 0 150px;border-left:1px solid var(--border);padding-left:16px;display:flex;flex-direction:column;gap:6px}
+.trend-k{font-size:12px;color:var(--fg-3)}
+.trend-v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.trend-v small{font-size:12px;font-weight:400;color:var(--fg-3)}
+
+.zone{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
+.zone-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.zone-head h2{font-size:14px;font-weight:600}
+.zone-hint{font-size:12px;color:var(--fg-3);line-height:1.45}
+.bulkbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--accent);
+  border-radius:8px;background:var(--accent-soft);font-size:12px;margin-bottom:12px;flex-wrap:wrap}
+.cluster{display:flex;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);align-items:flex-start}
+.cluster:hover{border-color:var(--border-strong)}
+.cluster-main{flex:1;min-width:0}
+.cluster-q{font-size:13px;font-weight:600;font-family:var(--mono);overflow-wrap:anywhere}
+.cluster-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--fg-3);margin-top:5px}
+.cluster-draft{margin-top:8px;padding:8px 10px;border:1px dashed var(--infer-line);border-radius:6px;
+  background:var(--infer-soft);font-size:13px;color:var(--fg-2);line-height:1.55}
+.cluster-draft .lbl{display:block;font-size:12px;color:var(--infer);font-weight:600;margin-bottom:2px}
+.cluster-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.field{height:36px;padding:0 12px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);color:var(--fg);font:inherit;font-size:13px}
+.field:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.search{display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid var(--border);
+  border-radius:8px;background:var(--surface);min-width:220px;flex:1;max-width:340px}
+.search input{border:0;background:none;outline:none;font:inherit;font-size:13px;color:var(--fg);flex:1;min-width:0;height:100%}
+.search .icon{color:var(--fg-3)}
+.count{font-size:12px;color:var(--fg-3);margin-left:auto}
+
+.throughput{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--border);
+  border-radius:12px;overflow:hidden;background:var(--surface);margin-bottom:16px}
+.tp{padding:10px 14px;border-left:1px solid var(--border)}
+.tp:first-child{border-left:0}
+.tp-v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.tp-l{font-size:12px;color:var(--fg-3);margin-top:1px}
+
+.tbl-wrap{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface)}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl thead th{background:var(--bg-subtle);text-align:left;font-size:12px;font-weight:600;
+  color:var(--fg-3);padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl tbody tr{border-bottom:1px solid var(--border)}
+.tbl tbody tr:last-child{border-bottom:0}
+.tbl tbody tr:hover{background:var(--surface-hover)}
+.tbl td{padding:10px 14px;vertical-align:top}
+.tbl td.num{white-space:nowrap}
+.tbl .cell-content{max-width:480px}
+.content-line{display:block;line-height:1.5;overflow-wrap:anywhere}
+.source-line{display:block;margin-top:3px;font-family:var(--mono);font-size:12px;color:var(--fg-3)}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:4px;
+  font-size:12px;font-weight:600}
+.badge-open{background:var(--accent-soft);color:var(--accent)}
+.badge-todo{background:var(--infer-soft);color:var(--infer)}
+.badge-done{background:var(--ok-soft);color:var(--ok)}
+.badge-dropped{background:var(--surface-hover);color:var(--fg-3)}
+.row-acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.mini{height:32px;min-width:44px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);
+  font-size:12px;color:var(--fg-2);white-space:nowrap}
+.mini:hover{background:var(--surface-hover);color:var(--fg)}
+.mini-danger:hover{background:var(--danger);color:#fff;border-color:var(--danger)}
+.select-mini{height:32px;padding:0 6px;border:1px solid var(--border);border-radius:6px;
+  background:var(--surface);color:var(--fg-2);font-size:12px;max-width:132px}
+
+/* 详情 */
+.detail{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start}
+.list-pane{border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden}
+.list-search{padding:10px 12px;border-bottom:1px solid var(--border)}
+.chips{display:flex;gap:4px;padding:8px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.chip{height:28px;padding:0 9px;border-radius:999px;border:1px solid var(--border);font-size:12px;
+  color:var(--fg-2);display:inline-flex;align-items:center;gap:4px;background:var(--surface)}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.chip .n{font-variant-numeric:tabular-nums}
+.list-items{max-height:calc(100dvh - 300px);overflow:auto}
+.list-item{display:block;width:100%;text-align:left;padding:10px 14px;
+  border-bottom:1px solid var(--border);background:none;min-height:44px}
+.list-item:last-child{border-bottom:0}
+.list-item:hover{background:var(--surface-hover)}
+.list-item[aria-selected="true"]{background:var(--accent-soft)}
+.li-title{font-size:13px;font-weight:600;line-height:1.45;overflow:hidden;text-overflow:ellipsis;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.li-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--fg-3);margin-top:3px;align-items:center}
+
+.detail-pane{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:18px 20px;min-width:0}
+.detail-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px;flex-wrap:wrap}
+.detail-head h1{font-size:19px;font-weight:600;letter-spacing:-.02em;line-height:1.35;flex:1;min-width:0;overflow-wrap:anywhere}
+.stepper{display:flex;align-items:center;gap:0;margin:12px 0 10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.stepper::-webkit-scrollbar{display:none}
+.step{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-3);white-space:nowrap}
+.step .dot{width:8px;height:8px;border-radius:999px;border:1.5px solid var(--border-strong);background:var(--surface);flex:0 0 8px}
+.step.done .dot{border-color:var(--accent);background:var(--accent)}
+.step.now{color:var(--accent);font-weight:600}
+.step.now .dot{border-color:var(--accent);background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.step-line{width:26px;height:1px;background:var(--border-strong);margin:0 6px;flex:0 0 26px}
+.trust{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border:1px solid var(--border);
+  border-radius:8px;overflow:hidden;margin-bottom:14px}
+.trust-cell{padding:8px 10px;border-left:1px solid var(--border);min-width:0}
+.trust-cell:first-child{border-left:0}
+.trust-k{font-size:12px;color:var(--fg-3)}
+.trust-v{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px;overflow-wrap:anywhere}
+.trust-v.is-warn{color:var(--infer)}
+.anchor{display:flex;align-items:flex-start;gap:8px;padding:9px 12px;border-radius:8px;
+  background:var(--infer-soft);border:1px solid var(--infer-line);font-size:12px;color:var(--fg-2);
+  line-height:1.55;margin-bottom:14px;flex-wrap:wrap}
+.anchor b{color:var(--infer);font-weight:600}
+.anchor .mono{color:var(--fg-2)}
+.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle)}
+.seg button{height:28px;padding:0 10px;border-radius:6px;font-size:12px;color:var(--fg-3);min-width:44px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.code{background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;padding:12px 14px;
+  font-family:var(--mono);font-size:12px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;
+  color:var(--fg-2);max-height:300px;overflow:auto}
+.refs{margin-top:16px;border-top:1px solid var(--border);padding-top:12px}
+.refs h2{font-size:13px;font-weight:600;margin-bottom:6px}
+.ev-row{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:12px;line-height:1.55}
+.ev-row:first-of-type{border-top:0}
+.ev-idx{width:20px;flex:0 0 20px;color:var(--fg-3);font-variant-numeric:tabular-nums}
+.ev-body{flex:1;min-width:0}
+.ev-quote{color:var(--fg-2)}
+.ev-meta{display:block;margin-top:2px;font-family:var(--mono);color:var(--fg-3)}
+.ref-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:5px}
+.ref-table th{text-align:left;font-weight:600;color:var(--fg-3);padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+.ref-table td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--fg-2);vertical-align:top}
+.ref-table td.num{white-space:nowrap}
+.ref-table td:last-child,.ref-table th:last-child{white-space:nowrap;width:110px}
+.ref-table tr:last-child td{border-bottom:0}
+.detail-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+
+.skeleton{display:flex;flex-direction:column;gap:10px;padding:18px}
+.sk-row{height:44px;border-radius:8px;background:var(--surface-hover)}
+.empty{padding:40px 24px;text-align:center;border:1px dashed var(--border);border-radius:12px}
+.empty-icon{width:36px;height:36px;border-radius:10px;background:var(--accent-soft);color:var(--accent);
+  display:grid;place-items:center;margin:0 auto 12px}
+.empty h3{font-size:14px;font-weight:600}
+.empty p{font-size:13px;color:var(--fg-3);margin:6px 0 14px;line-height:1.6}
+.err{border-color:var(--danger)}
+.err .empty-icon{background:var(--danger-soft);color:var(--danger)}
+.err h3{color:var(--fg)}
+
+.spec-note{display:flex;gap:8px;align-items:flex-start;padding:8px 24px;background:var(--infer-soft);
+  color:var(--infer);font-size:13px;line-height:1.5;border-bottom:1px solid var(--border)}
+.spec-note b{font-weight:600}
+
+@media (max-width:1200px){
+  .dash{grid-template-columns:minmax(0,1fr)}
+  .side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:980px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi:nth-child(3){border-left:0;border-top:1px solid var(--border)}
+  .kpi:nth-child(4){border-top:1px solid var(--border)}
+  .detail{grid-template-columns:minmax(0,1fr)}
+  .list-items{max-height:none}
+  .trust{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .trust-cell:nth-child(3){border-left:0;border-top:1px solid var(--border)}
+  .trust-cell:nth-child(4){border-top:1px solid var(--border)}
+}
+@media (max-width:760px){
+  .state-switch{display:none}
+  .topbar{padding:0 16px;gap:10px;position:static}
+  .topbar .nav{display:none}
+  .topbar-right .btn-primary{height:44px;padding:0 12px}
+  .icon-btn{width:44px;height:44px}
+  .mobile-nav{display:flex;position:sticky;top:0;z-index:19;background:var(--bg);
+    border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;padding:0 8px;gap:2px}
+  .mobile-nav::-webkit-scrollbar{display:none}
+  .mnav{height:44px;padding:0 12px;font-size:13px;color:var(--fg-2);white-space:nowrap;
+    border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  .mnav[aria-selected="true"]{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
+  .page{padding:16px}
+  .side{grid-template-columns:minmax(0,1fr)}
+  .kpis{grid-template-columns:minmax(0,1fr)}
+  .kpi{border-left:0;border-top:1px solid var(--border)}
+  .kpi:first-child{border-top:0}
+  .kpi-value{font-size:24px}
+  .miss-bands{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .band:nth-child(3),.band:nth-child(5){border-left:0;border-top:1px solid var(--border)}
+  .band:nth-child(4){border-top:1px solid var(--border)}
+  .band:nth-child(5){grid-column:1/-1}
+  .budget-row{grid-template-columns:minmax(0,1fr) auto;gap:2px 12px}
+  .budget-name{grid-column:1}
+  .budget-meta{grid-column:2;text-align:right}
+  .budget-bar{grid-column:1/-1;grid-row:2;margin-top:2px}
+  .throughput{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tp:nth-child(3){border-left:0;border-top:1px solid var(--border)}
+  .tp:nth-child(4){border-top:1px solid var(--border)}
+  .btn,.btn-sm,.mini,.field,.select-mini,.chip{min-height:44px}
+  .search{height:48px}
+  .seg{flex-wrap:wrap}
+  .seg button{min-height:44px}
+  .row{grid-template-columns:minmax(0,1fr) 76px 64px;gap:8px;padding:12px 14px}
+  .row-meta:nth-child(3),.row-meta:nth-child(5){display:none}
+  .row-cat{display:none}
+  .tbl thead{display:none}
+  .tbl tbody tr{display:block;position:relative;padding:10px 14px 10px 44px;border-bottom:1px solid var(--border)}
+  .tbl td{display:flex;gap:8px;padding:2px 0;border:0;align-items:flex-start}
+  .tbl td:first-child{position:absolute;left:6px;top:10px;width:44px;height:44px;padding:0;min-height:0;
+    display:flex;align-items:center;justify-content:center}
+  .tbl td[data-label]::before{content:attr(data-label);color:var(--fg-3);font-size:12px;
+    width:52px;flex:0 0 52px;padding-top:2px}
+  .tbl .cell-content{max-width:none;display:block;padding-top:2px}
+  .tbl .cell-content::before{display:none}
+  .row-acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .row-acts .select-mini{grid-column:1/-1}
+  .mini,.select-mini{width:100%;min-height:44px}
+  .task{display:block}
+  .task-rail{display:none}
+  .task-main{width:auto}
+  .task-actions{margin-top:10px;margin-left:0;flex-direction:row}
+  .task-actions .btn{flex:1;justify-content:center}
+  .cluster{flex-wrap:wrap}
+  .cluster-main{flex-basis:calc(100% - 42px)}
+  .cluster > .btn,.cluster-actions{width:100%}
+  .cluster-actions .btn,.cluster-actions .field{flex:0 1 auto}
+  .trend-axis span:nth-child(2),.trend-axis span:nth-child(3){display:none}
+  .trend{flex-direction:column}
+  .trend-side{flex:none;border-left:0;border-top:1px solid var(--border);padding:10px 0 0;flex-direction:row;gap:16px;flex-wrap:wrap}
+  .list-items{max-height:none}
+  .ref-table thead{display:none}
+  .ref-table tbody tr{display:block;padding:8px 0;border-bottom:1px solid var(--border)}
+  .ref-table td{display:block;padding:1px 0;border:0;white-space:normal;width:auto}
+  .ref-table td:first-child{font-weight:600;color:var(--fg)}
+  .detail-pane{padding:14px}
+  .detail-head h1{font-size:17px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="spec-note">
+    <span><b>v3 设计稿</b>：新增证据链、置信度状态机、锚点失效复核、预算账本与未命中五态流水线；数据取自真实记忆库（286 tokens · 42 篇 · 未命中 1 条）。契约变更见 product.md §11。</span>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"><svg class="icon" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg></span>
+      记忆库
+    </div>
+    <nav class="nav" role="tablist" aria-label="主导航">
+      <button class="nav-item" role="tab" aria-selected="true" data-go="overview">总览</button>
+      <button class="nav-item" role="tab" aria-selected="false" data-go="misses">未命中<span class="n">2</span></button>
+      <button class="nav-item" role="tab" aria-selected="false" data-go="inbox">记录流</button>
+      <button class="nav-item" role="tab" aria-selected="false" data-go="detail">记忆</button>
+    </nav>
+    <div class="topbar-right">
+      <div class="state-switch" role="group" aria-label="状态预览">
+        <button aria-pressed="true" data-state="normal">正常</button>
+        <button aria-pressed="false" data-state="loading">加载</button>
+        <button aria-pressed="false" data-state="empty">空</button>
+        <button aria-pressed="false" data-state="error">错误</button>
+        <button aria-pressed="false" data-state="denied">无权限</button>
+      </div>
+      <button class="btn icon-btn" id="theme-toggle" aria-label="切换深浅色">
+        <svg class="icon" aria-hidden="true"><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 3v2M12 19v2M3 12h2M19 12h2"/></svg>
+      </button>
+      <button class="btn btn-primary">
+        <svg class="icon" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>记一条
+      </button>
+    </div>
+  </header>
+
+  <nav class="mobile-nav" role="tablist" aria-label="主导航（移动端）">
+    <button class="mnav" role="tab" aria-selected="true" data-go="overview">总览</button>
+    <button class="mnav" role="tab" aria-selected="false" data-go="misses">未命中 2</button>
+    <button class="mnav" role="tab" aria-selected="false" data-go="inbox">记录流</button>
+    <button class="mnav" role="tab" aria-selected="false" data-go="detail">记忆</button>
+  </nav>
+
+  <!-- ============ 总览 ============ -->
+  <main class="page" data-active="true" data-page="overview">
+    <div class="page-head">
+      <div>
+        <h1>总览</h1>
+        <p>今天需要你拍板的推断、待复核与到期条目，都在这一屏。</p>
+      </div>
+      <span class="page-meta">2026-11-05 · 上次巩固 02:10</span>
+    </div>
+    <div class="dash">
+      <div class="dash-main">
+        <div data-view="normal">
+          <div class="kpis">
+            <div class="kpi">
+              <span class="kpi-label">常驻前缀</span>
+              <span class="kpi-value num">286<i>tokens/请求</i></span>
+              <span class="kpi-note">目标 ≤ 1,024 · 弃用的 knowledge 为 4,120</span>
+            </div>
+            <div class="kpi">
+              <span class="kpi-label">30 天命中率</span>
+              <span class="kpi-value num is-ok">62<i>%</i></span>
+              <div class="kpi-spark" aria-hidden="true">
+                <span style="height:38%"></span><span style="height:45%"></span><span style="height:41%"></span>
+                <span style="height:52%"></span><span style="height:49%"></span><span style="height:57%"></span>
+                <span class="on" style="height:62%"></span>
+              </div>
+              <span class="kpi-note is-ok">注入 218 次 · 被引用 135 次 · 环比 +9pt</span>
+            </div>
+            <div class="kpi">
+              <span class="kpi-label">待你处理</span>
+              <span class="kpi-value num is-warn">5<i>条</i></span>
+              <span class="kpi-note is-warn">2 推断待确认 · 2 待复核 · 1 到期</span>
+            </div>
+            <div class="kpi">
+              <span class="kpi-label">过期率</span>
+              <span class="kpi-value num">12<i>%</i></span>
+              <span class="kpi-note">本月失效 3 · 退役 2 / 42 篇</span>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:20px">
+            <div class="card-head">
+              <h2 class="card-title">预算账本</h2>
+              <span class="pill pill-mute">每请求实际注入</span>
+              <span class="card-sub" style="margin-left:auto">CJK 按 4 字/token 低估，已 ×1.6 折算</span>
+            </div>
+            <div class="budget">
+              <div class="budget-row">
+                <div class="budget-name">L0 常驻<small>身份与索引</small></div>
+                <div class="budget-bar"><span style="width:28%"></span></div>
+                <div class="budget-meta">286 / 1,024 · 28%</div>
+              </div>
+              <div class="budget-row">
+                <div class="budget-name">L1 索引<small>按需加载</small></div>
+                <div class="budget-bar"><span style="width:35%"></span></div>
+                <div class="budget-meta">1.4 / 4 KB · 35%</div>
+              </div>
+              <div class="budget-row">
+                <div class="budget-name">L2 本轮注入<small>命中 4 条</small></div>
+                <div class="budget-bar"><span style="width:26%"></span></div>
+                <div class="budget-meta">612 / 2,400 · 26%</div>
+              </div>
+            </div>
+            <div class="budget-foot">
+              结构变更 = 一次前缀缓存作废（实测单次 20–57 万 tokens）。所以索引只追加、不重排；超预算先裁 L2，L0 永不裁剪。
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:20px">
+            <div class="card-head">
+              <h2 class="card-title">待你处理</h2>
+              <span class="pill pill-infer">5 条</span>
+              <span class="card-sub" style="margin-left:auto">推断不进档案，确认才落；驳回后 30 天内不再出现</span>
+            </div>
+
+            <div class="task">
+              <div class="task-rail"></div>
+              <div class="task-main">
+                <div class="task-top">
+                  <div class="task-title">偏好先给结论，再展开推理</div>
+                  <span class="tag tag-infer">强化 0.7</span>
+                  <span class="tag tag-mute">patterns.md</span>
+                </div>
+                <div class="task-body">3 个会话里观察到同一模式，从未被驳回。确认后写入 patterns.md 的「已确认」区，并进入常驻层。</div>
+                <div class="evidence">
+                  <q>先给结论，别铺垫，细节我自己会问</q>
+                  <span class="ev-meta">web 会话 · 2026-11-02 14:10 · G2 被动捕获</span>
+                  <q>以后回答都先结论后展开</q>
+                  <span class="ev-meta">web 会话 · 2026-11-03 09:22 · G1 显式</span>
+                </div>
+              </div>
+              <div class="task-actions">
+                <button class="btn btn-sm btn-primary">确认并入档</button>
+                <button class="btn btn-sm">驳回</button>
+                <button class="btn btn-sm btn-ghost">看原文</button>
+              </div>
+            </div>
+
+            <div class="task">
+              <div class="task-rail"></div>
+              <div class="task-main">
+                <div class="task-top">
+                  <div class="task-title">交付前必须跑一遍机器验收，不靠肉眼判断</div>
+                  <span class="tag tag-infer">观察 0.5</span>
+                  <span class="tag tag-mute">patterns.md</span>
+                </div>
+                <div class="task-body">2 个会话支持，还没到确认阈值。同期你 3 次让我先跑 qa 再报完成。</div>
+                <div class="evidence">
+                  <q>跑 qa 了吗？没跑别跟我说完成</q>
+                  <span class="ev-meta">dsh 会话 · 2026-11-03 16:40 · G2 被动捕获</span>
+                </div>
+              </div>
+              <div class="task-actions">
+                <button class="btn btn-sm">确认并入档</button>
+                <button class="btn btn-sm">驳回</button>
+                <button class="btn btn-sm btn-ghost">看原文</button>
+              </div>
+            </div>
+
+            <div class="task">
+              <div class="task-rail is-danger"></div>
+              <div class="task-main">
+                <div class="task-top">
+                  <div class="task-title">sz-web 子模块独立 codegraph 设计</div>
+                  <span class="tag tag-danger">到期</span>
+                  <span class="tag tag-mute">workflow</span>
+                </div>
+                <div class="task-body">134 天未被引用，0 次引用，最后读取 2026-06-24。归档可回滚，不会真删。</div>
+              </div>
+              <div class="task-actions">
+                <button class="btn btn-sm">再留 90 天</button>
+                <button class="btn btn-sm btn-danger">归档退役</button>
+              </div>
+            </div>
+
+            <div class="task">
+              <div class="task-rail"></div>
+              <div class="task-main">
+                <div class="task-top">
+                  <div class="task-title">记忆面板假空态（DSH 槽位不下发 cwd）</div>
+                  <span class="tag tag-infer">锚点失效</span>
+                  <span class="tag tag-mute">work/sz-web/issues</span>
+                </div>
+                <div class="task-body">锚点文件在 2026-11-04 被改动，写入时的 contentHash 已不匹配。结论可能仍成立，但需要你复核一次。</div>
+                <div class="evidence">
+                  <q>锚点 9f2c… ≠ 写入时 41ab…</q>
+                  <span class="ev-meta">锚点校验 · 今日 02:10 巩固作业</span>
+                </div>
+              </div>
+              <div class="task-actions">
+                <button class="btn btn-sm">重查锚点</button>
+                <button class="btn btn-sm">标为待复核</button>
+                <button class="btn btn-sm btn-ghost">看文件</button>
+              </div>
+            </div>
+
+            <div class="task">
+              <div class="task-rail"></div>
+              <div class="task-main">
+                <div class="task-top">
+                  <div class="task-title">未命中该补了 2 条</div>
+                  <span class="tag tag-mute">来自未命中工作台</span>
+                </div>
+                <div class="task-body">「codegraph 索引没建」5 次未命中、「gslx 定制页面怎么加」4 次。补齐后预计少花 4.2k token/次探索。</div>
+              </div>
+              <div class="task-actions">
+                <button class="btn btn-sm" data-go="misses">去未命中处理</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:20px">
+            <div class="card-head">
+              <h2 class="card-title">最近更新</h2>
+              <span class="pill pill-mute">42 篇</span>
+              <button class="btn btn-sm btn-ghost card-head-btn" data-go="detail">全部 42 篇 →</button>
+            </div>
+            <div class="rows">
+              <button class="row" data-go="detail">
+                <span class="row-title"><span class="tag tag-infer flag">待复核</span>记忆面板假空态（DSH 槽位不下发 cwd）</span>
+                <span class="row-cat">工作域 · issues</span>
+                <span class="row-meta">1,240 tok</span>
+                <span class="row-meta">2026-11-04</span>
+                <span class="row-meta">4 次引用</span>
+              </button>
+              <button class="row" data-go="detail">
+                <span class="row-title"><span class="tag tag-fact flag">已确认</span>涉毒专题地图暗色污染全局（mapTheme 跨 tab）</span>
+                <span class="row-cat">工作域 · issues</span>
+                <span class="row-meta">986 tok</span>
+                <span class="row-meta">2026-10-29</span>
+                <span class="row-meta">7 次引用</span>
+              </button>
+              <button class="row" data-go="inbox">
+                <span class="row-title">INBOX</span>
+                <span class="row-cat">个人域 · 捕获流</span>
+                <span class="row-meta">424 tok</span>
+                <span class="row-meta">2026-11-04</span>
+                <span class="row-meta">2 次引用</span>
+              </button>
+              <button class="row" data-go="detail">
+                <span class="row-title"><span class="tag tag-infer flag">待确认</span>行为模式（推断层）</span>
+                <span class="row-cat">个人域 · 推断</span>
+                <span class="row-meta">90 tok</span>
+                <span class="row-meta">2026-11-02</span>
+                <span class="row-meta">—</span>
+              </button>
+              <button class="row" data-go="detail">
+                <span class="row-title">目标</span>
+                <span class="row-cat">个人域 · 目标</span>
+                <span class="row-meta">74 tok</span>
+                <span class="row-meta">2026-11-02</span>
+                <span class="row-meta">3 次引用</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div data-view="loading" hidden>
+          <div class="skeleton">
+            <div class="sk-row" style="height:84px"></div>
+            <div class="sk-row" style="height:110px"></div>
+            <div class="sk-row" style="height:180px"></div>
+            <div class="sk-row"></div><div class="sk-row"></div>
+          </div>
+        </div>
+
+        <div data-view="empty" hidden>
+          <div class="card">
+            <div class="card-head"><h2 class="card-title">待你处理</h2></div>
+            <div class="empty" style="border:0">
+              <div class="empty-icon"><svg class="icon" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg></div>
+              <h3>队列已清空</h3>
+              <p>没有待确认的推断，也没有到期或失效的记忆。<br>新记的想法在记录流里，未命中的问题在未命中页。</p>
+              <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                <button class="btn btn-sm btn-primary" data-go="inbox">去看记录流</button>
+                <button class="btn btn-sm" data-go="misses">看未命中</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div data-view="error" hidden>
+          <div class="empty err">
+            <div class="empty-icon"><svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div>
+            <h3>读不到记忆库</h3>
+            <p>目录 ~/.memory-ops 不存在或没有读权限。<br>检查 MEMORY_OPS_ROOT 指向的路径。</p>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+              <button class="btn btn-sm btn-primary">重试</button>
+              <button class="btn btn-sm">先不用记忆继续工作</button>
+            </div>
+            <p style="margin-top:10px;font-size:12px">记忆只是加速器：关掉这一屏，DSH 里的任务照常能跑，只是新会话要多交代一次背景。</p>
+          </div>
+        </div>
+
+        <div data-view="denied" hidden>
+          <div class="empty">
+            <div class="empty-icon"><svg class="icon" aria-hidden="true"><path d="M6 11V7a6 6 0 0 1 12 0v4M5 11h14v10H5z"/></svg></div>
+            <h3>没有访问权限</h3>
+            <p>当前会话无权读取该记忆库。<br>换一个有权限的会话，或调整 MEMORY_OPS_ROOT。</p>
+            <button class="btn btn-sm">打开权限说明</button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="side">
+        <section class="side-card">
+          <div class="side-title">
+            <h2>域概览</h2>
+            <span class="pill pill-mute">两域物理隔离</span>
+          </div>
+          <div class="dom">
+            <div class="dom-row"><span class="dom-name">个人域</span><span class="dom-num">7 篇 · 958 tok</span></div>
+            <div class="bar"><div class="bar-fill" style="width:18%"></div></div>
+            <div class="dom-note">152 行 · 全部在 80 行内</div>
+          </div>
+          <div class="dom">
+            <div class="dom-row"><span class="dom-name">工作域</span><span class="dom-num">35 篇 · 63,002 tok</span></div>
+            <div class="bar"><div class="bar-fill is-warn" style="width:88%"></div></div>
+            <div class="dom-note is-warn">2,985 行 · 13 篇超限必须压缩</div>
+          </div>
+          <div class="dom">
+            <div class="dom-row"><span class="dom-name">工作域项目</span><span class="dom-num">1 个</span></div>
+            <div class="dom-note">sz-web</div>
+          </div>
+        </section>
+
+        <section class="side-card">
+          <div class="side-title"><h2>库健康</h2><span class="pill pill-mute">每天 02:10 校验</span></div>
+          <div class="health">
+            <div class="health-row"><span class="health-name">超过 80 行</span><span class="health-val is-warn">13 篇</span></div>
+            <div class="health-row"><span class="health-name">锚点失效</span><span class="health-val is-warn">1 篇</span></div>
+            <div class="health-row"><span class="health-name">到期未处理</span><span class="health-val is-warn">1 篇</span></div>
+            <div class="health-row"><span class="health-name">驳回静默中</span><span class="health-val">2 条</span></div>
+            <div class="health-row"><span class="health-name">待补未命中</span><span class="health-val is-warn">2 条</span></div>
+          </div>
+        </section>
+
+        <section class="side-card">
+          <div class="side-title"><h2>最近巩固</h2><span class="pill pill-mute">每日 23:30</span></div>
+          <div class="consol">
+            <b>今日</b> 去重 2 · 合并 1 · 退役 0<br>
+            <b>本周日</b> 周复盘：4 条 pitfall 集中在构建环节，建议先把「构建交给人工」写进原则，而不是每条都记一遍。
+          </div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <!-- ============ 未命中 ============ -->
+  <main class="page" data-page="misses">
+    <div class="miss-head">
+      <div>
+        <h1>未命中</h1>
+        <p>命中率是结果，未命中才是输入：同一问题在 3 个会话落空 → 生成草稿，你确认后才进 INBOX。</p>
+      </div>
+      <div class="right">
+        <select class="field" aria-label="排序口径">
+          <option>按频率</option><option>按最近</option><option>按会话广度</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="miss-bands">
+      <div class="band"><div class="band-v num">4</div><div class="band-l">观察中</div><div class="band-hint">不足 3 次</div></div>
+      <div class="band"><div class="band-v num" style="color:var(--infer)">2</div><div class="band-l">该补了</div><div class="band-hint">可生成草稿</div></div>
+      <div class="band"><div class="band-v num" style="color:var(--infer)">1</div><div class="band-l">草稿待确认</div><div class="band-hint">你拍板才进库</div></div>
+      <div class="band"><div class="band-v num">2</div><div class="band-l">验证期内</div><div class="band-hint">7 天窗口</div></div>
+      <div class="band"><div class="band-v num" style="color:var(--ok)">3</div><div class="band-l">已验证生效</div><div class="band-hint">补完真命中</div></div>
+    </div>
+
+    <div class="trend">
+      <div class="trend-main">
+        <div class="trend-title">近 14 天未命中次数</div>
+        <div class="trend-bars" aria-hidden="true">
+          <span style="height:20%;background:var(--infer)"></span><span style="height:34%;background:var(--infer)"></span><span style="height:28%;background:var(--infer)"></span>
+          <span style="height:46%;background:var(--infer)"></span><span style="height:40%;background:var(--infer)"></span><span style="height:30%;background:var(--infer)"></span>
+          <span style="height:24%;background:var(--infer)"></span><span style="height:56%;background:var(--infer)"></span><span style="height:48%;background:var(--infer)"></span>
+          <span style="height:36%;background:var(--infer)"></span><span style="height:22%;background:var(--infer)"></span><span style="height:16%;background:var(--infer)"></span>
+          <span style="height:30%;background:var(--infer)"></span><span style="height:26%;background:var(--infer)"></span>
+        </div>
+        <div class="trend-axis"><span>10-23</span><span>10-29</span><span>11-04</span><span>11-05</span></div>
+      </div>
+      <div class="trend-side">
+        <div><div class="trend-k">平均补库周期</div><div class="trend-v">3.2 <small>天</small></div></div>
+        <div><div class="trend-k">补库转化率</div><div class="trend-v">5/20 <small>次</small></div></div>
+      </div>
+    </div>
+
+    <div class="zone">
+      <div class="zone-head">
+        <h2>草稿待确认</h2><span class="pill pill-infer">1</span>
+        <span class="zone-hint">草稿来自未命中聚类，不是 agent 自己写进库的</span>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" aria-label="选中 codegraph 草稿">
+        <div class="cluster-main">
+          <div class="cluster-q">"codegraph 索引没建"</div>
+          <div class="cluster-meta"><span>5 次未命中</span><span>3 个会话</span><span>最近 2026-11-02</span><span>平均多花 2.4k token/次</span></div>
+          <div class="cluster-draft">
+            <span class="lbl">草稿 · 待你确认</span>
+            gslx 子工程没有 codegraph 索引，探索会退化成 grep→read 循环。动手前先跑 <span class="mono">pnpm codegraph index</span>，再按符号定位。
+          </div>
+          <div class="cluster-actions">
+            <select class="field" aria-label="草稿类型"><option>问题</option><option>待办</option><option>决策</option></select>
+            <button class="btn btn-sm btn-primary">确认进 INBOX</button>
+            <button class="btn btn-sm">改草稿</button>
+            <button class="btn btn-sm">丢弃</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="zone">
+      <div class="zone-head">
+        <h2>该补了</h2><span class="pill pill-infer">2</span>
+        <span class="zone-hint">≥ 3 次未命中 · 生成草稿不会直接写库</span>
+        <button class="mini" style="margin-left:auto">全选</button>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" checked aria-label="选中 codegraph 索引没建">
+        <div class="cluster-main">
+          <div class="cluster-q">"codegraph 索引没建"</div>
+          <div class="cluster-meta"><span>5 次未命中</span><span>3 个会话</span><span>最近 2026-11-02</span><span class="tag tag-infer">可补</span></div>
+        </div>
+        <button class="btn btn-sm">生成草稿</button>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" checked aria-label="选中 gslx 定制页面怎么加">
+        <div class="cluster-main">
+          <div class="cluster-q">"gslx 定制页面怎么加"</div>
+          <div class="cluster-meta"><span>4 次未命中</span><span>2 个会话</span><span>最近 2026-10-28</span><span>平均多花 1.8k token/次</span><span class="tag tag-infer">可补</span></div>
+        </div>
+        <button class="btn btn-sm">生成草稿</button>
+      </div>
+      <div class="bulkbar" style="margin:6px 0 0">
+        <span><b>已选 2 条</b> · 一次生成 2 条草稿，仍需你逐条确认</span>
+        <button class="btn btn-sm btn-primary">批量生成草稿</button>
+        <button class="btn btn-sm">取消选择</button>
+      </div>
+    </div>
+
+    <div class="zone">
+      <div class="zone-head">
+        <h2>验证期内</h2><span class="pill pill-infer">2</span>
+        <span class="zone-hint">草稿已进 INBOX，7 天内看是否真的被读到</span>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" aria-label="选中 grep read 验证项">
+        <div class="cluster-main">
+          <div class="cluster-q">"grep read"</div>
+          <div class="cluster-meta"><span>草稿：INBOX 第 14 行</span><span>已命中 1/3 次</span><span>剩 5 天</span></div>
+        </div>
+        <button class="btn btn-sm">看 INBOX 条目</button>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" aria-label="选中子模块映射验证项">
+        <div class="cluster-main">
+          <div class="cluster-q">"子模块映射缺失"</div>
+          <div class="cluster-meta"><span>草稿：INBOX 第 15 行</span><span>已命中 0/3 次</span><span>剩 2 天</span></div>
+        </div>
+        <button class="btn btn-sm">看 INBOX 条目</button>
+      </div>
+    </div>
+
+    <div class="zone">
+      <div class="zone-head">
+        <h2>已验证生效</h2><span class="pill pill-ok">3</span>
+        <span class="zone-hint">补完之后真的被引用过，才算出库</span>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" aria-label="选中 mapTheme 验证项">
+        <div class="cluster-main">
+          <div class="cluster-q">"mapTheme 残留"</div>
+          <div class="cluster-meta"><span>补齐后命中 6 次</span><span>2026-10-29 出库</span><span class="tag tag-ok">已生效</span></div>
+        </div>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" aria-label="选中 假空态 验证项">
+        <div class="cluster-main">
+          <div class="cluster-q">"面板恒空 cwd"</div>
+          <div class="cluster-meta"><span>补齐后命中 4 次</span><span>2026-11-04 出库</span><span class="tag tag-ok">已生效</span></div>
+        </div>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" aria-label="选中 idKey 验证项">
+        <div class="cluster-main">
+          <div class="cluster-q">"idKey 定位失败"</div>
+          <div class="cluster-meta"><span>补齐后命中 3 次</span><span>2026-10-20 出库</span><span class="tag tag-ok">已生效</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="zone">
+      <div class="zone-head">
+        <h2>观察中</h2><span class="pill pill-mute">4</span>
+        <span class="zone-hint">还没攒够 3 次，先记着，不打扰你</span>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" disabled aria-label="样本不足，不可选">
+        <div class="cluster-main">
+          <div class="cluster-q">"grep read"</div>
+          <div class="cluster-meta"><span>1 次未命中</span><span>1 个会话</span><span>最近 2026-11-02</span><span class="tag tag-mute">观察中</span></div>
+        </div>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" disabled aria-label="样本不足，不可选">
+        <div class="cluster-main">
+          <div class="cluster-q">"影子副本生成时机"</div>
+          <div class="cluster-meta"><span>2 次未命中</span><span>1 个会话</span><span>最近 2026-11-04</span><span class="tag tag-mute">观察中</span></div>
+        </div>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" disabled aria-label="样本不足，不可选">
+        <div class="cluster-main">
+          <div class="cluster-q">"menuList 权限判断"</div>
+          <div class="cluster-meta"><span>1 次未命中</span><span>1 个会话</span><span>最近 2026-10-30</span><span class="tag tag-mute">观察中</span></div>
+        </div>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" disabled aria-label="样本不足，不可选">
+        <div class="cluster-main">
+          <div class="cluster-q">"ws 超时 8 秒"</div>
+          <div class="cluster-meta"><span>2 次未命中</span><span>1 个会话</span><span>最近 2026-10-26</span><span class="tag tag-mute">观察中</span></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ 记录流 ============ -->
+  <main class="page" data-page="inbox">
+    <div class="page-head">
+      <div>
+        <h1>记录流</h1>
+        <p>捕获只进 INBOX；整理才改档案。一行的状态决定它去哪。</p>
+      </div>
+      <span class="page-meta">本周 6 进 / 3 出</span>
+    </div>
+    <div class="throughput">
+      <div class="tp"><div class="tp-v num">6</div><div class="tp-l">本周新增</div></div>
+      <div class="tp"><div class="tp-v num is-warn">2</div><div class="tp-l">待提升</div></div>
+      <div class="tp"><div class="tp-v num">3</div><div class="tp-l">本周已处理</div></div>
+      <div class="tp"><div class="tp-v num">0</div><div class="tp-l">重复条目</div></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search">
+        <svg class="icon" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM21 21l-4.3-4.3"/></svg>
+        <input type="search" placeholder="过滤记录内容或类型…" aria-label="过滤记录">
+      </div>
+      <select class="field" aria-label="状态筛选">
+        <option>全部状态</option><option>open</option><option>todo</option><option>done</option><option>dropped</option>
+      </select>
+      <select class="field" aria-label="类型筛选">
+        <option>全部类型</option><option>想法</option><option>计划</option><option>问题</option><option>待办</option><option>决策</option>
+      </select>
+      <select class="field" aria-label="域筛选">
+        <option>全部域</option><option>个人域</option><option>工作域</option>
+      </select>
+      <span class="count num">共 6 条</span>
+    </div>
+
+    <div class="bulkbar">
+      <span><b>已选 2 条</b></span>
+      <button class="btn btn-sm">批量标为完成</button>
+      <button class="btn btn-sm">批量丢弃</button>
+      <button class="btn btn-sm btn-danger">批量删除</button>
+      <button class="btn btn-sm btn-ghost">取消</button>
+    </div>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="width:36px"><input class="check" type="checkbox" aria-label="全选"></th>
+            <th style="width:104px">状态</th>
+            <th>内容</th>
+            <th style="width:72px">类型</th>
+            <th style="width:100px">日期</th>
+            <th style="width:236px">操作</th>          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><input class="check" type="checkbox" checked aria-label="选中第 8 行"></td>
+            <td data-label="状态"><span class="badge badge-dropped">dropped</span></td>
+            <td class="cell-content"><span class="content-line">记忆详情一直是加载中，没有内容显示</span><span class="source-line">web 会话 · 2026-11-03 10:42</span></td>
+            <td data-label="类型">问题</td>
+            <td class="num" data-label="日期">2026-11-03</td>
+            <td data-label="操作"><div class="row-acts">
+              <select class="select-mini" aria-label="提升到档案 3"><option>提升到档案</option><option>principles.md</option><option>goals.md</option><option>patterns.md</option><option>preferences.md</option></select>
+              <button class="mini">改状态</button>
+              <button class="mini mini-danger">删除</button>
+            </div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" aria-label="选中第 9 行"></td>
+            <td data-label="状态"><span class="badge badge-done">done</span></td>
+            <td class="cell-content"><span class="content-line">在记一条中，记录了一个 bug，会出现在记录流中，但是不明白的是，这样设计的核心意义是什么</span><span class="source-line">web 会话 · git:a6579e9 · 2026-11-03</span></td>
+            <td data-label="类型">问题</td>
+            <td class="num" data-label="日期">2026-11-03</td>
+            <td data-label="操作"><div class="row-acts"><span class="mono">已闭环</span></div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" checked aria-label="选中第 10 行"></td>
+            <td data-label="状态"><span class="badge badge-done">done</span></td>
+            <td class="cell-content"><span class="content-line">记录流中的某一条错误记录，现在想彻底删除，但是不支持</span><span class="source-line">web 会话 · git:a95de07 · 2026-11-03</span></td>
+            <td data-label="类型">问题</td>
+            <td class="num" data-label="日期">2026-11-03</td>
+            <td data-label="操作"><div class="row-acts"><span class="mono">已闭环</span></div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" aria-label="选中第 11 行"></td>
+            <td data-label="状态"><span class="badge badge-open">open</span></td>
+            <td class="cell-content"><span class="content-line">可以添加直接浏览记忆文件的功能</span><span class="source-line">web 会话 · 2026-11-03 11:20</span></td>
+            <td data-label="类型">想法</td>
+            <td class="num" data-label="日期">2026-11-03</td>
+            <td data-label="操作"><div class="row-acts">
+              <select class="select-mini" aria-label="提升到档案"><option>提升到档案</option><option>principles.md</option><option>goals.md</option><option>patterns.md</option><option>preferences.md</option></select>
+              <button class="mini">改状态</button>
+              <button class="mini mini-danger">删除</button>
+            </div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" aria-label="选中第 12 行"></td>
+            <td data-label="状态"><span class="badge badge-open">open</span></td>
+            <td class="cell-content"><span class="content-line">可不可以扩展一条通过文件（各种文档 &amp; 格式）、图片、视频提取内容并存储的功能</span><span class="source-line">web 会话 · 2026-11-03 11:24</span></td>
+            <td data-label="类型">想法</td>
+            <td class="num" data-label="日期">2026-11-03</td>
+            <td data-label="操作"><div class="row-acts">
+              <select class="select-mini" aria-label="提升到档案 2"><option>提升到档案</option><option>principles.md</option><option>goals.md</option><option>patterns.md</option><option>preferences.md</option></select>
+              <button class="mini">改状态</button>
+              <button class="mini mini-danger">删除</button>
+            </div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" aria-label="选中第 13 行"></td>
+            <td data-label="状态"><span class="badge badge-todo">todo</span></td>
+            <td class="cell-content"><span class="content-line">DSH 插件端能力补齐，取消「只读 / 仅当前项目 / 无批量 / 无导出」阉割，对齐 Web 端产品设计全量</span><span class="source-line">dsh 会话 · 2026-11-04 09:15</span></td>
+            <td data-label="类型">待办</td>
+            <td class="num" data-label="日期">2026-11-04</td>
+            <td data-label="操作"><div class="row-acts"><button class="mini">标为完成</button><button class="mini mini-danger">删除</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:16px">
+      <div style="font-size:12px;color:var(--fg-3);margin-bottom:6px">状态预览 · 记录流为空时</div>
+      <div class="empty" style="padding:28px 24px">
+        <div class="empty-icon"><svg class="icon" aria-hidden="true"><path d="M4 4h16v16H4zM4 12h4l2 3h4l2-3h4"/></svg></div>
+        <h3>记录流是空的</h3>
+        <p>用输入框的 /remember，或右上角「记一条」快速捕获。<br>捕获只进 INBOX，不直接改档案——整理是另一条路径。</p>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-sm btn-primary">记一条</button>
+          <button class="btn btn-sm">用 /remember 捕获</button>
+          <button class="btn btn-sm">从旧会话导入</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ 记忆 ============ -->
+  <main class="page" data-page="detail">
+    <div class="detail">
+      <div class="list-pane">
+        <div class="list-search">
+          <div class="search" style="max-width:none">
+            <svg class="icon" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM21 21l-4.3-4.3"/></svg>
+            <input type="search" placeholder="搜索标题与正文…" aria-label="搜索记忆">
+          </div>
+        </div>
+        <div class="chips" role="group" aria-label="状态筛选">
+          <button class="chip" aria-pressed="true">全部 <span class="n num">42</span></button>
+          <button class="chip" aria-pressed="false">待确认 <span class="n num">2</span></button>
+          <button class="chip" aria-pressed="false">待复核 <span class="n num">1</span></button>
+          <button class="chip" aria-pressed="false">已确认 <span class="n num">33</span></button>
+          <button class="chip" aria-pressed="false">已归档 <span class="n num">6</span></button>
+        </div>
+        <div class="list-items">
+          <button class="list-item" aria-selected="true" data-detail="stale">
+            <div class="li-title">记忆面板假空态（DSH 槽位不下发 cwd）</div>
+            <div class="li-meta"><span class="tag tag-infer">待复核</span><span>工作域</span><span class="num">1,240 tok</span></div>
+          </button>
+          <button class="list-item" aria-selected="false" data-detail="normal">
+            <div class="li-title">涉毒专题地图暗色污染全局（mapTheme 跨 tab）</div>
+            <div class="li-meta"><span class="tag tag-fact">已确认</span><span>工作域</span><span class="num">986 tok</span></div>
+          </button>
+          <button class="list-item" aria-selected="false" data-detail="infer">
+            <div class="li-title">行为模式（推断层）</div>
+            <div class="li-meta"><span class="tag tag-infer">强化 0.7</span><span>个人域</span><span class="num">90 tok</span></div>
+          </button>
+          <button class="list-item" aria-selected="false" data-detail="identity">
+            <div class="li-title">我是谁</div>
+            <div class="li-meta"><span class="tag tag-fact">事实</span><span>个人域</span><span class="num">73 tok</span></div>
+          </button>
+          <button class="list-item" aria-selected="false" data-detail="inbox-file">
+            <div class="li-title">INBOX</div>
+            <div class="li-meta"><span class="tag tag-mute">捕获流</span><span>个人域</span><span class="num">424 tok</span></div>
+          </button>
+          <button class="list-item" aria-selected="false" data-detail="overview">
+            <div class="li-title">sz-web · 项目梳理文档</div>
+            <div class="li-meta"><span class="tag tag-fact">已确认</span><span>工作域</span><span class="num">1,284 tok</span></div>
+          </button>
+          <button class="list-item" aria-selected="false" data-detail="workflow">
+            <div class="li-title">临夏定制 · 禁毒专题 · 接口文档坑清单（18 条）</div>
+            <div class="li-meta"><span class="tag tag-fact">已确认</span><span>工作域</span><span class="num">2,140 tok</span></div>
+          </button>
+        </div>
+      </div>
+
+      <div class="detail-pane">
+        <!-- 详情 A：锚点失效 -->
+        <div data-detail-body="stale">
+          <div class="detail-head">
+            <h1>记忆面板假空态（DSH 槽位不下发 cwd）</h1>
+            <span class="tag tag-fact">已确认 0.9</span>
+            <div class="seg" role="group" aria-label="编辑模式">
+              <button aria-pressed="true">表单</button>
+              <button aria-pressed="false">源码</button>
+            </div>
+          </div>
+          <div class="stepper" aria-label="置信度状态">
+            <span class="step done"><span class="dot"></span>候选</span><span class="step-line"></span>
+            <span class="step done"><span class="dot"></span>观察</span><span class="step-line"></span>
+            <span class="step done"><span class="dot"></span>强化</span><span class="step-line"></span>
+            <span class="step now"><span class="dot"></span>已确认</span>
+          </div>
+
+          <div class="trust">
+            <div class="trust-cell"><div class="trust-k">置信度</div><div class="trust-v">0.9 已确认</div></div>
+            <div class="trust-cell"><div class="trust-k">证据</div><div class="trust-v">2 条 · 均带原文</div></div>
+            <div class="trust-cell"><div class="trust-k">被引用</div><div class="trust-v">4 次</div></div>
+            <div class="trust-cell"><div class="trust-k">最后引用</div><div class="trust-v">2026-11-04</div></div>
+          </div>
+
+          <div class="anchor">
+            <svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <div style="flex:1;min-width:180px">
+              <b>锚点失效</b> · 文件在 2026-11-04 被修改，写入时 hash <span class="mono">41ab…</span> 与当前 <span class="mono">9f2c…</span> 不一致。
+              这条结论仍然可检索，但注入权重已降 0.4，等你复核。
+            </div>
+            <button class="btn btn-sm">重查锚点</button>
+          </div>
+
+          <div class="code">---
+id: work.sz-web.issues.fake-empty
+title: 记忆面板假空态（DSH 槽位不下发 cwd）
+scope: work
+kind: pitfall
+layer: l2
+status: confirmed
+confidence: 0.9
+anchor:
+  path: work/sz-web/issues/记忆面板假空态(DSH槽位不下发cwd).md
+  hash: 9f2c…
+evidence: 2 条（见下）
+updated: 2026-11-04
+---
+
+# 记忆面板假空态
+
+> 现象：面板恒显示「当前项目还没有相关记忆」，但 {total} 是真实篇数。
+
+## 根因
+DSH 槽位标准 props 里没有 cwd，代码读 props.cwd 拿到 undefined
+→ 快照请求不带项目上下文 → core 返回空数组 → 界面渲染成假空态。
+
+## 结论
+从槽位钩子取当前会话目录；无法判定项目时退回全部工作域（projectScoped: false），
+不要返回空列表。改完必须同步 lib 到 profiles/desktop。</div>
+
+          <div class="refs">
+            <h2>证据链</h2>
+            <div class="ev-row">
+              <span class="ev-idx">1</span>
+              <div class="ev-body">
+                <div class="ev-quote">记忆面板/会话 tab 恒定「当前项目还没有相关记忆」，但 {total} 是真实篇数</div>
+                <span class="ev-meta">用户原话 · web 会话 · 2026-11-04 11:06 · G1 显式</span>
+              </div>
+            </div>
+            <div class="ev-row">
+              <span class="ev-idx">2</span>
+              <div class="ev-body">
+                <div class="ev-quote">30 条路由挂载后，面板仍空；参数没传进去，不是没有数据</div>
+                <span class="ev-meta">agent 复盘 · web 会话 · 2026-11-04 14:20 · G3 压缩沉淀</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="refs">
+            <h2>引用记录</h2>
+            <table class="ref-table">
+              <thead><tr><th>时间</th><th>会话</th><th>结果</th></tr></thead>
+              <tbody>
+                <tr><td class="num">2026-11-04 15:32</td><td>web · 给 panel 加分区</td><td>注入后引用</td></tr>
+                <tr><td class="num">2026-11-04 18:10</td><td>dsh · 排查侧栏空白</td><td>注入未引用</td></tr>
+                <tr><td class="num">2026-11-05 09:02</td><td>web · 复盘假空态</td><td>注入后引用</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="detail-actions">
+            <button class="btn btn-sm btn-primary">保存更改</button>
+            <button class="btn btn-sm">重查锚点</button>
+            <button class="btn btn-sm">再留 90 天</button>
+            <button class="btn btn-sm btn-danger">归档退役</button>
+          </div>
+        </div>
+
+        <!-- 详情 B：正常已确认 -->
+        <div data-detail-body="normal" hidden>
+          <div class="detail-head">
+            <h1>涉毒专题地图暗色污染全局（mapTheme 跨 tab）</h1>
+            <span class="tag tag-fact">已确认 0.9</span>
+            <div class="seg" role="group" aria-label="编辑模式 2">
+              <button aria-pressed="true">表单</button>
+              <button aria-pressed="false">源码</button>
+            </div>
+          </div>
+          <div class="stepper" aria-label="置信度状态 2">
+            <span class="step done"><span class="dot"></span>候选</span><span class="step-line"></span>
+            <span class="step done"><span class="dot"></span>观察</span><span class="step-line"></span>
+            <span class="step done"><span class="dot"></span>强化</span><span class="step-line"></span>
+            <span class="step now"><span class="dot"></span>已确认</span>
+          </div>
+          <div class="trust">
+            <div class="trust-cell"><div class="trust-k">置信度</div><div class="trust-v">0.9 已确认</div></div>
+            <div class="trust-cell"><div class="trust-k">证据</div><div class="trust-v">3 条 · 均带原文</div></div>
+            <div class="trust-cell"><div class="trust-k">被引用</div><div class="trust-v">7 次</div></div>
+            <div class="trust-cell"><div class="trust-k">最后引用</div><div class="trust-v">2026-11-03</div></div>
+          </div>
+          <div class="anchor" style="background:var(--ok-soft);border-color:var(--ok)">
+            <svg class="icon" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>
+            <div style="flex:1;min-width:180px"><b style="color:var(--ok)">锚点有效</b> · work/sz-web/issues/gslx-涉毒专题地图暗色污染全局(mapTheme跨tab).md · 今日 02:10 校验通过</div>
+          </div>
+          <div class="code"># 涉毒专题地图暗色污染全局
+
+> 现象：切到另一个 tab 时，平台页面的地图也跟着变暗。
+
+## 根因
+mapTheme 是平台全局键，不是 tab 私有状态：
+setMapTheme('dark') 之后没人归还，后续所有地图都继承。
+
+## 结论（租约式占用）
+- 可见时写 dark，unmounted / visibilitychange / pagehide 时归还平台主题
+- 不要在每个组件里各自 set，统一走 useMapThemeLease()</div>
+          <div class="refs">
+            <h2>证据链</h2>
+            <div class="ev-row"><span class="ev-idx">1</span><div class="ev-body"><div class="ev-quote">切到别的 tab，地图底色还是暗的</div><span class="ev-meta">用户原话 · web 会话 · 2026-10-29 10:12 · G1 显式</span></div></div>
+            <div class="ev-row"><span class="ev-idx">2</span><div class="ev-body"><div class="ev-quote">mapTheme 是跨 tab 全局键，需要在卸载时归还</div><span class="ev-meta">agent 定位 · web 会话 · 2026-10-29 11:40 · G3 压缩沉淀</span></div></div>
+            <div class="ev-row"><span class="ev-idx">3</span><div class="ev-body"><div class="ev-quote">加 pagehide 后回归通过，三处入口都覆盖了</div><span class="ev-meta">修复验证 · web 会话 · 2026-10-29 16:05 · G2 被动捕获</span></div></div>
+          </div>
+          <div class="refs">
+            <h2>引用记录</h2>
+            <table class="ref-table">
+              <thead><tr><th>时间</th><th>会话</th><th>结果</th></tr></thead>
+              <tbody>
+                <tr><td class="num">2026-10-30 09:14</td><td>web · minor-ctrl 主题</td><td>注入后引用</td></tr>
+                <tr><td class="num">2026-11-03 14:22</td><td>web · 暗色回归</td><td>注入后引用</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="detail-actions">
+            <button class="btn btn-sm btn-primary">保存更改</button>
+            <button class="btn btn-sm">再留 90 天</button>
+            <button class="btn btn-sm btn-danger">归档退役</button>
+          </div>
+        </div>
+
+        <!-- 详情 C：推断待确认 -->
+        <div data-detail-body="infer" hidden>
+          <div class="detail-head">
+            <h1>行为模式（推断层）</h1>
+            <span class="tag tag-infer">强化 0.7</span>
+            <div class="seg" role="group" aria-label="编辑模式 3">
+              <button aria-pressed="true">表单</button>
+              <button aria-pressed="false">源码</button>
+            </div>
+          </div>
+          <div class="stepper" aria-label="置信度状态 3">
+            <span class="step done"><span class="dot"></span>候选</span><span class="step-line"></span>
+            <span class="step done"><span class="dot"></span>观察</span><span class="step-line"></span>
+            <span class="step now"><span class="dot"></span>强化</span><span class="step-line"></span>
+            <span class="step"><span class="dot"></span>已确认</span>
+          </div>
+          <div class="trust">
+            <div class="trust-cell"><div class="trust-k">置信度</div><div class="trust-v is-warn">0.7 强化</div></div>
+            <div class="trust-cell"><div class="trust-k">证据</div><div class="trust-v">3 条 · 2 个会话</div></div>
+            <div class="trust-cell"><div class="trust-k">被引用</div><div class="trust-v">—</div></div>
+            <div class="trust-cell"><div class="trust-k">最后观察</div><div class="trust-v">2026-11-03</div></div>
+          </div>
+          <div class="anchor" style="background:var(--infer-soft);border-color:var(--infer-line)">
+            <svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01"/></svg>
+            <div style="flex:1;min-width:180px"><b>推断不进行为档案</b> · 只有你点「确认」才会写进 patterns.md 的「已确认」区，并允许进常驻层。</div>
+          </div>
+          <div class="code">---
+id: personal.patterns
+title: 行为模式（推断层）
+scope: personal
+kind: inferred
+layer: l2
+status: reinforced
+confidence: 0.7
+updated: 2026-11-02
+---
+
+# 行为模式（推断层）
+
+## 待确认
+
+### 偏好先给结论，再展开推理
+— 2026-11-02 · 3 次会话支持 · 从未被驳回
+证据：web 11-02 / web 11-03 / dsh 11-03
+
+### 交付前必须跑机器验收，不靠肉眼判断
+— 2026-11-03 · 2 次会话支持
+证据：dsh 11-03（q a 未跑就报完成，被打回）</div>
+          <div class="refs">
+            <h2>证据链</h2>
+            <div class="ev-row"><span class="ev-idx">1</span><div class="ev-body"><div class="ev-quote">先给结论，别铺垫，细节我自己会问</div><span class="ev-meta">用户原话 · web 会话 · 2026-11-02 14:10 · G2 被动捕获</span></div></div>
+            <div class="ev-row"><span class="ev-idx">2</span><div class="ev-body"><div class="ev-quote">以后回答都先结论后展开</div><span class="ev-meta">用户原话 · web 会话 · 2026-11-03 09:22 · G1 显式</span></div></div>
+            <div class="ev-row"><span class="ev-idx">3</span><div class="ev-body"><div class="ev-quote">不要每次从头讲一遍，先说要改哪几个文件</div><span class="ev-meta">用户原话 · dsh 会话 · 2026-11-03 16:40 · G2 被动捕获</span></div></div>
+          </div>
+          <div class="detail-actions">
+            <button class="btn btn-sm btn-primary">确认并入 patterns.md</button>
+            <button class="btn btn-sm">驳回（30 天静默）</button>
+            <button class="btn btn-sm">再攒 3 次</button>
+          </div>
+        </div>
+
+        <!-- 详情 D/E/F：通用简化稿 -->
+        <div data-detail-body="identity" hidden>
+          <div class="detail-head">
+            <h1>我是谁</h1>
+            <span class="tag tag-fact">事实</span>
+            <div class="seg" role="group" aria-label="编辑模式 4"><button aria-pressed="true">表单</button><button aria-pressed="false">源码</button></div>
+          </div>
+          <div class="trust">
+            <div class="trust-cell"><div class="trust-k">置信度</div><div class="trust-v">1.0 事实</div></div>
+            <div class="trust-cell"><div class="trust-k">证据</div><div class="trust-v">你直接说过</div></div>
+            <div class="trust-cell"><div class="trust-k">被引用</div><div class="trust-v">—</div></div>
+            <div class="trust-cell"><div class="trust-k">最后更新</div><div class="trust-v">2026-11-02</div></div>
+          </div>
+          <div class="code">---
+id: personal.identity
+title: 我是谁
+scope: personal
+kind: fact
+layer: l0
+status: active
+updated: 2026-11-02
+---
+
+# 我是谁
+
+> 事实层：只写我说过或可验证的。推断另放 patterns.md。
+
+## 角色
+- 前端工程师，做视频综合应用平台（sz-web 及其子模块）
+
+## 环境
+- macOS · DSH · Vue 3 技术栈</div>
+          <div class="refs">
+            <h2>引用记录</h2>
+            <div class="ev-row"><span class="ev-idx">—</span><div class="ev-body"><div class="ev-quote">还没有任何会话引用过这条记忆</div><span class="ev-meta">常驻层文件按需读取，引用计数从 2026-11-02 起算</span></div></div>
+          </div>
+          <div class="detail-actions">
+            <button class="btn btn-sm btn-primary">保存更改</button>
+            <button class="btn btn-sm btn-danger">归档退役</button>
+          </div>
+        </div>
+
+        <div data-detail-body="inbox-file" hidden>
+          <div class="detail-head">
+            <h1>INBOX</h1>
+            <span class="tag tag-mute">捕获流</span>
+            <div class="seg" role="group" aria-label="编辑模式 5"><button aria-pressed="true">表单</button><button aria-pressed="false">源码</button></div>
+          </div>
+          <div class="trust">
+            <div class="trust-cell"><div class="trust-k">行数</div><div class="trust-v">6 / 80</div></div>
+            <div class="trust-cell"><div class="trust-k">状态分布</div><div class="trust-v">open 2 · todo 1</div></div>
+            <div class="trust-cell"><div class="trust-k">本周新增</div><div class="trust-v">6 条</div></div>
+            <div class="trust-cell"><div class="trust-k">重复</div><div class="trust-v">0 条</div></div>
+          </div>
+          <div class="code">| 日期 | 类型 | 内容 | 状态 | 去向 |
+|---|---|---|---|---|
+| 2026-11-03 | 问题 | 记忆详情一直是加载中，没有内容显示 | dropped | — |
+| 2026-11-03 | 问题 | 在记一条中…… | done | git:a6579e9 |
+| 2026-11-03 | 问题 | 记录流中的某一条错误记录…… | done | git:a95de07 |
+| 2026-11-03 | 问题 | 记一条功能中，点击确定…… | done | git:14e3c6a |
+| 2026-11-04 | 想法 | 记忆库插件已装通但缺使用说明…… | done | 本次会话已闭环 |
+| 2026-11-04 | 待办 | DSH 插件端能力补齐…… | open | dsh-memory-plugin |</div>
+          <div class="detail-actions">
+            <button class="btn btn-sm btn-primary" data-go="inbox">去记录流处理</button>
+            <button class="btn btn-sm">导出本条</button>
+          </div>
+        </div>
+
+        <div data-detail-body="overview" hidden>
+          <div class="detail-head">
+            <h1>sz-web · 项目梳理文档</h1>
+            <span class="tag tag-fact">已确认</span>
+            <div class="seg" role="group" aria-label="编辑模式 6"><button aria-pressed="true">表单</button><button aria-pressed="false">源码</button></div>
+          </div>
+          <div class="trust">
+            <div class="trust-cell"><div class="trust-k">置信度</div><div class="trust-v">0.9</div></div>
+            <div class="trust-cell"><div class="trust-k">证据</div><div class="trust-v">2 条</div></div>
+            <div class="trust-cell"><div class="trust-k">被引用</div><div class="trust-v">9 次</div></div>
+            <div class="trust-cell"><div class="trust-k">最后引用</div><div class="trust-v">2026-11-02</div></div>
+          </div>
+          <div class="anchor" style="background:var(--ok-soft);border-color:var(--ok)">
+            <svg class="icon" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>
+            <div style="flex:1;min-width:180px"><b style="color:var(--ok)">锚点有效</b> · work/sz-web/overview/sz-web-项目梳理文档(视频综合应用平台).md</div>
+          </div>
+          <div class="code"># sz-web 项目梳理
+
+## 定位
+视频综合应用平台，含 dzh / gslz / gslx / gslq 等多个子工程与定制专题。
+
+## 结构
+- dzh：主工程与公共组件
+- gslz：视综大屏（data-screen）
+- gslx：定制专题（禁毒、未成年、涉毒）
+- 子模块以 git submodule 管理，独立分支与版本
+
+## 已知约束
+- 构建交给人工，agent 不代跑
+- 子模块改动必须同步 dzh 公共组件版本</div>
+          <div class="detail-actions">
+            <button class="btn btn-sm btn-primary">保存更改</button>
+            <button class="btn btn-sm">再留 90 天</button>
+            <button class="btn btn-sm btn-danger">归档退役</button>
+          </div>
+        </div>
+
+        <div data-detail-body="workflow" hidden>
+          <div class="detail-head">
+            <h1>临夏定制 · 禁毒专题 · 接口文档坑清单（18 条）</h1>
+            <span class="tag tag-fact">已确认</span>
+            <div class="seg" role="group" aria-label="编辑模式 7"><button aria-pressed="true">表单</button><button aria-pressed="false">源码</button></div>
+          </div>
+          <div class="trust">
+            <div class="trust-cell"><div class="trust-k">置信度</div><div class="trust-v">0.9</div></div>
+            <div class="trust-cell"><div class="trust-k">证据</div><div class="trust-v">18 条坑 · 3 份文档</div></div>
+            <div class="trust-cell"><div class="trust-k">被引用</div><div class="trust-v">5 次</div></div>
+            <div class="trust-cell"><div class="trust-k">超限</div><div class="trust-v is-warn">2,140 tok</div></div>
+          </div>
+          <div class="anchor" style="background:var(--infer-soft);border-color:var(--infer-line)">
+            <svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01"/></svg>
+            <div style="flex:1;min-width:180px"><b>单文件超限</b> · 2,140 tokens 远超建议的 1,200。可拆成「接口契约」与「坑清单」两份，索引各加一行。</div>
+            <button class="btn btn-sm">拆成两份</button>
+          </div>
+          <div class="code"># 临夏禁毒专题 · 接口文档坑清单
+
+1. 人员出没接口的分页参数叫 pageNum / pageSize，不是 page / limit
+2. 场所接口的 id 是 string，前端按 number 处理会丢精度
+3. 流动分析的 dateRange 含当天需要 +1 天
+4. 地图暗色底图要在组件卸载时归还主题（见 mapTheme 跨 tab 问题）
+…（共 18 条）</div>
+          <div class="detail-actions">
+            <button class="btn btn-sm btn-primary">保存更改</button>
+            <button class="btn btn-sm">拆成两份</button>
+            <button class="btn btn-sm btn-danger">归档退役</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+(function(){
+  // 导航：桌面 tab 与移动端 tab 同步
+  var pages = document.querySelectorAll('.page');
+  var navs = document.querySelectorAll('.nav-item, .mnav');
+  function showPage(name){
+    pages.forEach(function(p){
+      p.setAttribute('data-active', p.getAttribute('data-page') === name ? 'true' : 'false');
+    });
+    navs.forEach(function(n){
+      n.setAttribute('aria-selected', n.getAttribute('data-go') === name ? 'true' : 'false');
+    });
+  }
+  navs.forEach(function(n){
+    n.addEventListener('click', function(){ showPage(n.getAttribute('data-go')); });
+  });
+  document.querySelectorAll('[data-go]').forEach(function(b){
+    if (b.classList.contains('nav-item') || b.classList.contains('mnav')) return;
+    b.addEventListener('click', function(){ showPage(b.getAttribute('data-go')); });
+  });
+
+  // 总览五态
+  var wrap = document.querySelector('[data-page="overview"] .dash-main');
+  var views = wrap.querySelectorAll('[data-view]');
+  document.querySelectorAll('.state-switch button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.state-switch button').forEach(function(b){
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      });
+      var want = btn.getAttribute('data-state');
+      views.forEach(function(v){
+        var on = v.getAttribute('data-view') === want;
+        if (on) v.removeAttribute('hidden'); else v.setAttribute('hidden','');
+      });
+    });
+  });
+
+  // 深浅色
+  document.getElementById('theme-toggle').addEventListener('click', function(){
+    var html = document.documentElement;
+    html.setAttribute('data-theme', html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  // 记忆详情：列表选中 → 右侧切换
+  var items = document.querySelectorAll('.list-item');
+  var bodies = document.querySelectorAll('[data-detail-body]');
+  function showDetail(key){
+    items.forEach(function(i){
+      i.setAttribute('aria-selected', i.getAttribute('data-detail') === key ? 'true' : 'false');
+    });
+    bodies.forEach(function(b){
+      var on = b.getAttribute('data-detail-body') === key;
+      if (on) b.removeAttribute('hidden'); else b.setAttribute('hidden','');
+    });
+  }
+  items.forEach(function(i){
+    i.addEventListener('click', function(){ showDetail(i.getAttribute('data-detail')); });
+  });
+
+  // 状态筛选 chips
+  document.querySelectorAll('.chip').forEach(function(c){
+    c.addEventListener('click', function(){
+      document.querySelectorAll('.chip').forEach(function(x){
+        x.setAttribute('aria-pressed', x === c ? 'true' : 'false');
+      });
+    });
+  });
+
+  // 编辑模式分段
+  document.querySelectorAll('.seg button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var group = btn.parentElement;
+      group.querySelectorAll('button').forEach(function(b){
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      });
+    });
+  });
+
+  // 全选（未命中 / 记录流）
+  document.querySelectorAll('[aria-label="全选"]').forEach(function(master){
+    master.addEventListener('change', function(){
+      var scope = master.closest('.zone, .tbl-wrap') || document;
+      scope.querySelectorAll('input[type="checkbox"]').forEach(function(cb){
+        if (cb !== master && !cb.disabled) cb.checked = master.checked;
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>记忆库 · DSH 插件端 v3（4 表面 + 5 分区）</title>
+<style>
+:root{
+  --bg:#ffffff; --bg-subtle:#fbfbf9; --surface:#ffffff; --surface-hover:#f4f4f0;
+  --border:#e5e4df; --border-strong:#d2d1ca;
+  --fg:#14171c; --fg-2:#545c68; --fg-3:#5f6773; --fg-inv:#ffffff;
+  --accent:#1f4e79; --accent-hover:#17395a; --accent-soft:#edf2f7;
+  --infer:#96570a; --infer-soft:#fdf6e9; --infer-line:#d9b26a;
+  --ok:#0d6b3f; --ok-soft:#e9f4ee;
+  --danger:#a92a1e; --danger-soft:#fceceb;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --shadow:0 4px 16px rgba(20,23,28,.10);
+}
+html[data-theme="dark"]{
+  --bg:#161619; --bg-subtle:#1b1b1f; --surface:#1e1e21; --surface-hover:#26262a;
+  --border:#2c2c31; --border-strong:#3a3a41;
+  --fg:#e9e9ee; --fg-2:#b3b3bd; --fg-3:#9296a1; --fg-inv:#151517;
+  --accent:#7fb3dd; --accent-hover:#9ac6ea; --accent-soft:#1e2a36;
+  --infer:#e0a95e; --infer-soft:#2e2418; --infer-line:#7a5a24;
+  --ok:#5fc98f; --ok-soft:#16291f;
+  --danger:#ef8b80; --danger-soft:#301a18;
+  --shadow:0 4px 16px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;font-synthesis:none}
+body{margin:0;background:var(--bg-subtle);color:var(--fg);font-family:var(--font);
+  font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+[hidden]{display:none!important}
+.icon{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;stroke-width:1.5;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12px;color:var(--fg-3)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+.spec{padding:9px 20px;background:var(--infer-soft);color:var(--infer);font-size:13px;
+  line-height:1.5;border-bottom:1px solid var(--border)}
+.spec b{font-weight:600}
+.wrap{max-width:1440px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:16px}
+.hint{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--fg-3)}
+.tag{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:4px;
+  font-size:12px;font-weight:600;white-space:nowrap}
+.tag-infer{background:var(--infer-soft);color:var(--infer)}
+.tag-ok{background:var(--ok-soft);color:var(--ok)}
+.tag-mute{background:var(--surface-hover);color:var(--fg-3);font-weight:400}
+.tag-danger{background:var(--danger-soft);color:var(--danger)}
+.tag-fact{background:var(--ok-soft);color:var(--ok)}
+
+/* ===== 表面 1：DSH 窗口 ===== */
+.dsh{display:grid;grid-template-columns:minmax(0,1fr) 400px;
+  border:1px solid var(--border-strong);border-radius:12px;overflow:hidden;background:var(--bg)}
+.chat{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)}
+.titlebar{height:44px;flex:0 0 44px;display:flex;align-items:center;gap:10px;padding:0 14px;
+  border-bottom:1px solid var(--border);background:var(--bg)}
+.dots{display:flex;gap:5px}
+.dot{width:10px;height:10px;border-radius:999px;border:1px solid var(--border-strong);background:var(--bg-subtle)}
+.title-text{font-size:12px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title-text b{color:var(--fg);font-weight:600}
+.conv-tabs{display:flex;gap:2px;height:40px;flex:0 0 40px;align-items:stretch;padding:0 10px;
+  border-bottom:1px solid var(--border);background:var(--bg);overflow-x:auto;scrollbar-width:none}
+.conv-tabs::-webkit-scrollbar{display:none}
+.ctab{padding:0 12px;font-size:13px;color:var(--fg-2);border-bottom:2px solid transparent;
+  display:flex;align-items:center;gap:6px;white-space:nowrap}
+.ctab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.msgs{padding:16px 14px;display:flex;flex-direction:column;gap:12px;flex:1;overflow:auto;
+  background:var(--bg-subtle);min-height:320px}
+.msg{max-width:92%;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.6}
+.msg-user{align-self:flex-end;background:var(--accent);color:var(--fg-inv)}
+.msg-ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border)}
+.msg-ai .mono{font-size:12px}
+.composer{flex:0 0 auto;border-top:1px solid var(--border);padding:10px 14px;background:var(--bg)}
+.inject-strip{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px dashed var(--border-strong);
+  border-radius:8px;background:var(--bg);font-size:12px;color:var(--fg-2);line-height:1.5}
+.inject-strip .btn{margin-left:auto;flex:0 0 auto}
+.mobile-fold{display:none;padding:6px 14px;border-top:1px dashed var(--border);font-size:12px;
+  color:var(--fg-3);background:var(--bg-subtle)}
+.slashbox{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;
+  padding:8px 10px;background:var(--surface)}
+.slashbox input{flex:1;border:0;background:none;outline:none;font:inherit;font-size:13px;color:var(--fg);min-width:0;height:28px}
+.send{width:36px;height:36px;min-width:36px;border-radius:8px;background:var(--accent);color:var(--fg-inv);
+  display:grid;place-items:center;flex:0 0 36px}
+
+/* 侧栏 */
+.sidebar{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.rail-tabs{display:flex;gap:2px;padding:6px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none}
+.rail-tabs::-webkit-scrollbar{display:none}
+.rail-tab{height:32px;padding:0 10px;border-radius:7px;font-size:12px;color:var(--fg-2);
+  display:flex;align-items:center;gap:5px;white-space:nowrap}
+.rail-tab[aria-selected="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.pane{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+.nav{display:flex;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;padding:0 4px}
+.nav::-webkit-scrollbar{display:none}
+.nav-item{height:40px;padding:0 11px;font-size:13px;color:var(--fg-2);border-bottom:2px solid transparent;
+  white-space:nowrap;font-weight:500;min-width:44px}
+.nav-item:hover{color:var(--fg)}
+.nav-item[aria-current="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.pane-body{padding:12px;display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow:auto}
+.pane-body[hidden]{display:none}
+
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--border);
+  border-radius:10px;overflow:hidden;background:var(--surface)}
+.kpi{padding:9px 10px;border-left:1px solid var(--border);min-width:0}
+.kpi:first-child{border-left:0}
+.kpi-v{font-size:18px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums}
+.kpi-v.is-warn{color:var(--infer)}
+.kpi-v.is-ok{color:var(--ok)}
+.kpi-l{font-size:12px;color:var(--fg-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grp{display:flex;flex-direction:column;gap:7px}
+.grp-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.grp-title{font-size:13px;font-weight:600}
+.grp-n{font-size:12px;color:var(--fg-3)}
+.card{border:1px solid var(--border);border-radius:8px;padding:9px 11px;background:var(--surface)}
+.card-title{font-size:13px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.card-meta{font-size:12px;color:var(--fg-3);margin-top:3px;line-height:1.5;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.card-meta .mono{font-size:12px}
+.card-acts{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.evidence{margin-top:6px;padding:6px 8px;border-left:2px solid var(--infer-line);background:var(--infer-soft);
+  border-radius:0 5px 5px 0;font-size:12px;color:var(--fg-2);line-height:1.5}
+.evidence q{quotes:"「" "」";display:block}
+.evidence q + q{margin-top:4px}
+.evidence .em{display:block;margin-top:2px;font-family:var(--mono);font-size:12px;color:var(--fg-3)}
+.anchor-note{display:flex;gap:6px;align-items:flex-start;padding:7px 9px;border:1px solid var(--infer-line);
+  background:var(--infer-soft);border-radius:7px;font-size:12px;color:var(--fg-2);line-height:1.5}
+.anchor-note .icon{color:var(--infer);margin-top:1px}
+.anchor-note b{color:var(--infer)}
+
+.btn{height:32px;min-width:44px;padding:0 10px;border-radius:7px;border:1px solid var(--border);
+  background:var(--surface);font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:5px}
+.btn:hover{background:var(--surface-hover)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--fg-inv)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-danger{color:var(--danger);border-color:var(--danger)}
+.btn-danger:hover{background:var(--danger);color:#fff}
+.btn-block{width:100%}
+.btn-ghost{border-color:transparent;background:none;color:var(--fg-2)}
+.btn-ghost:hover{background:var(--surface-hover);color:var(--fg)}
+.input{width:100%;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);color:var(--fg);font:inherit;font-size:13px}
+.input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.select{height:32px;padding:0 6px;border:1px solid var(--border);border-radius:7px;
+  background:var(--surface);color:var(--fg-2);font-size:12px;max-width:140px}
+.toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.count{font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums}
+.list{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.item{display:flex;gap:8px;padding:9px 10px;border-top:1px solid var(--border);background:var(--surface);align-items:flex-start}
+.item:first-child{border-top:0}
+.item:hover{background:var(--surface-hover)}
+.item.is-picked{background:var(--accent-soft)}
+.item-main{flex:1;min-width:0}
+.item-title{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.item-meta{font-size:12px;color:var(--fg-3);margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.item-acts{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.check{width:18px;height:18px;min-width:18px;accent-color:var(--accent);margin-top:2px}
+.badge{display:inline-flex;align-items:center;height:19px;padding:0 6px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap}
+.badge-open{background:var(--accent-soft);color:var(--accent)}
+.badge-todo{background:var(--infer-soft);color:var(--infer)}
+.badge-done{background:var(--ok-soft);color:var(--ok)}
+.badge-dropped{background:var(--surface-hover);color:var(--fg-3)}
+.bulk{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 10px;
+  border:1px solid var(--accent);border-radius:8px;background:var(--accent-soft);font-size:12px}
+.empty{border:1px dashed var(--border);border-radius:8px;padding:18px 12px;text-align:center;
+  color:var(--fg-3);font-size:13px;line-height:1.6}
+.empty b{display:block;color:var(--fg);font-size:13px;margin-bottom:3px}
+.empty .acts{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:9px}
+.errbar{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--danger);
+  background:var(--danger-soft);border-radius:8px;font-size:12px;color:var(--fg-2);line-height:1.5}
+.errbar b{color:var(--danger)}
+.errbar .acts{display:flex;gap:6px;margin-top:6px}
+
+.band{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.band-cell{padding:7px 4px;border-left:1px solid var(--border);text-align:center}
+.band-cell:first-child{border-left:0}
+.band-v{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.band-l{font-size:12px;color:var(--fg-3);margin-top:1px}
+.budget{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.brow{display:grid;grid-template-columns:66px minmax(0,1fr) 84px;gap:8px;align-items:center;
+  padding:7px 9px;border-top:1px solid var(--border);font-size:12px}
+.brow:first-child{border-top:0}
+.bname{font-weight:600}
+.bar{height:4px;border-radius:2px;background:var(--border);overflow:hidden}
+.bar span{display:block;height:100%;background:var(--accent)}
+.bar span.is-warn{background:var(--infer)}
+.bnum{text-align:right;color:var(--fg-3);font-variant-numeric:tabular-nums}
+.three{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.three-cell{padding:7px 8px;border-left:1px solid var(--border)}
+.three-cell:first-child{border-left:0}
+.three-k{font-size:12px;color:var(--fg-3)}
+.three-v{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chip{height:28px;padding:0 8px;border-radius:999px;border:1px solid var(--border);font-size:12px;
+  color:var(--fg-2);display:inline-flex;align-items:center;gap:4px;background:var(--surface)}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.pager{display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:var(--fg-3)}
+.detail{border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:10px 12px}
+.detail-head{display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;flex-wrap:wrap}
+.detail-title{font-size:14px;font-weight:600;line-height:1.45;flex:1;min-width:0;overflow-wrap:anywhere}
+.detail-meta{font-size:12px;color:var(--fg-3);line-height:1.7;display:flex;gap:10px;flex-wrap:wrap}
+.textarea{width:100%;min-height:180px;padding:9px;border:1px solid var(--border);border-radius:8px;
+  background:var(--bg-subtle);color:var(--fg-2);font-family:var(--mono);font-size:12px;
+  line-height:1.7;resize:vertical;box-sizing:border-box;white-space:pre-wrap}
+.textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.toast{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;
+  background:var(--ok-soft);color:var(--ok);font-size:12px;line-height:1.5}
+.toast .undo{margin-left:auto;color:var(--accent);font-weight:600;white-space:nowrap}
+
+/* ===== 表面 2/3/4 ===== */
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.panelbox{border:1px solid var(--border-strong);border-radius:12px;background:var(--bg);overflow:hidden;
+  display:flex;flex-direction:column}
+.panelbox-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);
+  background:var(--bg-subtle);font-size:13px;font-weight:600;flex-wrap:wrap}
+.panelbox-head .tag-mute{margin-left:auto}
+.panelbox-body{padding:12px;display:flex;flex-direction:column;gap:10px}
+.inject-stat{display:flex;gap:14px;font-size:12px;color:var(--fg-3);flex-wrap:wrap}
+.inject-stat b{color:var(--fg);font-variant-numeric:tabular-nums}
+.slash-pop{border:1px solid var(--border);border-radius:10px;background:var(--surface);
+  box-shadow:var(--shadow);overflow:hidden;max-width:360px}
+.pop-head{padding:6px 10px;font-size:12px;color:var(--fg-3);border-bottom:1px solid var(--border);
+  background:var(--bg-subtle)}
+.pop-item{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:13px;width:100%;text-align:left}
+.pop-item[aria-selected="true"]{background:var(--accent-soft)}
+.pop-key{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600}
+.pop-desc{margin-left:auto;font-size:12px;color:var(--fg-3)}
+.types{display:flex;gap:4px;flex-wrap:wrap}
+.type{height:30px;min-width:44px;padding:0 10px;border:1px solid var(--border);border-radius:999px;
+  background:var(--surface);font-size:12px}
+.type[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.capture-hint{font-size:12px;color:var(--fg-3);line-height:1.5}
+.capture-box{width:100%;min-height:64px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);color:var(--fg);font:inherit;font-size:13px;line-height:1.5;resize:vertical}
+.capture-box:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.recent{display:flex;flex-direction:column;gap:6px}
+.recent-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-2);
+  padding:6px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface)}
+.recent-row .mono{margin-left:auto;white-space:nowrap}
+
+@media (max-width:1180px){
+  .dsh{grid-template-columns:minmax(0,1fr)}
+  .sidebar{border-top:1px solid var(--border)}
+}
+@media (max-width:760px){
+  .wrap{padding:12px;gap:12px}
+  .spec{padding:8px 14px;font-size:12px}
+  .nav-item,.ctab,.rail-tab{height:44px}
+  .btn,.type,.chip,.input,.select{min-height:44px}
+  .slashbox input{height:44px}
+  .pop-item{min-height:44px}
+  .send{width:44px;height:44px;min-width:44px;flex:0 0 44px}
+  .chat{border-right:0;border-bottom:1px solid var(--border)}
+  .msgs{display:none}
+  .mobile-fold{display:block}
+  .item{padding:10px}
+  .check{width:20px;height:20px;min-width:20px;margin:0}
+  .item-main .item-acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .item-main .item-acts .btn{width:100%}
+  .kpi-v{font-size:17px}
+  .band{grid-template-columns:repeat(3,1fr)}
+  .band-cell:nth-child(4){border-left:0;border-top:1px solid var(--border)}
+  .band-cell:nth-child(5){border-top:1px solid var(--border)}
+  .budget .brow{grid-template-columns:60px minmax(0,1fr) 76px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="spec">
+  <b>v3 设计稿</b>：与 Web 端能力对等（<b>4 表面 + 5 分区</b>），新增证据摘录、锚点失效标记、未命中五态流水线、预算账本与隐私闸门。数据取自真实记忆库：286 tokens · 42 篇 · 未命中 1 条。
+</div>
+
+<div class="wrap">
+  <div class="hint">
+    <h1 style="font-size:18px;font-weight:600;letter-spacing:-.01em;margin-right:4px">记忆库插件</h1>
+    <span class="tag tag-mute">表面 1 · 侧栏记忆面板（5 分区）</span>
+    <span class="tag tag-mute">点分区页签切换</span>
+    <span class="tag tag-mute">点右侧栏图标切表面</span>
+    <button class="btn btn-sm" id="theme-toggle" style="margin-left:auto">
+      <svg class="icon" aria-hidden="true"><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 3v2M12 19v2M3 12h2M19 12h2"/></svg>深浅色
+    </button>
+  </div>
+
+  <div class="dsh">
+    <!-- ===== 左：会话 ===== -->
+    <div class="chat">
+      <div class="titlebar">
+        <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="title-text"><b>sz-web-dzh-gslz</b> · 给 gslx 加定制页面</div>
+      </div>
+      <div class="conv-tabs" role="tablist" aria-label="会话视图">
+        <button class="ctab" role="tab" aria-selected="true">对话</button>
+        <button class="ctab" role="tab" aria-selected="false">
+          <svg class="icon" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg>会话记忆
+          <span class="badge badge-todo">3</span>
+        </button>
+        <button class="ctab" role="tab" aria-selected="false">变更</button>
+      </div>
+      <div class="msgs">
+        <div class="msg msg-user">给 gslx 加一个定制页面，先看下现有结构</div>
+        <div class="msg msg-ai">已定位到 <span class="mono">src/views/hnay/</span>。当前 gslx 子工程没有 codegraph 索引，
+          我改成 grep → read 的探索路径。需要我继续吗？</div>
+        <div class="msg msg-user">继续，注意别动主工程的公共组件</div>
+        <div class="msg msg-ai">明白。本次只改 <span class="mono">dzh</span> 子工程内的文件。</div>
+        <div class="msg msg-ai">这次检索注入了 3 条记忆，其中 2 条被我用上，另一个问题（grep read 循环）库里没有。</div>
+        <div class="msg msg-user">先不要动 dzh 里的 common 组件</div>
+        <div class="msg msg-ai">收到。我会先列改动文件清单再动手。</div>
+        <div class="msg msg-ai">改动清单：<span class="mono">src/views/hnay/gslx/index.vue</span>、<span class="mono">router.ts</span>；
+          dzh 子模块版本同步另算一步。</div>
+        <div class="inject-strip">
+          <svg class="icon" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg>
+          <span>本轮注入 3 条 · 2 条被用上 · 1 个问题未命中</span>
+          <button class="btn btn-sm">看注入理由</button>
+        </div>
+      </div>
+      <div class="mobile-fold">对话区已折叠，以面板为主 · 点击「会话记忆」看本次注入</div>
+      <div class="composer">
+        <div class="slashbox">
+          <span class="mono" style="font-size:14px">/</span>
+          <input placeholder="输入 /remember 存一条想法…" aria-label="输入框">
+          <button class="send" aria-label="发送">
+            <svg class="icon" aria-hidden="true"><path d="m5 12 14-7-7 14-2-5-5-2Z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 右：侧栏 ===== -->
+    <div class="sidebar">
+      <div class="rail-tabs" role="tablist" aria-label="右侧栏">
+        <button class="rail-tab" role="tab" aria-selected="true">
+          <svg class="icon" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg>记忆库</button>
+        <button class="rail-tab" role="tab" aria-selected="false">快速捕获</button>
+        <button class="rail-tab" role="tab" aria-selected="false">上下文</button>
+      </div>
+
+      <div class="pane">
+        <div class="nav" role="tablist" aria-label="记忆库分区">
+          <button class="nav-item" role="tab" aria-current="true" data-pane="session">本项目</button>
+          <button class="nav-item" role="tab" aria-current="false" data-pane="inbox">记录流</button>
+          <button class="nav-item" role="tab" aria-current="false" data-pane="memories">记忆</button>
+          <button class="nav-item" role="tab" aria-current="false" data-pane="misses">未命中</button>
+          <button class="nav-item" role="tab" aria-current="false" data-pane="overview">总览</button>
+        </div>
+
+        <!-- 分区 1：本项目 -->
+        <div class="pane-body" data-pane-body="session">
+          <div class="kpis">
+            <div class="kpi"><div class="kpi-v num">286</div><div class="kpi-l">常驻 tokens</div></div>
+            <div class="kpi"><div class="kpi-v num is-ok">62%</div><div class="kpi-l">30 天命中率</div></div>
+            <div class="kpi"><div class="kpi-v num is-warn">5</div><div class="kpi-l">待你处理</div></div>
+          </div>
+
+          <div class="errbar">
+            <svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <div style="flex:1;min-width:0">
+              <b>读不到工作域目录</b>，已退回全部记忆（不按项目过滤）。任务不受影响，只是范围变大。
+              <div class="acts"><button class="btn btn-sm">重试</button><button class="btn btn-sm">只读个人域</button></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">sz-web-dzh-gslz</h2><span class="grp-n">3 条</span>
+              <button class="btn btn-ghost" style="margin-left:auto;height:28px;font-size:12px">全部 →</button></div>
+
+            <article class="card">
+              <h3 class="card-title">gslx 无 codegraph 索引，探索退化为 grep→read 循环</h3>
+              <div class="card-meta"><span class="tag tag-infer">待复核</span><span>坑</span><span class="num">1,284 tok</span><span>0 次引用</span></div>
+              <div class="card-acts"><button class="btn btn-sm">重查锚点</button><button class="btn btn-sm">标为待复核</button></div>
+            </article>
+            <article class="card">
+              <h3 class="card-title">构建交给人工，agent 不代跑</h3>
+              <div class="card-meta"><span class="tag tag-fact">已确认</span><span>规范</span><span class="num">386 tok</span><span>3 次引用</span></div>
+            </article>
+            <article class="card">
+              <h3 class="card-title">代码注释最简，只写非显然的为什么</h3>
+              <div class="card-meta"><span class="tag tag-fact">已确认</span><span>规范</span><span class="num">214 tok</span><span>1 次引用</span></div>
+            </article>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">待你确认</h2><span class="tag tag-infer">1</span></div>
+            <article class="card">
+              <h3 class="card-title">偏好先给结论，再展开推理</h3>
+              <div class="card-meta"><span class="tag tag-infer">强化 0.7</span><span>3 个会话支持</span><span>从未被驳回</span></div>
+              <div class="evidence">
+                <q>先给结论，别铺垫，细节我自己会问</q>
+                <span class="em">web 会话 · 2026-11-02 14:10 · G2 被动捕获</span>
+              </div>
+              <div class="card-acts"><button class="btn btn-sm btn-primary">确认并入档</button><button class="btn btn-sm">驳回</button></div>
+            </article>
+            <button class="btn btn-sm" data-goto="overview">去「总览」处理全部 5 条 →</button>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">未命中补齐</h2><span class="grp-n">2 条可补</span></div>
+            <article class="card">
+              <h3 class="card-title mono">"codegraph 索引没建"</h3>
+              <div class="card-meta"><span class="badge badge-todo">可补</span><span>5 次未命中</span><span>3 个会话</span></div>
+              <div class="card-acts"><button class="btn btn-sm">生成草稿</button></div>
+            </article>
+            <button class="btn btn-sm" data-goto="misses">去「未命中」工作台 →</button>
+          </div>
+        </div>
+
+        <!-- 分区 2：记录流 -->
+        <div class="pane-body" data-pane-body="inbox" hidden>
+          <div class="three">
+            <div class="three-cell"><div class="three-v num">6</div><div class="three-k">本周新增</div></div>
+            <div class="three-cell"><div class="three-v num" style="color:var(--infer)">2</div><div class="three-k">待提升</div></div>
+            <div class="three-cell"><div class="three-v num">0</div><div class="three-k">重复</div></div>
+          </div>
+          <div class="toolbar">
+            <input class="input" style="flex:1;min-width:90px" placeholder="过滤记录…" aria-label="过滤记录">
+            <select class="select" aria-label="状态筛选">
+              <option>全部状态</option><option>open</option><option>todo</option><option>done</option><option>dropped</option>
+            </select>
+            <select class="select" aria-label="类型筛选">
+              <option>全部类型</option><option>想法</option><option>计划</option><option>问题</option><option>待办</option><option>决策</option>
+            </select>
+          </div>
+          <div class="bulk">
+            <span><b>已选 2 条</b></span>
+            <button class="btn btn-sm">批量完成</button>
+            <button class="btn btn-sm btn-danger">批量删除</button>
+            <button class="btn btn-sm btn-ghost">取消</button>
+          </div>
+          <div class="list">
+            <div class="item is-picked">
+              <input class="check" type="checkbox" checked aria-label="选中第 8 行">
+              <div class="item-main">
+                <div class="item-title">记忆详情一直是加载中，没有内容显示</div>
+                <div class="item-meta"><span class="badge badge-dropped">dropped</span><span>问题</span><span>2026-11-03</span><span class="mono">web 会话</span></div>
+                <div class="item-acts">
+                  <select class="select" aria-label="提升到档案"><option>提升到档案</option><option>principles.md</option><option>goals.md</option><option>patterns.md</option></select>
+                  <button class="btn btn-sm">改状态</button>
+                  <button class="btn btn-sm btn-danger">删除</button>
+                </div>
+              </div>
+            </div>
+            <div class="item">
+              <input class="check" type="checkbox" aria-label="选中第 9 行">
+              <div class="item-main">
+                <div class="item-title">在记一条中，记录了一个 bug，会出现在记录流中…</div>
+                <div class="item-meta"><span class="badge badge-done">done</span><span>问题</span><span>2026-11-03</span><span class="mono">git:a6579e9</span></div>
+              </div>
+            </div>
+            <div class="item is-picked">
+              <input class="check" type="checkbox" checked aria-label="选中第 10 行">
+              <div class="item-main">
+                <div class="item-title">记录流中的某一条错误记录，现在想彻底删除，但是不支持</div>
+                <div class="item-meta"><span class="badge badge-done">done</span><span>问题</span><span>2026-11-03</span><span class="mono">git:a95de07</span></div>
+              </div>
+            </div>
+            <div class="item">
+              <input class="check" type="checkbox" aria-label="选中第 11 行">
+              <div class="item-main">
+                <div class="item-title">可以添加直接浏览记忆文件的功能</div>
+                <div class="item-meta"><span class="badge badge-open">open</span><span>想法</span><span>2026-11-03</span></div>
+                <div class="item-acts">
+                  <select class="select" aria-label="提升到档案 2"><option>提升到档案</option><option>principles.md</option><option>goals.md</option><option>patterns.md</option></select>
+                  <button class="btn btn-sm">改状态</button>
+                  <button class="btn btn-sm btn-danger">删除</button>
+                </div>
+              </div>
+            </div>
+            <div class="item">
+              <input class="check" type="checkbox" aria-label="选中第 12 行">
+              <div class="item-main">
+                <div class="item-title">可不可以扩展通过文件（各种文档 &amp; 格式）、图片、视频提取内容并存储</div>
+                <div class="item-meta"><span class="badge badge-open">open</span><span>想法</span><span>2026-11-03</span></div>
+              </div>
+            </div>
+            <div class="item">
+              <input class="check" type="checkbox" aria-label="选中第 13 行">
+              <div class="item-main">
+                <div class="item-title">DSH 插件端能力补齐，废弃只读与仅当前项目限制</div>
+                <div class="item-meta"><span class="badge badge-todo">todo</span><span>待办</span><span>2026-11-04</span></div>
+                <div class="item-acts"><button class="btn btn-sm">标为完成</button><button class="btn btn-sm btn-danger">删除</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="empty"><b>记录流是空的</b>用 /remember 或「快速捕获」记一条，回车即存。<div class="acts"><button class="btn btn-sm btn-primary">记一条</button><button class="btn btn-sm">从旧会话导入</button></div></div>
+        </div>
+
+        <!-- 分区 3：记忆 -->
+        <div class="pane-body" data-pane-body="memories" hidden>
+          <div class="toolbar">
+            <input class="input" style="flex:1;min-width:90px" placeholder="搜索标题与正文…" aria-label="搜索记忆">
+          </div>
+          <div class="chips" role="group" aria-label="状态筛选">
+            <button class="chip" aria-pressed="true">全部 <span class="num">42</span></button>
+            <button class="chip" aria-pressed="false">待确认 <span class="num">2</span></button>
+            <button class="chip" aria-pressed="false">待复核 <span class="num">1</span></button>
+            <button class="chip" aria-pressed="false">已确认 <span class="num">33</span></button>
+            <button class="chip" aria-pressed="false">已归档 <span class="num">6</span></button>
+          </div>
+          <div class="count">共 42 条 · 按最近更新</div>
+
+          <div class="list">
+            <button class="item" data-open-detail="stale">
+              <div class="item-main">
+                <div class="item-title">记忆面板假空态（DSH 槽位不下发 cwd）</div>
+                <div class="item-meta"><span class="badge badge-todo">待复核</span><span>工作域</span><span>1,240 tok</span><span>4 次引用</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="normal">
+              <div class="item-main">
+                <div class="item-title">涉毒专题地图暗色污染全局（mapTheme 跨 tab）</div>
+                <div class="item-meta"><span class="badge badge-open">已确认</span><span>工作域</span><span>986 tok</span><span>7 次引用</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="infer">
+              <div class="item-main">
+                <div class="item-title">行为模式（推断层）</div>
+                <div class="item-meta"><span class="badge badge-todo">强化 0.7</span><span>个人域</span><span>90 tok</span><span>—</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="normal">
+              <div class="item-main">
+                <div class="item-title">我是谁</div>
+                <div class="item-meta"><span class="badge badge-open">事实</span><span>个人域</span><span>73 tok</span><span>—</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="normal">
+              <div class="item-main">
+                <div class="item-title">sz-web · 项目梳理文档</div>
+                <div class="item-meta"><span class="badge badge-open">已确认</span><span>工作域</span><span>1,284 tok</span><span>9 次引用</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="normal">
+              <div class="item-main">
+                <div class="item-title">临夏定制 · 禁毒专题 · 接口文档坑清单（18 条）</div>
+                <div class="item-meta"><span class="badge badge-open">已确认</span><span>工作域</span><span>2,140 tok</span><span class="badge badge-dropped">超限</span></div>
+              </div>
+            </button>
+          </div>
+          <div class="pager"><button class="btn btn-sm">上一页</button><span>1 / 3</span><button class="btn btn-sm">下一页</button></div>
+        </div>
+
+        <!-- 分区 3b：记忆详情 -->
+        <div class="pane-body" data-pane-body="memdetail" hidden>
+          <button class="btn btn-sm" data-back="memories" style="align-self:flex-start">← 返回</button>
+
+          <div class="detail" data-detail-body="stale">
+            <div class="detail-head">
+              <div class="detail-title">记忆面板假空态（DSH 槽位不下发 cwd）</div>
+              <span class="tag tag-fact">已确认 0.9</span>
+            </div>
+            <div class="detail-meta">
+              <span class="mono">work/sz-web/issues/记忆面板假空态…md</span>
+              <span class="num">1,240 tok · 24 行</span>
+              <span>4 次引用 · 最后 2026-11-04</span>
+            </div>
+            <div class="anchor-note" style="margin-top:8px">
+              <svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <div><b>锚点失效</b> · 写入时 41ab… ≠ 当前 9f2c…。结论仍可检索，注入权重已降 0.4。</div>
+            </div>
+            <div style="margin-top:8px">
+              <textarea class="textarea" aria-label="记忆正文">id: work.sz-web.issues.fake-empty
+status: confirmed
+confidence: 0.9
+anchor:
+  path: work/sz-web/issues/记忆面板假空态(DSH槽位不下发cwd).md
+  hash: 9f2c…
+
+# 记忆面板假空态
+
+根因：DSH 槽位 props 无 cwd → 快照不带项目上下文
+→ core 返回空数组 → 界面渲染成假空态。
+
+结论：从槽位钩子取会话目录；无法判定项目时退回
+全部工作域（projectScoped: false），不要返回空列表。</textarea>
+            </div>
+            <div class="grp" style="margin-top:10px">
+              <div class="grp-head"><h2 class="grp-title">证据链</h2><span class="grp-n">2 条</span></div>
+              <div class="evidence" style="margin-top:0">
+                <q>记忆面板/会话 tab 恒定「当前项目还没有相关记忆」，但 {total} 是真实篇数</q>
+                <span class="em">用户原话 · web 会话 · 2026-11-04 11:06 · G1 显式</span>
+              </div>
+              <div class="evidence" style="margin-top:0">
+                <q>30 条路由挂载后，面板仍空；参数没传进去，不是没有数据</q>
+                <span class="em">agent 复盘 · web 会话 · 2026-11-04 14:20 · G3 压缩沉淀</span>
+              </div>
+            </div>
+            <div class="card-acts">
+              <button class="btn btn-sm btn-primary">保存</button>
+              <button class="btn btn-sm">重查锚点</button>
+              <button class="btn btn-sm">再留 90 天</button>
+              <button class="btn btn-sm btn-danger">归档退役</button>
+            </div>
+          </div>
+
+          <div class="detail" data-detail-body="infer" hidden>
+            <div class="detail-head">
+              <div class="detail-title">行为模式（推断层）</div>
+              <span class="tag tag-infer">强化 0.7</span>
+            </div>
+            <div class="detail-meta"><span class="mono">personal/patterns.md</span><span class="num">90 tok · 19 行</span><span>2 个会话支持</span></div>
+            <div class="anchor-note" style="margin-top:8px">
+              <svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01"/></svg>
+              <div><b>推断不进行为档案</b> · 确认后才写入「已确认」区并进常驻层。</div>
+            </div>
+            <div class="grp" style="margin-top:10px">
+              <div class="grp-head"><h2 class="grp-title">证据链</h2><span class="grp-n">3 条</span></div>
+              <div class="evidence" style="margin-top:0">
+                <q>先给结论，别铺垫，细节我自己会问</q>
+                <span class="em">用户原话 · web 会话 · 2026-11-02 14:10 · G2</span>
+              </div>
+              <div class="evidence" style="margin-top:0">
+                <q>以后回答都先结论后展开</q>
+                <span class="em">用户原话 · web 会话 · 2026-11-03 09:22 · G1</span>
+              </div>
+            </div>
+            <div class="card-acts">
+              <button class="btn btn-sm btn-primary">确认并入 patterns.md</button>
+              <button class="btn btn-sm">驳回（30 天静默）</button>
+            </div>
+          </div>
+
+          <div class="detail" data-detail-body="normal" hidden>
+            <div class="detail-head">
+              <div class="detail-title">涉毒专题地图暗色污染全局（mapTheme 跨 tab）</div>
+              <span class="tag tag-fact">已确认 0.9</span>
+            </div>
+            <div class="detail-meta"><span class="mono">work/sz-web/issues/…mapTheme跨tab.md</span><span class="num">986 tok · 18 行</span><span>7 次引用</span></div>
+            <div class="anchor-note" style="margin-top:8px;background:var(--ok-soft);border-color:var(--ok)">
+              <svg class="icon" aria-hidden="true" style="color:var(--ok)"><path d="m5 13 4 4L19 7"/></svg>
+              <div><b style="color:var(--ok)">锚点有效</b> · 今日 02:10 校验通过</div>
+            </div>
+            <div class="grp" style="margin-top:10px">
+              <div class="grp-head"><h2 class="grp-title">证据链</h2><span class="grp-n">3 条</span></div>
+              <div class="evidence" style="margin-top:0">
+                <q>切到别的 tab，地图底色还是暗的</q>
+                <span class="em">用户原话 · web 会话 · 2026-10-29 10:12 · G1</span>
+              </div>
+            </div>
+            <div class="card-acts">
+              <button class="btn btn-sm btn-primary">保存</button>
+              <button class="btn btn-sm">再留 90 天</button>
+              <button class="btn btn-sm btn-danger">归档退役</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分区 4：未命中 -->
+        <div class="pane-body" data-pane-body="misses" hidden>
+          <div class="band">
+            <div class="band-cell"><div class="band-v num">4</div><div class="band-l">观察</div></div>
+            <div class="band-cell"><div class="band-v num" style="color:var(--infer)">2</div><div class="band-l">该补</div></div>
+            <div class="band-cell"><div class="band-v num" style="color:var(--infer)">1</div><div class="band-l">草稿</div></div>
+            <div class="band-cell"><div class="band-v num">2</div><div class="band-l">验证</div></div>
+            <div class="band-cell"><div class="band-v num" style="color:var(--ok)">3</div><div class="band-l">生效</div></div>
+          </div>
+          <div class="toolbar">
+            <select class="select" aria-label="未命中排序"><option>按频率</option><option>按最近</option><option>按会话广度</option></select>
+            <span class="count" style="margin-left:auto">补库转化 5/20</span>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">草稿待确认</h2><span class="tag tag-infer">1</span></div>
+            <article class="card">
+              <h3 class="card-title mono">"codegraph 索引没建"</h3>
+              <div class="card-meta"><span>5 次未命中</span><span>3 个会话</span><span>平均多花 2.4k token</span></div>
+              <div class="evidence" style="margin-top:7px">
+                gslx 子工程没有 codegraph 索引，探索会退化成 grep→read 循环。动手前先跑 <span class="mono">pnpm codegraph index</span>。
+                <span class="em">草稿 · 待你确认，不是 agent 自己写进库的</span>
+              </div>
+              <div class="card-acts">
+                <select class="select" aria-label="草稿类型"><option>问题</option><option>待办</option><option>决策</option></select>
+                <button class="btn btn-sm btn-primary">确认进 INBOX</button>
+                <button class="btn btn-sm">丢弃</button>
+              </div>
+            </article>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">该补了</h2><span class="tag tag-infer">2</span></div>
+            <article class="card">
+              <h3 class="card-title mono">"codegraph 索引没建"</h3>
+              <div class="card-meta"><span class="badge badge-todo">可补</span><span>5 次</span><span>3 会话</span><span>2026-11-02</span></div>
+              <div class="card-acts"><button class="btn btn-sm">生成草稿</button><button class="btn btn-sm btn-ghost">不补</button></div>
+            </article>
+            <article class="card">
+              <h3 class="card-title mono">"gslx 定制页面怎么加"</h3>
+              <div class="card-meta"><span class="badge badge-todo">可补</span><span>4 次</span><span>2 会话</span><span>2026-10-28</span></div>
+              <div class="card-acts"><button class="btn btn-sm">生成草稿</button><button class="btn btn-sm btn-ghost">不补</button></div>
+            </article>
+            <button class="btn btn-sm btn-block">批量生成 2 条草稿（仍需逐条确认）</button>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">验证期内</h2><span class="grp-n">2 条</span></div>
+            <article class="card">
+              <h3 class="card-title mono">"grep read"</h3>
+              <div class="card-meta"><span>已进 INBOX 第 14 行</span><span>命中 1/3</span><span>剩 5 天</span></div>
+            </article>
+            <article class="card">
+              <h3 class="card-title mono">"子模块映射缺失"</h3>
+              <div class="card-meta"><span>已进 INBOX 第 15 行</span><span>命中 0/3</span><span>剩 2 天</span></div>
+            </article>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">观察中</h2><span class="grp-n">4 条</span></div>
+            <article class="card">
+              <h3 class="card-title mono">"grep read"</h3>
+              <div class="card-meta"><span>1 次未命中</span><span>1 个会话</span><span>2026-11-02</span></div>
+            </article>
+          </div>
+
+          <div class="empty"><b>暂无未命中</b>最近 30 天没有检索落空。补库入口在这，等有输入再来。<div class="acts"><button class="btn btn-sm">看检索日志</button></div></div>
+        </div>
+
+        <!-- 分区 5：总览 -->
+        <div class="pane-body" data-pane-body="overview" hidden>
+          <div class="three">
+            <div class="three-cell"><div class="three-v num">62%</div><div class="three-k">命中率</div></div>
+            <div class="three-cell"><div class="three-v num">71%</div><div class="three-k">确认率</div></div>
+            <div class="three-cell"><div class="three-v num">12%</div><div class="three-k">过期率</div></div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">预算账本</h2><span class="grp-n">CJK ×1.6</span></div>
+            <div class="budget">
+              <div class="brow"><span class="bname">L0 常驻</span><div class="bar"><span style="width:28%"></span></div><span class="bnum">286 / 1,024</span></div>
+              <div class="brow"><span class="bname">L1 索引</span><div class="bar"><span style="width:35%"></span></div><span class="bnum">1.4 / 4 KB</span></div>
+              <div class="brow"><span class="bname">L2 注入</span><div class="bar"><span style="width:26%"></span></div><span class="bnum">612 / 2,400</span></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">待你处理</h2><span class="tag tag-infer">5</span></div>
+            <div class="list">
+              <div class="item">
+                <div class="item-main">
+                  <div class="item-title">偏好先给结论，再展开推理</div>
+                  <div class="item-meta"><span class="badge badge-todo">强化 0.7</span><span>3 个会话支持</span></div>
+                  <div class="item-acts"><button class="btn btn-sm btn-primary">确认</button><button class="btn btn-sm">驳回</button></div>
+                </div>
+              </div>
+              <div class="item">
+                <div class="item-main">
+                  <div class="item-title">sz-web 子模块独立 codegraph 设计</div>
+                  <div class="item-meta"><span class="badge badge-todo">到期</span><span>134 天未引用 · 0 次引用</span></div>
+                  <div class="item-acts"><button class="btn btn-sm">再留 90 天</button><button class="btn btn-sm btn-danger">归档</button></div>
+                </div>
+              </div>
+              <div class="item">
+                <div class="item-main">
+                  <div class="item-title">记忆面板假空态（DSH 槽位不下发 cwd）</div>
+                  <div class="item-meta"><span class="badge badge-todo">锚点失效</span><span>2026-11-04 被改动</span></div>
+                  <div class="item-acts"><button class="btn btn-sm">重查锚点</button><button class="btn btn-sm">标为待复核</button></div>
+                </div>
+              </div>
+              <div class="item">
+                <div class="item-main">
+                  <div class="item-title">未命中该补了 2 条</div>
+                  <div class="item-meta"><span>codegraph 索引没建</span><span>gslx 定制页面怎么加</span></div>
+                  <div class="item-acts"><button class="btn btn-sm" data-goto="misses">去未命中</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">域统计</h2></div>
+            <div class="list">
+              <div class="item"><div class="item-main"><div class="item-title">个人域</div>
+                <div class="item-meta"><span>7 篇</span><span>958 tok</span><span>152 行</span></div></div></div>
+              <div class="item"><div class="item-main"><div class="item-title">工作域</div>
+                <div class="item-meta"><span>35 篇</span><span>63,002 tok</span><span>2,985 行</span><span class="badge badge-dropped">13 篇超限</span></div></div></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">导出</h2></div>
+            <div class="card-meta">导出当前范围全部记忆，含 frontmatter 与证据链。</div>
+            <div class="card-acts">
+              <button class="btn btn-sm">导出 Markdown</button>
+              <button class="btn btn-sm">导出 JSON</button>
+              <button class="btn btn-sm">仅个人域</button>
+              <button class="btn btn-sm">仅工作域</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 表面 2/3/4 ===== -->
+  <div class="grid2">
+    <div class="panelbox">
+      <div class="panelbox-head">
+        <svg class="icon" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg>
+        表面 2 · 会话记忆 tab
+        <span class="tag tag-mute">conversation.view</span>
+      </div>
+      <div class="panelbox-body">
+        <div class="inject-stat"><span>本次注入 <b>3</b> 条</span><span>被引用 <b>2</b> 条</span><span>未命中 <b>1</b> 条</span></div>
+
+        <div class="grp">
+          <div class="grp-head"><h2 class="grp-title">坑</h2><span class="grp-n">1</span></div>
+          <article class="card">
+            <h3 class="card-title">gslx 无 codegraph 索引，探索退化为 grep→read</h3>
+            <div class="card-meta"><span class="badge badge-todo">待复核</span><span>1,284 tok</span><span>0 次引用</span></div>
+            <div class="evidence" style="margin-top:6px"><span class="em">为什么注入：问题含「gslx / codegraph / 探索」</span><span class="em">锚点：src/views/hnay/index.ts · hash 不匹配</span></div>
+          </article>
+        </div>
+
+        <div class="grp">
+          <div class="grp-head"><h2 class="grp-title">规范</h2><span class="grp-n">2</span></div>
+          <article class="card">
+            <h3 class="card-title">构建交给人工，agent 不代跑</h3>
+            <div class="card-meta"><span class="badge badge-open">已确认</span><span>386 tok</span><span>3 次引用</span></div>
+            <div class="evidence" style="margin-top:6px"><span class="em">为什么注入：本任务的路径命中 dzh 构建脚本</span></div>
+          </article>
+          <article class="card">
+            <h3 class="card-title">代码注释最简，只写非显然的为什么</h3>
+            <div class="card-meta"><span class="badge badge-open">已确认</span><span>214 tok</span><span>1 次引用</span></div>
+          </article>
+        </div>
+
+        <div class="anchor-note">
+          <svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01"/></svg>
+          <div style="flex:1;min-width:0">这个问题没命中：「grep read 循环怎么办」。已记入未命中，同问题满 3 次自动生成草稿。</div>
+          <button class="btn btn-sm">现在补</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panelbox">
+      <div class="panelbox-head">
+        <svg class="icon" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        表面 3 · 快速捕获
+        <span class="tag tag-mute">sidebar.right</span>
+      </div>
+      <div class="panelbox-body">
+        <div class="types" role="group" aria-label="条目类型">
+          <button class="type" aria-pressed="true">想法</button>
+          <button class="type" aria-pressed="false">计划</button>
+          <button class="type" aria-pressed="false">问题</button>
+          <button class="type" aria-pressed="false">待办</button>
+          <button class="type" aria-pressed="false">决策</button>
+        </div>
+        <textarea class="capture-box" aria-label="快速捕获输入">明天问老李影子副本的生成时机</textarea>
+        <div class="capture-hint">回车即存 · Shift + 回车换行 · 输入法上屏不会误提交</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary">存一条</button>
+          <span class="toast">已存入 INBOX 第 7 行<span class="undo">撤销</span></span>
+        </div>
+
+        <div class="errbar">
+          <svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01"/></svg>
+          <div style="flex:1;min-width:0"><b>这条没存</b>：检测到疑似密钥（sk-…）。命中隐私闸门，拒绝落盘，已记审计日志，可脱敏后再存。</div>
+        </div>
+
+        <div class="grp">
+          <div class="grp-head"><h2 class="grp-title">刚刚捕获</h2><span class="grp-n">2 条</span></div>
+          <div class="recent">
+            <div class="recent-row"><span>明天问老李影子副本的生成时机</span><span class="mono">想法 · 11-05</span></div>
+            <div class="recent-row"><span>gslx 定制页面先看现有目录结构</span><span class="mono">待办 · 11-05</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panelbox">
+      <div class="panelbox-head">
+        <svg class="icon" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>
+        表面 4 · /remember
+        <span class="tag tag-mute">inputTriggers</span>
+      </div>
+      <div class="panelbox-body">
+        <div class="slashbox">
+          <span class="mono" style="font-size:14px">/</span>
+          <input value="rem" aria-label="输入框">
+          <button class="send" aria-label="发送"><svg class="icon" aria-hidden="true"><path d="m5 12 14-7-7 14-2-5-5-2Z"/></svg></button>
+        </div>
+        <div class="slash-pop">
+          <div class="pop-head">记忆</div>
+          <button class="pop-item" aria-selected="true">
+            <span class="pop-key">/remember</span>
+            <span>把一句话存进记忆库</span>
+            <span class="pop-desc">回车即存</span>
+          </button>
+        </div>
+        <div class="capture-hint">回车后直接写入 INBOX，不离开输入框；30 秒内可撤销。</div>
+        <div class="card" style="background:var(--bg-subtle)">
+          <div class="card-title mono">/remember 明天问老李影子副本的生成时机</div>
+          <div class="card-meta"><span>已存入 INBOX 第 7 行</span><span>想法 · 2026-11-05</span></div>
+        </div>
+        <div class="toast">已存入 · 输入框已清空<span class="undo">撤销</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var navs = document.querySelectorAll('.nav-item');
+  var bodies = document.querySelectorAll('[data-pane-body]');
+  var details = document.querySelectorAll('[data-detail-body]');
+  function show(name){
+    bodies.forEach(function(b){
+      var on = b.getAttribute('data-pane-body') === name;
+      if (on) b.removeAttribute('hidden'); else b.setAttribute('hidden','');
+    });
+    navs.forEach(function(n){
+      n.setAttribute('aria-current', n.getAttribute('data-pane') === name ? 'true' : 'false');
+    });
+  }
+  navs.forEach(function(n){
+    n.addEventListener('click', function(){ show(n.getAttribute('data-pane')); });
+  });
+  document.querySelectorAll('[data-goto]').forEach(function(b){
+    b.addEventListener('click', function(){ show(b.getAttribute('data-goto')); });
+  });
+  document.querySelectorAll('[data-open-detail]').forEach(function(b){
+    var key = b.getAttribute('data-open-detail');
+    b.addEventListener('click', function(){
+      details.forEach(function(d){
+        var on = d.getAttribute('data-detail-body') === key;
+        if (on) d.removeAttribute('hidden'); else d.setAttribute('hidden','');
+      });
+      show('memdetail');
+    });
+  });
+  document.querySelectorAll('[data-back]').forEach(function(b){
+    b.addEventListener('click', function(){ show(b.getAttribute('data-back')); });
+  });
+
+  // 右侧栏表面切换
+  document.querySelectorAll('.rail-tab').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.rail-tab').forEach(function(x){
+        x.setAttribute('aria-selected', x === t ? 'true' : 'false');
+      });
+    });
+  });
+  // 会话视图切换
+  document.querySelectorAll('.ctab').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.ctab').forEach(function(x){
+        x.setAttribute('aria-selected', x === t ? 'true' : 'false');
+      });
+    });
+  });
+  // 类型切换
+  document.querySelectorAll('.type').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.type').forEach(function(x){
+        x.setAttribute('aria-pressed', x === t ? 'true' : 'false');
+      });
+    });
+  });
+  // 状态 chips
+  document.querySelectorAll('.chip').forEach(function(c){
+    c.addEventListener('click', function(){
+      document.querySelectorAll('.chip').forEach(function(x){
+        x.setAttribute('aria-pressed', x === c ? 'true' : 'false');
+      });
+    });
+  });
+  // 深浅色
+  document.getElementById('theme-toggle').addEventListener('click', function(){
+    var h = document.documentElement;
+    h.setAttribute('data-theme', h.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+})();
+</script>
+</body>
+</html>

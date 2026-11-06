@@ -2,6 +2,9 @@
 
 > 最后核对 2026-11-06。**本文档以仓库实际代码为准**，凡是没实现的一律标「未实现」，
 > 不再沿用「设计稿完成 = 功能完成」的旧口径。
+>
+> **文档唯一真相源**：本文件位于仓库 `docs/` 内，随代码一起版本管理。
+> 旧目录 `memory-ops-docs/` 已废弃（只留一个 `MOVED.md` 指向此处）。
 
 ---
 
@@ -76,7 +79,7 @@
 
 ### 2.4 设计稿的真实地位
 
-`web-v2.html` / `web-v3.html` / `plugin-v2.html` / `plugin-v3.html` 是**静态 HTML 设计稿**，
+`docs/design/` 下的 `web-v2.html` / `web-v3.html` / `plugin-v2.html` / `plugin-v3.html` 是**静态 HTML 设计稿**，
 与当前代码**不同源**：
 
 | 设计稿 | 与代码的关系 |
@@ -84,7 +87,7 @@
 | `plugin-v2/v3.html` | 结构参考（4 表面 + 5 分区），但配色、组件、交互均未落地 |
 | `web-v2/v3.html` | **纯设计意图**，没有任何对应实现 |
 
-它们通过 `qa.mjs` 的三档渲染检查（0 error / 0 warn），那只证明**HTML 本身没坏**，
+它们通过 `docs/design/qa.mjs` 的三档渲染检查（0 error / 0 warn），那只证明**HTML 本身没坏**，
 不证明产品实现了。旧文档把两者混为一谈。
 
 ---
@@ -621,3 +624,51 @@ hypothesis ──跨会话重复≥2──> observed ──重复≥3且无反�
 2. 设计稿状态与代码状态**分两栏写**，不得混用；
 3. 每次改文档前先跑一遍 `pnpm test` 与 `pnpm typecheck`，用真实数字；
 4. 口径变更单开一节记录「错在哪、为什么值得记」，不静默改数字。
+
+---
+
+## 十六、文档归属迁移（2026-11-06）
+
+### 16.1 动因
+
+文档此前放在 `dsh-workspace/memory-ops-docs/`，**不在任何 git 仓库里**。
+这带来两个直接后果：
+
+1. 文档改动无迹可查——这正是它长期与代码脱节、还挂着「Web 端已完成」的根因之一；
+2. 文档与代码物理分离，改代码的人看不到文档，改文档的人不核对代码。
+
+### 16.2 迁移内容
+
+全部文档与设计资产迁入 `memory-ops/docs/`，此后**只以仓库 `docs/` 为准**：
+
+| 内容 | 原位置 | 新位置 |
+|---|---|---|
+| 一页总结 | `memory-ops-docs/README.md` | `docs/README.md` |
+| 完整设计说明 | `memory-ops-docs/product.md` | `docs/product.md` |
+| 4 份 HTML 设计稿 | `memory-ops-docs/*.html` | `docs/design/` |
+| QA 脚本 | `memory-ops-docs/qa.mjs` 等 | `docs/design/` |
+| 设计稿截图 | `memory-ops-docs/shots*/` | `docs/design/screenshots/{v2,v3}/` |
+
+### 16.3 迁移时修的东西
+
+搬迁不是纯拷贝——有 3 处因路径变化必须同步调整：
+
+| 文件 | 调整 |
+|---|---|
+| `docs/design/qa.mjs` | 截图默认输出 `shots-v3` → `screenshots/v3`；用法注释同步 |
+| `docs/product.md` | 设计稿引用加 `docs/design/` 前缀 |
+| `docs/README.md` | 同上；文件树重写为新的 `docs/` 结构 |
+
+迁移后实测 `qa.mjs` 在新的 `docs/design/` 下可正常运行（三档 0 error）。
+
+### 16.4 旧目录处置
+
+`memory-ops-docs/` 清空，只留 `MOVED.md` 说明新位置并写明「请勿在此新建或修改」。
+保留一个空壳而不是直接删除目录，是因为其他会话或脚本可能仍在引用这个路径，
+留个明确的墓碑比让它凭空消失更安全。
+
+### 16.5 此后约定
+
+1. 产品文档只改 `docs/product.md` 与 `docs/README.md`；
+2. 设计稿只改 `docs/design/`，且必须与「代码状态」分栏描述；
+3. 仓库根 `README.md` 只作门面，**不承载产品状态**，一律指向 `docs/`。

@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>记忆库 · DSH 插件端设计稿（4 表面 + 5 分区）</title>
+<style>
+:root{
+  /* 与 packages/dsh-memory-plugin/src/client/styles.ts 的 --mos-* token 一致 */
+  --bg:#ffffff; --bg-subtle:#fbfbf9; --surface:#ffffff; --surface-hover:#f4f4f0;
+  --border:#e5e4df; --border-strong:#d2d1ca;
+  --fg:#14171c; --fg-2:#545c68; --fg-3:#5f6773; --fg-inv:#ffffff;
+  --accent:#1f4e79; --accent-hover:#17395a; --accent-soft:#edf2f7;
+  --infer:#96570a; --infer-soft:#fdf6e9;
+  --ok:#0d6b3f; --ok-soft:#e9f4ee;
+  --danger:#a92a1e; --danger-soft:#fceceb;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --shadow:0 4px 16px rgba(20,23,28,.10);
+}
+html[data-theme="dark"]{
+  --bg:#161619; --bg-subtle:#1b1b1f; --surface:#1e1e21; --surface-hover:#26262a;
+  --border:#2c2c31; --border-strong:#3a3a41;
+  --fg:#e9e9ee; --fg-2:#b3b3bd; --fg-3:#9296a1; --fg-inv:#151517;
+  --accent:#7fb3dd; --accent-hover:#9ac6ea; --accent-soft:#1e2a36;
+  --infer:#e0a95e; --infer-soft:#2e2418;
+  --ok:#5fc98f; --ok-soft:#16291f;
+  --danger:#ef8b80; --danger-soft:#301a18;
+  --shadow:0 4px 16px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-subtle);color:var(--fg);font-family:var(--font);
+  font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.icon{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;stroke-width:1.5;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12px;color:var(--fg-3)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+/* 通用：显式 display 的元素会覆盖 hidden，统一兜底 */
+[hidden]{display:none!important}
+
+.spec{padding:10px 20px;background:var(--infer-soft);color:var(--infer);font-size:13px;
+  line-height:1.5;border-bottom:1px solid var(--border)}
+.spec b{font-weight:600}
+
+.wrap{max-width:1440px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:20px}
+.hint{font-size:13px;color:var(--fg-3);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ================= 表面 1：DSH 会话 + 侧栏记忆面板 ================= */
+.dsh{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:0;
+  border:1px solid var(--border-strong);border-radius:12px;overflow:hidden;background:var(--bg)}
+.chat{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)}
+.titlebar{height:44px;flex:0 0 44px;display:flex;align-items:center;gap:10px;padding:0 14px;
+  border-bottom:1px solid var(--border);background:var(--bg)}
+.dots{display:flex;gap:5px}
+.dot{width:10px;height:10px;border-radius:999px;border:1px solid var(--border-strong);background:var(--bg-subtle)}
+.title-text{font-size:12px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title-text b{color:var(--fg);font-weight:600}
+.conv-tabs{display:flex;gap:2px;height:38px;flex:0 0 38px;align-items:stretch;padding:0 10px;
+  border-bottom:1px solid var(--border);background:var(--bg);overflow-x:auto;scrollbar-width:none}
+.conv-tabs::-webkit-scrollbar{display:none}
+.ctab{padding:0 12px;font-size:13px;color:var(--fg-2);border-bottom:2px solid transparent;
+  display:flex;align-items:center;gap:6px;white-space:nowrap}
+.ctab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.msgs{padding:16px 14px;display:flex;flex-direction:column;gap:14px;flex:1;overflow:auto;
+  background:var(--bg-subtle);min-height:340px}
+.msg{max-width:88%;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.6}
+.msg-user{align-self:flex-end;background:var(--accent);color:var(--fg-inv)}
+.msg-ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border)}
+.composer{flex:0 0 auto;border-top:1px solid var(--border);padding:10px 14px;background:var(--bg)}
+.slashbox{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;
+  padding:8px 12px;background:var(--surface)}
+.slashbox input{flex:1;border:0;background:none;outline:none;font:inherit;font-size:13px;color:var(--fg);min-width:0}
+.send{width:32px;height:32px;min-width:32px;border-radius:8px;background:var(--accent);color:var(--fg-inv);
+  display:grid;place-items:center;flex:0 0 32px}
+
+/* 侧栏 */
+.sidebar{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.rail-tabs{display:flex;gap:2px;padding:6px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none}
+.rail-tabs::-webkit-scrollbar{display:none}
+.rail-tab{height:30px;padding:0 10px;border-radius:7px;font-size:12px;color:var(--fg-2);
+  display:flex;align-items:center;gap:5px;white-space:nowrap}
+.rail-tab[aria-selected="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+
+/* 面板内部：5 分区子导航 */
+.pane{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+.nav{display:flex;gap:0;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;padding:0 4px}
+.nav::-webkit-scrollbar{display:none}
+.nav-item{height:38px;padding:0 12px;font-size:13px;color:var(--fg-2);border-bottom:2px solid transparent;
+  white-space:nowrap;font-weight:500;min-width:44px}
+.nav-item:hover{color:var(--fg)}
+.nav-item[aria-current="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.pane-body{padding:12px;display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow:auto}
+/* 显式 display 会覆盖 hidden 属性，必须补这条，否则分区全部同时渲染 */
+.pane-body[hidden]{display:none}
+
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--border);
+  border-radius:10px;overflow:hidden;background:var(--surface)}
+.kpi{padding:10px 12px;border-left:1px solid var(--border)}
+.kpi:first-child{border-left:0}
+.kpi-v{font-size:20px;font-weight:600;line-height:1.2}
+.kpi-v.is-infer{color:var(--infer)}
+.kpi-l{font-size:12px;color:var(--fg-3);margin-top:2px}
+
+.grp{display:flex;flex-direction:column;gap:6px}
+.grp-head{display:flex;align-items:baseline;gap:8px}
+.grp-title{font-size:13px;font-weight:600}
+.grp-n{font-size:12px;color:var(--fg-3)}
+.card{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface)}
+.card-title{font-size:14px;font-weight:600;line-height:1.5}
+.card-meta{font-size:12px;color:var(--fg-3);margin-top:4px;line-height:1.5}
+.tag{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:5px;
+  font-size:12px;font-weight:600}
+.tag-infer{background:var(--infer-soft);color:var(--infer)}
+.tag-ok{background:var(--ok-soft);color:var(--ok)}
+.tag-mute{background:var(--surface-hover);color:var(--fg-3);font-weight:400}
+
+.btn{height:32px;min-width:44px;padding:0 12px;border-radius:7px;border:1px solid var(--border);
+  background:var(--surface);font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{background:var(--surface-hover)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--fg-inv)}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-sm{height:32px;padding:0 10px;font-size:12px}
+.btn-danger{color:var(--danger);border-color:var(--danger)}
+.btn-danger:hover{background:var(--danger);color:#fff;border-color:var(--danger)}
+.input{width:100%;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);color:var(--fg);font:inherit;font-size:13px}
+.input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.select{height:32px;padding:0 8px;border:1px solid var(--border);border-radius:7px;
+  background:var(--surface);color:var(--fg);font-size:12px}
+.toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.count{font-size:12px;color:var(--fg-3)}
+.list{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.item{display:flex;gap:8px;padding:9px 10px;border-top:1px solid var(--border);background:var(--surface);align-items:flex-start}
+.item:first-child{border-top:0}
+.item:hover{background:var(--surface-hover)}
+.item.is-picked{background:var(--accent-soft)}
+.item-main{flex:1;min-width:0}
+.item-title{font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.item-meta{font-size:12px;color:var(--fg-3);margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.item-acts{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}
+.check{width:18px;height:18px;min-width:18px;accent-color:var(--accent);margin-top:1px}
+.badge{display:inline-flex;align-items:center;height:19px;padding:0 6px;border-radius:4px;font-size:12px;font-weight:600}
+.badge-open{background:var(--accent-soft);color:var(--accent)}
+.badge-todo{background:var(--infer-soft);color:var(--infer)}
+.badge-done{background:var(--ok-soft);color:var(--ok)}
+.badge-dropped{background:var(--surface-hover);color:var(--fg-3)}
+.bulk{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 10px;
+  border:1px solid var(--accent);border-radius:8px;background:var(--accent-soft);font-size:12px}
+.empty{border:1px dashed var(--border);border-radius:8px;padding:20px 14px;text-align:center;
+  color:var(--fg-3);font-size:13px}
+.band{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.band-cell{padding:9px 10px;border-left:1px solid var(--border);text-align:center}
+.band-cell:first-child{border-left:0}
+.band-v{font-size:16px;font-weight:600}
+.band-l{font-size:12px;color:var(--fg-3);margin-top:1px}
+.toast{font-size:12px;color:var(--ok)}
+.detail{border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:10px 12px}
+.detail-head{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
+.detail-title{font-size:15px;font-weight:600;line-height:1.4;flex:1;min-width:0}
+.detail-meta{font-size:12px;color:var(--fg-3);line-height:1.7}
+.textarea{width:100%;min-height:200px;padding:10px;border:1px solid var(--border);border-radius:8px;
+  background:var(--bg-subtle);color:var(--fg-2);font-family:var(--mono);font-size:13px;
+  line-height:1.7;resize:vertical;box-sizing:border-box;white-space:pre-wrap}
+.textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.pager{display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:var(--fg-3)}
+
+/* ================= 表面 2/3/4 单独展示 ================= */
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.panelbox{border:1px solid var(--border-strong);border-radius:12px;background:var(--bg);overflow:hidden;
+  display:flex;flex-direction:column}
+.panelbox-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);
+  background:var(--bg-subtle);font-size:13px;font-weight:600}
+.panelbox-head .tag-mute{margin-left:auto}
+.panelbox-body{padding:12px;display:flex;flex-direction:column;gap:10px}
+
+/* slash 候选浮层 */
+.slash-pop{border:1px solid var(--border);border-radius:10px;background:var(--surface);
+  box-shadow:var(--shadow);overflow:hidden;max-width:360px}
+.pop-head{padding:6px 10px;font-size:12px;color:var(--fg-3);border-bottom:1px solid var(--border);
+  background:var(--bg-subtle)}
+.pop-item{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:13px;width:100%;text-align:left}
+.pop-item[aria-selected="true"]{background:var(--accent-soft)}
+.pop-key{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600}
+.pop-desc{margin-left:auto;font-size:12px;color:var(--fg-3)}
+
+.types{display:flex;gap:4px;flex-wrap:wrap}
+.type{height:32px;min-width:44px;padding:0 12px;border:1px solid var(--border);border-radius:999px;
+  background:var(--surface);font-size:12px}
+.type[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+
+@media (max-width:1100px){.dsh{grid-template-columns:minmax(0,1fr)}.sidebar{border-top:1px solid var(--border)}}
+@media (max-width:760px){.wrap{padding:12px}.spec{padding:8px 14px}
+  .nav-item,.ctab,.rail-tab{height:44px}
+  .btn,.btn-sm{min-height:44px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="spec">
+  <b>设计稿</b>：按 <code>packages/dsh-memory-plugin</code> 最新代码重建。结构为 <b>4 表面 + 5 分区</b>——
+  4 个表面（侧栏面板 / 会话记忆 tab / 快速捕获 / <code>/remember</code>），侧栏面板内部再分 5 分区
+  （本项目 / 记录流 / 记忆 / 未命中 / 总览）。数据取自真实记忆库：286 tokens · 42 篇 · 未命中 1 观察中。
+</div>
+
+<div class="wrap">
+
+  <div class="hint">
+    <span>表面 1 · 侧栏记忆面板（5 分区）</span>
+    <span class="tag tag-mute">点分区页签切换</span>
+    <span class="tag tag-mute">点右侧栏图标切表面</span>
+    <button class="btn btn-sm" id="theme-toggle" style="margin-left:auto">
+      <svg class="icon" aria-hidden="true"><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 3v2M12 19v2M3 12h2M19 12h2"/></svg>深浅色
+    </button>
+  </div>
+
+  <div class="dsh">
+    <!-- ========== 左：会话区 ========== -->
+    <div class="chat">
+      <div class="titlebar">
+        <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="title-text"><b>sz-web-dzh-gslz</b> · 给 gslx 加定制页面</div>
+      </div>
+      <div class="conv-tabs" role="tablist" aria-label="会话视图">
+        <button class="ctab" role="tab" aria-selected="true">对话</button>
+        <button class="ctab" role="tab" aria-selected="false" id="tab-session-memory">
+          <svg class="icon" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg>会话记忆</button>
+        <button class="ctab" role="tab" aria-selected="false">变更</button>
+      </div>
+      <div class="msgs">
+        <div class="msg msg-user">给 gslx 加一个定制页面，先看下现有结构</div>
+        <div class="msg msg-ai">已定位到 <span class="mono">src/views/hnay/</span>。当前 gslx 子工程没有 codegraph 索引，
+          我改成 grep → read 的探索路径。需要我继续吗？</div>
+        <div class="msg msg-user">继续，注意别动主工程的公共组件</div>
+        <div class="msg msg-ai">明白。本次只改 <span class="mono">dzh</span> 子工程内的文件。</div>
+      </div>
+      <div class="composer">
+        <div class="slashbox">
+          <span class="mono" style="font-size:14px">/</span>
+          <input placeholder="输入 /remember 存一条想法…" aria-label="输入框">
+          <button class="send" aria-label="发送">
+            <svg class="icon" aria-hidden="true"><path d="m5 12 14-7-7 14-2-5-5-2Z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 右：侧栏 ========== -->
+    <div class="sidebar">
+      <div class="rail-tabs" role="tablist" aria-label="右侧栏">
+        <button class="rail-tab" role="tab" aria-selected="true">
+          <svg class="icon" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg>记忆库</button>
+        <button class="rail-tab" role="tab" aria-selected="false">快速捕获</button>
+        <button class="rail-tab" role="tab" aria-selected="false">上下文</button>
+      </div>
+
+      <div class="pane">
+        <!-- 5 分区子导航 -->
+        <div class="nav" role="tablist" aria-label="记忆库分区">
+          <button class="nav-item" role="tab" aria-current="true" data-pane="session">本项目</button>
+          <button class="nav-item" role="tab" aria-current="false" data-pane="inbox">记录流</button>
+          <button class="nav-item" role="tab" aria-current="false" data-pane="memories">记忆</button>
+          <button class="nav-item" role="tab" aria-current="false" data-pane="misses">未命中</button>
+          <button class="nav-item" role="tab" aria-current="false" data-pane="overview">总览</button>
+        </div>
+
+        <!-- 分区 1：本项目 -->
+        <div class="pane-body" data-pane-body="session">
+          <div class="kpis">
+            <div class="kpi"><div class="kpi-v num">286</div><div class="kpi-l">常驻 tokens</div></div>
+            <div class="kpi"><div class="kpi-v num">42</div><div class="kpi-l">记忆篇数</div></div>
+            <div class="kpi"><div class="kpi-v num is-infer">3</div><div class="kpi-l">待确认</div></div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">sz-web-dzh-gslz</h2><span class="grp-n">3 条</span></div>
+            <article class="card">
+              <h3 class="card-title">gslx 无 codegraph 索引，探索退化为 grep→read 循环</h3>
+              <div class="card-meta mono">work/sz-web/workflow/… · 1,284 tokens</div>
+            </article>
+            <article class="card">
+              <h3 class="card-title">构建交给人工，agent 不代跑</h3>
+              <div class="card-meta mono">work/sz-web/meta/… · 386 tokens</div>
+            </article>
+            <article class="card">
+              <h3 class="card-title">代码注释最简，只写非显然的为什么</h3>
+              <div class="card-meta mono">work/sz-web/meta/… · 214 tokens</div>
+            </article>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">待你确认</h2><span class="tag tag-infer">2</span></div>
+            <article class="card">
+              <h3 class="card-title">偏好先给结论，再展开推理</h3>
+              <div class="card-meta">— 2026-11-02 · 3 次会话支持</div>
+            </article>
+            <button class="btn btn-sm" data-goto="overview">去「总览」确认 →</button>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">未命中补齐</h2><span class="grp-n">1</span></div>
+            <article class="card">
+              <h3 class="card-title">grep read</h3>
+              <div class="card-meta">1 次未命中 · 1 个会话 · 最近 2026-11-02</div>
+              <div class="item-acts"><button class="btn btn-sm btn-primary">补一条进 INBOX</button></div>
+            </article>
+            <button class="btn btn-sm" data-goto="misses">去「未命中」工作台 →</button>
+          </div>
+        </div>
+
+        <!-- 分区 2：记录流 -->
+        <div class="pane-body" data-pane-body="inbox" hidden>
+          <div class="toolbar">
+            <input class="input" style="flex:1;min-width:100px" placeholder="过滤记录…" aria-label="过滤记录">
+            <select class="select" aria-label="状态筛选">
+              <option>全部状态</option><option>open</option><option>todo</option><option>done</option><option>dropped</option>
+            </select>
+          </div>
+          <div class="count num">共 6 条</div>
+
+          <div class="bulk">
+            <span><b>已选 2 条</b></span>
+            <button class="btn btn-sm">批量完成</button>
+            <button class="btn btn-sm btn-danger">批量删除</button>
+          </div>
+
+          <div class="list">
+            <div class="item is-picked">
+              <input class="check" type="checkbox" checked aria-label="选中第 8 行">
+              <div class="item-main">
+                <div class="item-title">记忆详情一直是加载中，没有内容显示</div>
+                <div class="item-meta"><span class="badge badge-dropped">dropped</span><span>问题</span><span>2026-11-03</span><span>第 8 行</span></div>
+                <div class="item-acts">
+                  <select class="select" aria-label="改状态"><option>dropped</option><option>open</option><option>todo</option><option>done</option></select>
+                  <select class="select" aria-label="提升到档案"><option>提升到档案</option><option>principles.md</option><option>goals.md</option><option>patterns.md</option></select>
+                  <button class="btn btn-sm btn-danger">删除</button>
+                </div>
+              </div>
+            </div>
+            <div class="item">
+              <input class="check" type="checkbox" aria-label="选中第 9 行">
+              <div class="item-main">
+                <div class="item-title">在记一条中，记录了一个bug，会出现在记录流中…</div>
+                <div class="item-meta"><span class="badge badge-done">done</span><span>问题</span><span>2026-11-03</span><span class="mono">git:a6579e9</span></div>
+              </div>
+            </div>
+            <div class="item is-picked">
+              <input class="check" type="checkbox" checked aria-label="选中第 10 行">
+              <div class="item-main">
+                <div class="item-title">记录流中的某一条错误记录，现在想彻底删除，但是不支持</div>
+                <div class="item-meta"><span class="badge badge-done">done</span><span>问题</span><span>2026-11-03</span><span class="mono">git:a95de07</span></div>
+              </div>
+            </div>
+            <div class="item">
+              <input class="check" type="checkbox" aria-label="选中第 11 行">
+              <div class="item-main">
+                <div class="item-title">记一条功能中，点击确定时回车直接就保存了，导致内容只记录了一半</div>
+                <div class="item-meta"><span class="badge badge-done">done</span><span>问题</span><span>2026-11-03</span></div>
+              </div>
+            </div>
+            <div class="item">
+              <input class="check" type="checkbox" aria-label="选中第 12 行">
+              <div class="item-main">
+                <div class="item-title">可以添加直接浏览记忆文件的功能</div>
+                <div class="item-meta"><span class="badge badge-open">open</span><span>想法</span><span>2026-11-03</span></div>
+                <div class="item-acts">
+                  <select class="select" aria-label="改状态2"><option>open</option><option>todo</option><option>done</option><option>dropped</option></select>
+                  <select class="select" aria-label="提升2"><option>提升到档案</option><option>principles.md</option></select>
+                  <button class="btn btn-sm btn-danger">删除</button>
+                </div>
+              </div>
+            </div>
+            <div class="item">
+              <input class="check" type="checkbox" aria-label="选中第 13 行">
+              <div class="item-main">
+                <div class="item-title">可不可以扩展通过文件（各种文档&格式），图片、视频提取内容并存储</div>
+                <div class="item-meta"><span class="badge badge-open">open</span><span>想法</span><span>2026-11-03</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分区 3：记忆 -->
+        <div class="pane-body" data-pane-body="memories" hidden>
+          <div class="toolbar">
+            <input class="input" style="flex:1;min-width:100px" placeholder="搜索标题与正文…" aria-label="搜索记忆">
+            <select class="select" aria-label="域筛选"><option>全部域</option><option>个人域</option><option>工作域</option></select>
+          </div>
+          <div class="count num">共 42 条</div>
+
+          <div class="list">
+            <button class="item" data-open-detail="1">
+              <div class="item-main">
+                <div class="item-title">我是谁</div>
+                <div class="item-meta"><span class="badge badge-open">事实</span><span>个人域</span><span>73 tok</span><span>从未被引用</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="2">
+              <div class="item-main">
+                <div class="item-title">工作偏好</div>
+                <div class="item-meta"><span class="badge badge-open">事实</span><span>个人域</span><span>80 tok</span><span>从未被引用</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="3">
+              <div class="item-main">
+                <div class="item-title">原则</div>
+                <div class="item-meta"><span class="badge badge-open">原则</span><span>个人域</span><span>86 tok</span><span>从未被引用</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="4">
+              <div class="item-main">
+                <div class="item-title">行为模式（推断层）</div>
+                <div class="item-meta"><span class="badge badge-todo">推断</span><span>个人域</span><span>90 tok</span><span>从未被引用</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="5">
+              <div class="item-main">
+                <div class="item-title">sz-web · 项目梳理文档</div>
+                <div class="item-meta"><span class="badge badge-open">事实</span><span>工作域</span><span>1,284 tok</span><span>从未被引用</span></div>
+              </div>
+            </button>
+            <button class="item" data-open-detail="6">
+              <div class="item-main">
+                <div class="item-title">临夏定制 · 禁毒专题 · 接口文档坑清单</div>
+                <div class="item-meta"><span class="badge badge-open">原则</span><span>工作域</span><span>2,140 tok</span><span class="badge badge-dropped">超限</span></div>
+              </div>
+            </button>
+          </div>
+          <div class="pager">
+            <button class="btn btn-sm">上一页</button><span>1 / 3</span><button class="btn btn-sm">下一页</button>
+          </div>
+        </div>
+
+        <!-- 分区 3b：记忆详情 -->
+        <div class="pane-body" data-pane-body="memdetail" hidden>
+          <button class="btn btn-sm" data-back="memories" style="align-self:flex-start">← 返回</button>
+          <div class="detail">
+            <div class="detail-head">
+              <div class="detail-title">我是谁</div>
+              <span class="badge badge-open">事实</span>
+            </div>
+            <div class="detail-meta">
+              <div class="mono">personal/identity.md</div>
+              <div>73 tokens · 21 行 · 层 l2</div>
+              <div>从未被引用</div>
+            </div>
+            <div style="margin-top:10px">
+              <textarea class="textarea" aria-label="记忆正文">---
+id: personal.identity
+title: 我是谁
+scope: personal
+kind: fact
+layer: l2
+status: active
+pinned: false
+updated: 2026-11-02
+tags: []
+---
+
+# 我是谁
+
+&gt; 事实层：只写我说过或可验证的。推断另放 patterns.md。
+
+## 角色
+-
+
+## 环境
+-</textarea>
+              <div class="item-acts">
+                <button class="btn btn-sm btn-primary">保存</button>
+                <button class="btn btn-sm">取消</button>
+              </div>
+            </div>
+            <div class="item-acts" style="margin-top:10px">
+              <button class="btn btn-sm">再留 90 天</button>
+              <button class="btn btn-sm btn-danger">归档退役</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分区 4：未命中 -->
+        <div class="pane-body" data-pane-body="misses" hidden>
+          <div class="band">
+            <div class="band-cell"><div class="band-v num">1</div><div class="band-l">候选</div></div>
+            <div class="band-cell"><div class="band-v num" style="color:var(--infer)">2</div><div class="band-l">可补</div></div>
+            <div class="band-cell"><div class="band-v num">0</div><div class="band-l">已补</div></div>
+            <div class="band-cell"><div class="band-v num">0</div><div class="band-l">已解决</div></div>
+          </div>
+          <div class="toolbar">
+            <select class="select" aria-label="未命中排序"><option>按频率</option><option>按最近</option><option>按会话广度</option></select>
+            <button class="btn btn-sm btn-primary">一次补齐全部 2 条</button>
+          </div>
+          <div class="list">
+            <div class="item">
+              <div class="item-main">
+                <div class="item-title mono">"codegraph 索引没建"</div>
+                <div class="item-meta"><span class="badge badge-todo">可补</span><span>5 次未命中</span><span>3 个会话</span><span>最近 2026-11-02</span></div>
+                <div class="item-acts"><button class="btn btn-sm">补一条进 INBOX</button></div>
+              </div>
+            </div>
+            <div class="item">
+              <div class="item-main">
+                <div class="item-title mono">"gslx 定制页面怎么加"</div>
+                <div class="item-meta"><span class="badge badge-todo">可补</span><span>4 次未命中</span><span>2 个会话</span><span>最近 2026-10-28</span></div>
+                <div class="item-acts"><button class="btn btn-sm">补一条进 INBOX</button></div>
+              </div>
+            </div>
+            <div class="item">
+              <div class="item-main">
+                <div class="item-title mono">"grep read"</div>
+                <div class="item-meta"><span class="badge badge-open">候选</span><span>1 次未命中</span><span>1 个会话</span><span>最近 2026-11-02</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分区 5：总览 -->
+        <div class="pane-body" data-pane-body="overview" hidden>
+          <div class="kpis">
+            <div class="kpi"><div class="kpi-v num">286</div><div class="kpi-l">常驻 tokens</div></div>
+            <div class="kpi"><div class="kpi-v num">42</div><div class="kpi-l">记忆篇数</div></div>
+            <div class="kpi"><div class="kpi-v num is-infer">3</div><div class="kpi-l">待确认</div></div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">待你处理</h2><span class="tag tag-infer">3</span></div>
+            <div class="list">
+              <div class="item">
+                <div class="item-main">
+                  <div class="item-title">偏好先给结论，再展开推理</div>
+                  <div class="item-meta"><span class="badge badge-todo">推断</span><span>我从对话里总结的模式，未经确认不会进档案</span></div>
+                  <div class="item-meta mono">— 2026-11-02 · 3 次会话支持</div>
+                  <div class="item-acts"><button class="btn btn-sm btn-primary">确认</button><button class="btn btn-sm">驳回</button></div>
+                </div>
+              </div>
+              <div class="item">
+                <div class="item-main">
+                  <div class="item-title">sz-web 子模块独立 codegraph 设计</div>
+                  <div class="item-meta"><span class="badge badge-todo">到期</span><span>134 天未被引用</span></div>
+                  <div class="item-meta mono">— 134 天未被引用 · 0 次引用</div>
+                  <div class="item-acts"><button class="btn btn-sm">再留 90 天</button><button class="btn btn-sm btn-danger">归档</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">域统计</h2></div>
+            <div class="list">
+              <div class="item"><div class="item-main">
+                <div class="item-title">个人域</div>
+                <div class="item-meta"><span>7 篇</span><span>958 tokens</span><span>152 行</span></div>
+              </div></div>
+              <div class="item"><div class="item-main">
+                <div class="item-title">工作域</div>
+                <div class="item-meta"><span>35 篇</span><span>63,002 tokens</span><span>2,985 行</span><span class="badge badge-dropped">13 篇超限</span></div>
+              </div></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="grp-head"><h2 class="grp-title">导出</h2></div>
+            <div class="card-meta">导出会包含全部记忆，按当前范围过滤。</div>
+            <div class="item-acts">
+              <button class="btn btn-sm">导出 Markdown</button>
+              <button class="btn btn-sm">导出 JSON</button>
+              <button class="btn btn-sm">仅个人域</button>
+              <button class="btn btn-sm">仅工作域</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 其余 3 个表面 ================= -->
+  <div class="grid2">
+
+    <!-- 表面 2：会话记忆 tab -->
+    <div class="panelbox">
+      <div class="panelbox-head">
+        <svg class="icon" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg>
+        表面 2 · 会话记忆 tab
+        <span class="tag tag-mute">conversation.view</span>
+      </div>
+      <div class="panelbox-body">
+        <div class="grp">
+          <div class="grp-head"><h2 class="grp-title">坑</h2><span class="grp-n">1</span></div>
+          <article class="card">
+            <h3 class="card-title">gslx 无 codegraph 索引，探索退化为 grep→read</h3>
+            <div class="card-meta">0 次被引用 · 1,284 tokens</div>
+          </article>
+        </div>
+        <div class="grp">
+          <div class="grp-head"><h2 class="grp-title">规范</h2><span class="grp-n">2</span></div>
+          <article class="card">
+            <h3 class="card-title">构建交给人工，agent 不代跑</h3>
+            <div class="card-meta mono">work/sz-web/meta/…</div>
+          </article>
+          <article class="card">
+            <h3 class="card-title">代码注释最简，只写非显然的为什么</h3>
+            <div class="card-meta mono">work/sz-web/meta/…</div>
+          </article>
+        </div>
+        <div class="empty" hidden>当前项目还没有相关记忆。</div>
+      </div>
+    </div>
+
+    <!-- 表面 3：右侧栏快速捕获 -->
+    <div class="panelbox">
+      <div class="panelbox-head">
+        <svg class="icon" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        表面 3 · 快速捕获
+        <span class="tag tag-mute">sidebar.right</span>
+      </div>
+      <div class="panelbox-body">
+        <div class="grp"><div class="grp-head"><h2 class="grp-title">快速捕获</h2></div></div>
+        <div class="types" role="group" aria-label="条目类型">
+          <button class="type" aria-pressed="true">想法</button>
+          <button class="type" aria-pressed="false">计划</button>
+          <button class="type" aria-pressed="false">问题</button>
+          <button class="type" aria-pressed="false">待办</button>
+          <button class="type" aria-pressed="false">决策</button>
+        </div>
+        <input class="input" placeholder="想法 / 待办 / 问题，回车即存（输入法上屏不提交）" aria-label="快速捕获输入">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary">存一条</button>
+          <span class="toast">已存入 INBOX：明天问老李影子副本的生成时机</span>
+        </div>
+        <div class="card-meta">刚刚捕获</div>
+        <div class="card">
+          <div class="card-title">明天问老李影子副本的生成时机</div>
+          <div class="card-meta">想法 · 2026-11-05</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 表面 4：/remember -->
+    <div class="panelbox">
+      <div class="panelbox-head">
+        <svg class="icon" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>
+        表面 4 · /remember
+        <span class="tag tag-mute">inputTriggers</span>
+      </div>
+      <div class="panelbox-body">
+        <div class="slashbox">
+          <span class="mono" style="font-size:14px">/</span>
+          <input value="rem" aria-label="输入框">
+          <button class="send" aria-label="发送"><svg class="icon" aria-hidden="true"><path d="m5 12 14-7-7 14-2-5-5-2Z"/></svg></button>
+        </div>
+        <div class="slash-pop">
+          <div class="pop-head">记忆</div>
+          <button class="pop-item" aria-selected="true">
+            <span class="pop-key">/remember</span>
+            <span>把一句话存进记忆库</span>
+            <span class="pop-desc">回车即存</span>
+          </button>
+        </div>
+        <div class="card-meta">回车后直接写入 <span class="mono">INBOX</span>，不离开输入框。</div>
+        <div class="card" style="background:var(--bg-subtle)">
+          <div class="card-title mono">/remember 明天问老李影子副本的生成时机</div>
+          <div class="card-meta">回车 → 已存入 INBOX，输入框清空</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  // 5 分区切换
+  var navs = document.querySelectorAll('.nav-item');
+  var bodies = document.querySelectorAll('[data-pane-body]');
+  function show(name){
+    bodies.forEach(function(b){
+      var on = b.getAttribute('data-pane-body') === name;
+      if (on) b.removeAttribute('hidden'); else b.setAttribute('hidden','');
+    });
+    navs.forEach(function(n){
+      n.setAttribute('aria-current', n.getAttribute('data-pane') === name ? 'true' : 'false');
+    });
+  }
+  navs.forEach(function(n){
+    n.addEventListener('click', function(){ show(n.getAttribute('data-pane')); });
+  });
+  // 「去总览确认」「去未命中」等跳转
+  document.querySelectorAll('[data-goto]').forEach(function(b){
+    b.addEventListener('click', function(){ show(b.getAttribute('data-goto')); });
+  });
+  // 记忆列表 → 详情
+  document.querySelectorAll('[data-open-detail]').forEach(function(b){
+    b.addEventListener('click', function(){ show('memdetail'); });
+  });
+  document.querySelectorAll('[data-back]').forEach(function(b){
+    b.addEventListener('click', function(){ show(b.getAttribute('data-back')); });
+  });
+
+  // 右侧栏表面切换
+  document.querySelectorAll('.rail-tab').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.rail-tab').forEach(function(x){
+        x.setAttribute('aria-selected', x === t ? 'true' : 'false');
+      });
+    });
+  });
+
+  // 类型切换
+  document.querySelectorAll('.type').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.type').forEach(function(x){
+        x.setAttribute('aria-pressed', x === t ? 'true' : 'false');
+      });
+    });
+  });
+
+  // 深浅色
+  document.getElementById('theme-toggle').addEventListener('click', function(){
+    var h = document.documentElement;
+    h.setAttribute('data-theme', h.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+})();
+</script>
+</body>
+</html>

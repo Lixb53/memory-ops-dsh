@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>记忆库 · Web 管理端设计稿</title>
+<style>
+:root{
+  --bg:#ffffff; --bg-subtle:#fbfbf9; --surface:#ffffff; --surface-hover:#f4f4f0;
+  --border:#e5e4df; --border-strong:#d2d1ca;
+  --fg:#14171c; --fg-2:#545c68; --fg-3:#5f6773; --fg-inv:#ffffff;
+  --accent:#1f4e79; --accent-hover:#17395a; --accent-soft:#edf2f7;
+  --infer:#96570a; --infer-soft:#fdf6e9;
+  --ok:#0d6b3f; --ok-soft:#e9f4ee;
+  --danger:#a92a1e; --danger-soft:#fceceb;
+  --shadow:0 4px 16px rgba(20,23,28,.10);
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+html[data-theme="dark"]{
+  --bg:#161619; --bg-subtle:#1b1b1f; --surface:#1e1e21; --surface-hover:#26262a;
+  --border:#2c2c31; --border-strong:#3a3a41;
+  --fg:#e9e9ee; --fg-2:#b3b3bd; --fg-3:#9296a1; --fg-inv:#151517;
+  --accent:#7fb3dd; --accent-hover:#9ac6ea; --accent-soft:#1e2a36;
+  --infer:#e0a95e; --infer-soft:#2e2418;
+  --ok:#5fc98f; --ok-soft:#16291f;
+  --danger:#ef8b80; --danger-soft:#301a18;
+  --shadow:0 4px 16px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg-subtle);color:var(--fg);font-family:var(--font);
+  font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:var(--accent)}
+.icon{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;stroke-width:1.5;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12px;color:var(--fg-3)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+.app{max-width:1440px;margin:0 auto;min-height:100vh;background:var(--bg);
+  border-left:1px solid var(--border);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.topbar{height:56px;flex:0 0 56px;display:flex;align-items:center;gap:16px;padding:0 24px;
+  border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20;background:var(--bg)}
+.brand{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;letter-spacing:-.01em}
+.brand-mark{width:24px;height:24px;border-radius:6px;background:var(--accent);color:var(--fg-inv);
+  display:grid;place-items:center;flex:0 0 24px}
+.nav{display:flex;gap:2px;margin-left:8px;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav-item{height:32px;padding:0 12px;border-radius:8px;font-size:13px;color:var(--fg-2);
+  display:flex;align-items:center;gap:6px;white-space:nowrap;transition:background 120ms}
+.nav-item:hover{background:var(--surface-hover)}
+.nav-item[aria-selected="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.btn{height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surface);font-size:13px;display:inline-flex;align-items:center;gap:6px;
+  transition:background 120ms,border-color 120ms}
+.btn:hover{background:var(--surface-hover)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--fg-inv)}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-sm{height:32px;padding:0 12px;font-size:13px;border-radius:6px}
+.btn-ghost{border-color:transparent;background:none;color:var(--fg-2)}
+.btn-ghost:hover{background:var(--surface-hover);color:var(--fg)}
+.btn-danger{color:var(--danger);border-color:var(--danger)}
+.btn-danger:hover{background:var(--danger);color:#fff;border-color:var(--danger)}
+.icon-btn{width:34px;height:34px;padding:0;justify-content:center;border-radius:8px}
+
+.state-switch{display:flex;align-items:center;gap:4px;padding:3px;border:1px solid var(--border);
+  border-radius:8px;background:var(--bg-subtle)}
+.state-switch button{height:30px;min-width:44px;padding:0 10px;border-radius:6px;font-size:12px;color:var(--fg-3)}
+.state-switch button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:600;
+  box-shadow:0 1px 2px rgba(0,0,0,.06)}
+
+.page{padding:24px;display:none}
+.page[data-active="true"]{display:block}
+
+.dash{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}
+.dash-main{display:flex;flex-direction:column;gap:24px;min-width:0}
+
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--border);
+  border-radius:12px;overflow:hidden;background:var(--surface)}
+.kpi{padding:16px 18px;border-left:1px solid var(--border);display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi:first-child{border-left:0}
+.kpi-label{font-size:12px;color:var(--fg-3)}
+.kpi-value{font-size:28px;font-weight:600;line-height:1.15;letter-spacing:-.02em;display:flex;align-items:baseline;gap:4px}
+.kpi-value i{font-size:12px;font-weight:400;font-style:normal;color:var(--fg-3)}
+.kpi-value.is-warn{color:var(--infer)}
+.kpi-value.is-ok{color:var(--ok)}
+.kpi-note{font-size:12px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi-note.is-warn{color:var(--infer)}
+.split{height:3px;border-radius:2px;background:var(--border);overflow:hidden;margin:2px 0}
+.split-personal{height:100%;background:var(--accent)}
+
+.card{border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden}
+.card-head{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.card-title{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;
+  font-size:12px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
+.pill-infer{background:var(--infer-soft);color:var(--infer)}
+.pill-ok{background:var(--ok-soft);color:var(--ok)}
+.pill-mute{background:var(--surface-hover);color:var(--fg-3);font-weight:400}
+.card-head-btn{margin-left:auto}
+
+.task{display:flex;gap:12px;padding:14px 18px;border-top:1px solid var(--border);align-items:flex-start}
+.task:first-child{border-top:0}
+.task:hover{background:var(--surface-hover)}
+.task-rail{width:3px;border-radius:2px;background:var(--infer);align-self:stretch;flex:0 0 3px}
+.task-rail.is-danger{background:var(--danger)}
+.task-main{flex:1;min-width:0}
+.task-title{font-size:14px;font-weight:600;line-height:1.5}
+.task-body{font-size:14px;color:var(--fg-2);margin-top:4px;line-height:1.55}
+.task-evidence{font-size:12px;color:var(--fg-3);margin-top:6px;font-family:var(--mono)}
+.task-actions{display:flex;gap:8px;flex:0 0 auto;align-items:center}
+
+.rows{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 84px 76px 72px 88px;gap:12px;align-items:center;
+  padding:10px 18px;border-top:1px solid var(--border);text-align:left;width:100%}
+.row:first-child{border-top:0}
+.row:hover{background:var(--surface-hover)}
+.row-title{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-cat{font-size:12px;color:var(--fg-3)}
+.tag{display:inline-flex;align-items:center;justify-content:center;height:20px;padding:0 8px;
+  border-radius:4px;font-size:12px;font-weight:600;width:fit-content}
+.tag-fact{background:var(--ok-soft);color:var(--ok)}
+.tag-infer{background:var(--infer-soft);color:var(--infer)}
+.tag-danger{background:var(--danger-soft);color:var(--danger)}
+.tag-mute{background:var(--surface-hover);color:var(--fg-3)}
+.row-meta{font-size:12px;color:var(--fg-3);text-align:right}
+
+.side{display:flex;flex-direction:column;gap:16px}
+.side-card{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:14px 16px}
+.side-title{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.side-title h2{font-size:13px;font-weight:600}
+.bar{height:4px;border-radius:2px;background:var(--border);overflow:hidden;margin:6px 0}
+.bar-fill{height:100%;background:var(--accent)}
+.bar-fill.is-warn{background:var(--infer)}
+.dom{margin-bottom:14px}
+.dom:last-child{margin-bottom:0}
+.dom-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.dom-name{font-size:12px;font-weight:600}
+.dom-num{font-size:12px;color:var(--fg-3)}
+.dom-note{font-size:12px;color:var(--fg-3);margin-top:2px}
+.dom-note.is-warn{color:var(--infer)}
+.mat{display:flex;flex-direction:column;gap:8px}
+.mat-row{display:grid;grid-template-columns:64px 1fr 34px;gap:8px;align-items:center}
+.mat-name{font-size:12px;color:var(--fg-2)}
+.mat-bar{height:4px;border-radius:2px;background:var(--border);overflow:hidden}
+.mat-bar span{display:block;height:100%;background:var(--accent)}
+.mat-num{font-size:12px;color:var(--fg-3);text-align:right}
+
+.miss-head{display:flex;align-items:center;gap:12px;padding:0 0 16px}
+.miss-head h1{font-size:20px;font-weight:600;letter-spacing:-.02em}
+.miss-head p{font-size:13px;color:var(--fg-3);margin-top:2px}
+.miss-bands{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--border);
+  border-radius:12px;overflow:hidden;background:var(--surface);margin-bottom:16px}
+.band{padding:12px 16px;border-left:1px solid var(--border);text-align:center}
+.band:first-child{border-left:0}
+.band-v{font-size:18px;font-weight:600;line-height:1.2}
+.band-l{font-size:12px;color:var(--fg-3);margin-top:2px}
+.zone{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
+.zone-head{display:flex;align-items:center;gap:10px}
+.zone-head h2{font-size:14px;font-weight:600}
+.zone-hint{font-size:12px;color:var(--fg-3);line-height:1.4}
+.bulkbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--accent);
+  border-radius:8px;background:var(--accent-soft);font-size:12px;margin-bottom:12px}
+.cluster{display:flex;gap:12px;padding:12px 16px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);align-items:flex-start}
+.cluster:hover{border-color:var(--border-strong)}
+.check{width:18px;height:18px;accent-color:var(--accent);margin-top:1px;flex:0 0 18px}
+.cluster-main{flex:1;min-width:0}
+.cluster-q{font-size:13px;font-weight:600;font-family:var(--mono)}
+.cluster-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--fg-3);margin-top:5px}
+
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.field{height:34px;padding:0 12px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);color:var(--fg);font:inherit;font-size:13px}
+.field:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.search{display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid var(--border);
+  border-radius:8px;background:var(--surface);min-width:240px;flex:1;max-width:360px}
+.search input{border:0;background:none;outline:none;font:inherit;font-size:13px;color:var(--fg);flex:1;min-width:0}
+.search .icon{color:var(--fg-3)}
+.count{font-size:12px;color:var(--fg-3);margin-left:auto}
+.tbl-wrap{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface)}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl thead th{background:var(--bg-subtle);text-align:left;font-size:12px;font-weight:600;
+  color:var(--fg-3);padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl tbody tr{border-bottom:1px solid var(--border)}
+.tbl tbody tr:last-child{border-bottom:0}
+.tbl tbody tr:hover{background:var(--surface-hover)}
+.tbl td{padding:10px 14px;vertical-align:top}
+.tbl .cell-content{max-width:520px}
+.content-line{display:block;line-height:1.5;overflow-wrap:anywhere}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:4px;
+  font-size:12px;font-weight:600}
+.badge-open{background:var(--accent-soft);color:var(--accent)}
+.badge-todo{background:var(--infer-soft);color:var(--infer)}
+.badge-done{background:var(--ok-soft);color:var(--ok)}
+.badge-dropped{background:var(--surface-hover);color:var(--fg-3)}
+.row-acts{display:flex;gap:6px;flex-wrap:wrap}
+.mini{height:32px;min-width:44px;padding:0 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);
+  font-size:13px;color:var(--fg-2)}
+.mini:hover{background:var(--surface-hover);color:var(--fg)}
+.mini-danger:hover{background:var(--danger);color:#fff;border-color:var(--danger)}
+
+.detail{display:grid;grid-template-columns:320px minmax(0,1fr);gap:20px;align-items:start}
+.list-pane{border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden}
+.list-search{padding:10px 12px;border-bottom:1px solid var(--border)}
+.list-items{max-height:calc(100vh - 260px);overflow:auto}
+.list-item{display:block;width:100%;text-align:left;padding:10px 14px;
+  border-bottom:1px solid var(--border);background:none}
+.list-item:last-child{border-bottom:0}
+.list-item:hover{background:var(--surface-hover)}
+.list-item[aria-selected="true"]{background:var(--accent-soft)}
+.li-title{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li-meta{display:flex;gap:8px;font-size:12px;color:var(--fg-3);margin-top:3px}
+.detail-pane{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:18px 20px;min-width:0}
+.detail-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:6px}
+.detail-head h1{font-size:20px;font-weight:600;letter-spacing:-.02em;line-height:1.35;flex:1;min-width:0}
+.detail-meta{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--fg-3);margin-bottom:14px}
+.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);margin-left:auto}
+.seg button{height:26px;padding:0 10px;border-radius:6px;font-size:12px;color:var(--fg-3)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.code{background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;padding:14px 16px;
+  font-family:var(--mono);font-size:12px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere;
+  color:var(--fg-2);max-height:420px;overflow:auto}
+.refs{margin-top:16px;border-top:1px solid var(--border);padding-top:14px}
+.refs h2{font-size:13px;font-weight:600;margin-bottom:8px}
+.ref-row{display:flex;gap:10px;font-size:12px;color:var(--fg-3);padding:4px 0;font-family:var(--mono)}
+
+.skeleton{display:flex;flex-direction:column;gap:10px;padding:18px}
+.sk-row{height:44px;border-radius:8px;background:var(--surface-hover)}
+.empty{padding:44px 24px;text-align:center;border:1px dashed var(--border);border-radius:12px}
+.empty-icon{width:36px;height:36px;border-radius:10px;background:var(--accent-soft);color:var(--accent);
+  display:grid;place-items:center;margin:0 auto 12px}
+.empty h3{font-size:14px;font-weight:600}
+.empty p{font-size:13px;color:var(--fg-3);margin:6px 0 14px;line-height:1.6}
+.err{border-color:var(--danger)}
+.err .empty-icon{background:var(--danger-soft);color:var(--danger)}
+
+.spec-note{display:flex;gap:8px;align-items:center;padding:8px 24px;background:var(--infer-soft);
+  color:var(--infer);font-size:13px;line-height:1.5;border-bottom:1px solid var(--border)}
+
+@media (max-width:1200px){
+  .dash{grid-template-columns:minmax(0,1fr)}
+  .side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:900px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi:nth-child(3){border-left:0}
+  .detail{grid-template-columns:minmax(0,1fr)}
+  .row{grid-template-columns:minmax(0,1fr) 76px 64px}
+  .row-meta:nth-child(4),.row-meta:nth-child(5){display:none}
+}
+@media (max-width:760px){
+  /* 状态切换器是验收工具，移动端不占顶栏空间 */
+  .state-switch{display:none}
+  .btn,.btn-sm,.mini,.field{min-height:44px}
+  .nav-item{min-height:44px}
+  .topbar{padding:0 16px;gap:12px}
+  .nav{display:none}
+  .page{padding:16px}
+  .side{grid-template-columns:minmax(0,1fr)}
+  .kpis{grid-template-columns:minmax(0,1fr)}
+  .kpi{border-left:0;border-top:1px solid var(--border)}
+  .kpi:first-child{border-top:0}
+  .miss-bands{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tbl thead{display:none}
+  .tbl td{display:block;padding:6px 14px}
+  .tbl .cell-content{max-width:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="spec-note">
+    <span><b>设计稿</b>：按 packages/memory-web 最新代码重建；数据取自真实记忆库（286 tokens / 42 篇 / 个人域 7 / 工作域 35）。队列区的推断与到期条目为形态示意。</span>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"><svg class="icon" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg></span>
+      记忆库
+    </div>
+    <nav class="nav" role="tablist" aria-label="主导航">
+      <button class="nav-item" role="tab" aria-selected="true" data-go="overview">总览</button>
+      <button class="nav-item" role="tab" aria-selected="false" data-go="misses">未命中</button>
+      <button class="nav-item" role="tab" aria-selected="false" data-go="inbox">记录流</button>
+      <button class="nav-item" role="tab" aria-selected="false" data-go="detail">记忆详情</button>
+    </nav>
+    <div class="topbar-right">
+      <div class="state-switch" role="group" aria-label="状态预览">
+        <button aria-pressed="true" data-state="normal">正常</button>
+        <button aria-pressed="false" data-state="loading">加载</button>
+        <button aria-pressed="false" data-state="empty">空</button>
+        <button aria-pressed="false" data-state="error">错误</button>
+        <button aria-pressed="false" data-state="denied">无权限</button>
+      </div>
+      <button class="btn icon-btn" id="theme-toggle" aria-label="切换深浅色">
+        <svg class="icon" aria-hidden="true"><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 3v2M12 19v2M3 12h2M19 12h2"/></svg>
+      </button>
+      <button class="btn btn-primary">
+        <svg class="icon" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>记一条
+      </button>
+    </div>
+  </header>
+
+  <main class="page" data-active="true" data-page="overview">
+    <div class="dash">
+      <div class="dash-main">
+        <div data-view="normal">
+          <div class="kpis">
+            <div class="kpi">
+              <span class="kpi-label">常驻前缀</span>
+              <span class="kpi-value num">286<i>tokens/请求</i></span>
+              <span class="kpi-note">弃用的 knowledge 为 4,120</span>
+            </div>
+            <div class="kpi">
+              <span class="kpi-label">记忆总量</span>
+              <span class="kpi-value num">42<i>篇</i></span>
+              <div class="split" aria-hidden="true"><div class="split-personal" style="width:17%"></div></div>
+              <span class="kpi-note">个人 7 · 工作 35 · 共 212 KB</span>
+            </div>
+            <div class="kpi">
+              <span class="kpi-label">近 30 天 agent 引用</span>
+              <span class="kpi-value num is-warn">0<i>次</i></span>
+              <span class="kpi-note is-warn">未命中 1 次观察中</span>
+            </div>
+            <div class="kpi">
+              <span class="kpi-label">待你处理</span>
+              <span class="kpi-value num is-warn">3<i>条</i></span>
+              <span class="kpi-note">2 推断 · 1 到期</span>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:24px">
+            <div class="card-head">
+              <h2 class="card-title">待你处理</h2>
+              <span class="pill pill-infer">3 条</span>
+              <span class="pill pill-mute">推断不进档案，确认才落</span>
+            </div>
+            <div class="task">
+              <div class="task-rail"></div>
+              <div class="task-main">
+                <div class="task-title">偏好先给结论，再展开推理</div>
+                <div class="task-body">我从对话里总结的模式，未经你确认不会进档案（3 次会话支持）</div>
+                <div class="task-evidence">— 2026-11-02 · 3 次会话支持</div>
+              </div>
+              <div class="task-actions">
+                <button class="btn btn-sm btn-primary">确认</button>
+                <button class="btn btn-sm">驳回</button>
+              </div>
+            </div>
+            <div class="task">
+              <div class="task-rail"></div>
+              <div class="task-main">
+                <div class="task-title">交付前必须跑一遍机器验收，不靠肉眼判断</div>
+                <div class="task-body">我从对话里总结的模式，未经你确认不会进档案（2 次会话支持）</div>
+                <div class="task-evidence">— 2026-11-03 · 2 次会话支持</div>
+              </div>
+              <div class="task-actions">
+                <button class="btn btn-sm btn-primary">确认</button>
+                <button class="btn btn-sm">驳回</button>
+              </div>
+            </div>
+            <div class="task">
+              <div class="task-rail is-danger"></div>
+              <div class="task-main">
+                <div class="task-title">sz-web 子模块独立 codegraph 设计</div>
+                <div class="task-body">134 天未被引用，按到期退役规则进入待处理队列</div>
+                <div class="task-evidence">— 134 天未被引用 · 0 次引用</div>
+              </div>
+              <div class="task-actions">
+                <button class="btn btn-sm">再留 90 天</button>
+                <button class="btn btn-sm btn-danger">归档</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:24px">
+            <div class="card-head">
+              <h2 class="card-title">最近更新</h2>
+              <span class="pill pill-mute">42 篇</span>
+              <button class="btn btn-sm btn-ghost card-head-btn">全部 42 篇 →</button>
+            </div>
+            <div class="rows">
+              <button class="row">
+                <span class="row-title">INBOX</span>
+                <span class="row-cat">捕获流</span>
+                <span class="tag tag-fact">新</span>
+                <span class="row-meta num">424 tok</span>
+                <span class="row-meta num">2026-11-04</span>
+              </button>
+              <button class="row">
+                <span class="row-title">目标</span>
+                <span class="row-cat">目标</span>
+                <span class="tag tag-fact">新</span>
+                <span class="row-meta num">74 tok</span>
+                <span class="row-meta num">2026-11-02</span>
+              </button>
+              <button class="row">
+                <span class="row-title">我是谁</span>
+                <span class="row-cat">身份</span>
+                <span class="tag tag-fact">新</span>
+                <span class="row-meta num">73 tok</span>
+                <span class="row-meta num">2026-11-02</span>
+              </button>
+              <button class="row">
+                <span class="row-title">个人域索引</span>
+                <span class="row-cat">索引</span>
+                <span class="tag tag-fact">新</span>
+                <span class="row-meta num">135 tok</span>
+                <span class="row-meta num">2026-11-02</span>
+              </button>
+              <button class="row">
+                <span class="row-title">行为模式（推断层）</span>
+                <span class="row-cat">行为模式</span>
+                <span class="tag tag-infer">推断</span>
+                <span class="row-meta num">90 tok</span>
+                <span class="row-meta num">2026-11-02</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div data-view="loading" hidden>
+          <div class="skeleton">
+            <div class="sk-row" style="height:92px"></div>
+            <div class="sk-row"></div><div class="sk-row"></div><div class="sk-row"></div>
+          </div>
+        </div>
+
+        <div data-view="empty" hidden>
+          <div class="card">
+            <div class="card-head"><h2 class="card-title">待你处理</h2></div>
+            <div class="empty" style="border:0">
+              <div class="empty-icon"><svg class="icon" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg></div>
+              <h3>队列已清空</h3>
+              <p>没有待确认的推断，也没有到期记忆。<br>新记的想法在记录流里。</p>
+              <button class="btn btn-sm btn-primary">去看记录流</button>
+            </div>
+          </div>
+        </div>
+
+        <div data-view="error" hidden>
+          <div class="empty err">
+            <div class="empty-icon"><svg class="icon" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div>
+            <h3>读不到记忆库</h3>
+            <p>目录 ~/.memory-ops 不存在或没有读权限。<br>检查 MEMORY_OPS_ROOT 指向的路径。</p>
+            <button class="btn btn-sm btn-primary">重试</button>
+          </div>
+        </div>
+
+        <div data-view="denied" hidden>
+          <div class="empty">
+            <div class="empty-icon"><svg class="icon" aria-hidden="true"><path d="M6 11V7a6 6 0 0 1 12 0v4M5 11h14v10H5z"/></svg></div>
+            <h3>没有访问权限</h3>
+            <p>当前会话无权读取该记忆库。<br>换一个有权限的会话，或调整 MEMORY_OPS_ROOT。</p>
+          </div>
+        </div>
+      </div>
+
+      <aside class="side">
+        <section class="side-card">
+          <div class="side-title">
+            <h2>域概览</h2>
+            <span class="pill pill-mute">两域物理隔离</span>
+          </div>
+          <div class="dom">
+            <div class="dom-row"><span class="dom-name">个人域</span><span class="dom-num num">7 篇 · 958 tok</span></div>
+            <div class="bar"><div class="bar-fill" style="width:18%"></div></div>
+            <div class="dom-note">152 行 · 全部在 80 行内</div>
+          </div>
+          <div class="dom">
+            <div class="dom-row"><span class="dom-name">工作域</span><span class="dom-num num">35 篇 · 63,002 tok</span></div>
+            <div class="bar"><div class="bar-fill is-warn" style="width:88%"></div></div>
+            <div class="dom-note is-warn">2,985 行 · 13 篇超限必须压缩</div>
+          </div>
+          <div class="dom">
+            <div class="dom-row"><span class="dom-name">工作域项目</span><span class="dom-num num">1 个</span></div>
+            <div class="dom-note">sz-web</div>
+          </div>
+        </section>
+
+        <section class="side-card">
+          <div class="side-title">
+            <h2>档案成熟度</h2>
+            <span class="pill pill-mute">≤ 80 行</span>
+          </div>
+          <div class="mat">
+            <div class="mat-row"><span class="mat-name">identity</span><div class="mat-bar"><span style="width:26%"></span></div><span class="mat-num num">21</span></div>
+            <div class="mat-row"><span class="mat-name">preferences</span><div class="mat-bar"><span style="width:30%"></span></div><span class="mat-num num">24</span></div>
+            <div class="mat-row"><span class="mat-name">principles</span><div class="mat-bar"><span style="width:25%"></span></div><span class="mat-num num">20</span></div>
+            <div class="mat-row"><span class="mat-name">patterns</span><div class="mat-bar"><span style="width:24%"></span></div><span class="mat-num num">19</span></div>
+            <div class="mat-row"><span class="mat-name">goals</span><div class="mat-bar"><span style="width:26%"></span></div><span class="mat-num num">21</span></div>
+            <div class="mat-row"><span class="mat-name">INBOX</span><div class="mat-bar"><span style="width:31%"></span></div><span class="mat-num num">25</span></div>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <main class="page" data-page="misses">
+    <div class="miss-head">
+      <div>
+        <h1>未命中</h1>
+        <p>命中率是结果，未命中才是输入：同一个问题问过 3 次就生成草稿。</p>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <select class="field" aria-label="排序口径">
+          <option>按频率</option><option>按最近</option><option>按会话数</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="miss-bands">
+      <div class="band"><div class="band-v num">1</div><div class="band-l">观察中</div></div>
+      <div class="band"><div class="band-v num" style="color:var(--infer)">2</div><div class="band-l">该补了</div></div>
+      <div class="band"><div class="band-v num">0</div><div class="band-l">已生成草稿</div></div>
+      <div class="band"><div class="band-v num" style="color:var(--ok)">0</div><div class="band-l">已验证生效</div></div>
+    </div>
+
+    <div class="bulkbar">
+      <span><b>已选 2 条</b></span>
+      <button class="btn btn-sm btn-primary">一次补齐选中</button>
+      <button class="btn btn-sm">取消选择</button>
+    </div>
+
+    <div class="zone">
+      <div class="zone-head">
+        <h2>该补了</h2><span class="pill pill-infer">2</span>
+        <span class="zone-hint">≥3 次未命中，生成草稿进 INBOX</span>
+        <button class="mini" style="margin-left:auto">全选</button>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" checked aria-label="选中 grep read 聚类">
+        <div class="cluster-main">
+          <div class="cluster-q">"codegraph 索引没建"</div>
+          <div class="cluster-meta"><span>5 次未命中</span><span>3 个会话</span><span>最近 2026-11-02</span><span class="tag tag-infer">可补</span></div>
+        </div>
+        <button class="btn btn-sm">补一条进 INBOX</button>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" checked aria-label="选中 子模块映射 聚类">
+        <div class="cluster-main">
+          <div class="cluster-q">"gslx 定制页面怎么加"</div>
+          <div class="cluster-meta"><span>4 次未命中</span><span>2 个会话</span><span>最近 2026-10-28</span><span class="tag tag-infer">可补</span></div>
+        </div>
+        <button class="btn btn-sm">补一条进 INBOX</button>
+      </div>
+    </div>
+
+    <div class="zone">
+      <div class="zone-head">
+        <h2>观察中</h2><span class="pill pill-mute">1</span>
+        <span class="zone-hint">还没攒够 3 次，先记着</span>
+      </div>
+      <div class="cluster">
+        <input class="check" type="checkbox" disabled aria-label="样本不足，不可选">
+        <div class="cluster-main">
+          <div class="cluster-q">"grep read"</div>
+          <div class="cluster-meta"><span>1 次未命中</span><span>1 个会话</span><span>最近 2026-11-02</span><span class="tag tag-mute">观察中</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="zone">
+      <div class="zone-head">
+        <h2>已补</h2><span class="pill pill-ok">0</span>
+        <span class="zone-hint">草稿已进 INBOX，等下次检索验证</span>
+      </div>
+      <div class="empty">
+        <div class="empty-icon"><svg class="icon" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg></div>
+        <h3>还没有补齐过的条目</h3>
+        <p>从上「该补了」区选条目补齐后，这里会显示验证进度。</p>
+      </div>
+    </div>
+  </main>
+
+  <main class="page" data-page="inbox">
+    <div class="toolbar">
+      <div class="search">
+        <svg class="icon" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM21 21l-4.3-4.3"/></svg>
+        <input type="search" placeholder="过滤记录内容或类型…" aria-label="过滤记录">
+      </div>
+      <select class="field" aria-label="状态筛选">
+        <option>全部状态</option><option>open</option><option>todo</option><option>done</option><option>dropped</option>
+      </select>
+      <select class="field" aria-label="类型筛选">
+        <option>全部类型</option><option>想法</option><option>计划</option><option>问题</option><option>待办</option><option>决策</option>
+      </select>
+      <span class="count num">共 6 条</span>
+    </div>
+
+    <div class="bulkbar">
+      <span><b>已选 2 条</b></span>
+      <button class="btn btn-sm">批量标为完成</button>
+      <button class="btn btn-sm">批量丢弃</button>
+      <button class="btn btn-sm btn-danger">批量删除</button>
+      <button class="btn btn-sm btn-ghost">取消</button>
+    </div>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="width:36px"><input class="check" type="checkbox" aria-label="全选"></th>
+            <th style="width:110px">状态</th>
+            <th>内容</th>
+            <th style="width:76px">类型</th>
+            <th style="width:104px">日期</th>
+            <th style="width:150px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><input class="check" type="checkbox" checked aria-label="选中第 8 行"></td>
+            <td><span class="badge badge-dropped">dropped</span></td>
+            <td class="cell-content"><span class="content-line">记忆详情一直是加载中，没有内容显示</span></td>
+            <td>问题</td>
+            <td class="num">2026-11-03</td>
+            <td><div class="row-acts"><button class="mini">提升</button><button class="mini mini-danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" aria-label="选中第 9 行"></td>
+            <td><span class="badge badge-done">done</span></td>
+            <td class="cell-content"><span class="content-line">在记一条中，记录了一个bug，会出现在记录流中，但是不明白的是，这样设计的核心意义是什么</span></td>
+            <td>问题</td>
+            <td class="num">2026-11-03</td>
+            <td><div class="row-acts"><span class="mono">git:a6579e9</span></div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" checked aria-label="选中第 10 行"></td>
+            <td><span class="badge badge-done">done</span></td>
+            <td class="cell-content"><span class="content-line">记录流中的某一条错误记录，现在想彻底删除，但是不支持</span></td>
+            <td>问题</td>
+            <td class="num">2026-11-03</td>
+            <td><div class="row-acts"><span class="mono">git:a95de07</span></div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" aria-label="选中第 11 行"></td>
+            <td><span class="badge badge-done">done</span></td>
+            <td class="cell-content"><span class="content-line">记一条功能中，点击确定/存一条的时候，回车直接就保存了，导致该条内容只记录了一半</span></td>
+            <td>问题</td>
+            <td class="num">2026-11-03</td>
+            <td><div class="row-acts"><span class="mono">git:14e3c6a</span></div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" aria-label="选中第 12 行"></td>
+            <td><span class="badge badge-open">open</span></td>
+            <td class="cell-content"><span class="content-line">可以添加直接浏览记忆文件的功能</span></td>
+            <td>想法</td>
+            <td class="num">2026-11-03</td>
+            <td><div class="row-acts"><button class="mini">提升</button><button class="mini">改状态</button><button class="mini mini-danger">删除</button></div></td>
+          </tr>
+          <tr>
+            <td><input class="check" type="checkbox" aria-label="选中第 13 行"></td>
+            <td><span class="badge badge-open">open</span></td>
+            <td class="cell-content"><span class="content-line">可不可以扩展一条通过文件（各种文档&格式），图片、视频提取内容并存储的功能</span></td>
+            <td>想法</td>
+            <td class="num">2026-11-03</td>
+            <td><div class="row-acts"><button class="mini">提升</button><button class="mini">改状态</button><button class="mini mini-danger">删除</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="empty" style="margin-top:16px;padding:28px 24px">
+      <div class="empty-icon"><svg class="icon" aria-hidden="true"><path d="M4 4h16v16H4zM4 12h4l2 3h4l2-3h4"/></svg></div>
+      <h3>记录流是空的</h3>
+      <p>用输入框的 /remember，或右上角「记一条」快速捕获。</p>
+      <button class="btn btn-sm btn-primary">记一条</button>
+    </div>
+  </main>
+
+  <main class="page" data-page="detail">
+    <div class="detail">
+      <div class="list-pane">
+        <div class="list-search">
+          <div class="search" style="max-width:none">
+            <svg class="icon" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM21 21l-4.3-4.3"/></svg>
+            <input type="search" placeholder="搜索标题与正文…" aria-label="搜索记忆">
+          </div>
+        </div>
+        <div class="list-items">
+          <button class="list-item" aria-selected="true">
+            <div class="li-title">我是谁</div>
+            <div class="li-meta"><span>身份</span><span class="num">73 tok</span><span>新</span></div>
+          </button>
+          <button class="list-item" aria-selected="false">
+            <div class="li-title">工作偏好</div>
+            <div class="li-meta"><span>偏好</span><span class="num">80 tok</span><span>新</span></div>
+          </button>
+          <button class="list-item" aria-selected="false">
+            <div class="li-title">原则</div>
+            <div class="li-meta"><span>原则</span><span class="num">86 tok</span><span>新</span></div>
+          </button>
+          <button class="list-item" aria-selected="false">
+            <div class="li-title">行为模式（推断层）</div>
+            <div class="li-meta"><span>推断</span><span class="num">90 tok</span><span>推断</span></div>
+          </button>
+          <button class="list-item" aria-selected="false">
+            <div class="li-title">目标</div>
+            <div class="li-meta"><span>目标</span><span class="num">74 tok</span><span>新</span></div>
+          </button>
+          <button class="list-item" aria-selected="false">
+            <div class="li-title">INBOX</div>
+            <div class="li-meta"><span>捕获流</span><span class="num">424 tok</span><span>新</span></div>
+          </button>
+          <button class="list-item" aria-selected="false">
+            <div class="li-title">sz-web · 项目梳理文档</div>
+            <div class="li-meta"><span>项目梳理</span><span class="num">1,284 tok</span><span>新</span></div>
+          </button>
+        </div>
+      </div>
+
+      <div class="detail-pane">
+        <div class="detail-head">
+          <h1>我是谁</h1>
+          <span class="tag tag-fact">事实</span>
+          <div class="seg" role="group" aria-label="编辑模式">
+            <button aria-pressed="true">表单</button>
+            <button aria-pressed="false">源码</button>
+          </div>
+        </div>
+        <div class="detail-meta">
+          <span class="mono">personal/identity.md</span>
+          <span class="num">73 tokens</span>
+          <span class="num">21 行 / 上限 80</span>
+          <span>0 次引用</span>
+          <span class="tag tag-mute">从未被引用</span>
+        </div>
+
+        <div class="code">---
+id: personal.identity
+title: 我是谁
+scope: personal
+kind: fact
+layer: l2
+status: active
+pinned: false
+updated: 2026-11-02
+tags: []
+---
+
+# 我是谁
+
+&gt; 事实层：只写我说过或可验证的。推断另放 patterns.md。
+
+## 角色
+-
+
+## 环境
+-</div>
+
+        <div class="refs">
+          <h2>引用记录</h2>
+          <div class="ref-row">还没有任何会话引用过这条记忆</div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-primary">保存更改</button>
+          <button class="btn btn-sm">再留 90 天</button>
+          <button class="btn btn-sm btn-danger">归档退役</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+(function(){
+  // 页面切换
+  var navItems = document.querySelectorAll('.nav-item');
+  var pages = document.querySelectorAll('.page');
+  navItems.forEach(function(item){
+    item.addEventListener('click', function(){
+      navItems.forEach(function(n){ n.setAttribute('aria-selected', n === item ? 'true' : 'false'); });
+      var go = item.getAttribute('data-go');
+      pages.forEach(function(p){
+        p.setAttribute('data-active', p.getAttribute('data-page') === go ? 'true' : 'false');
+      });
+    });
+  });
+
+  // 五态切换：只作用于总览页的数据区
+  var wrap = document.querySelector('[data-page="overview"] .dash-main');
+  var views = wrap.querySelectorAll('[data-view]');
+  document.querySelectorAll('.state-switch button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.state-switch button').forEach(function(b){
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      });
+      var want = btn.getAttribute('data-state');
+      var target = want === 'normal' ? 'normal' : want;
+      views.forEach(function(v){
+        var show = v.getAttribute('data-view') === target;
+        if (show) v.removeAttribute('hidden'); else v.setAttribute('hidden','');
+      });
+    });
+  });
+
+  // 深浅色
+  document.getElementById('theme-toggle').addEventListener('click', function(){
+    var html = document.documentElement;
+    html.setAttribute('data-theme', html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  // 编辑模式切换
+  document.querySelectorAll('.seg button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var group = btn.parentElement;
+      group.querySelectorAll('button').forEach(function(b){
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

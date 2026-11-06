@@ -79,18 +79,18 @@
 **两套界面，但只有一套有代码**：
 
 - **DSH 插件端**：4 表面 + 5 分区 ✅ **已实现**
-- **Web 管理端**：4 视图 ❌ **仅设计稿**（`web-v2.html` / `web-v3.html`）
+- **Web 管理端**：4 视图 ❌ **仅设计稿**（`docs/design/web-v2.html` / `web-v3.html`）
 
 设计稿分两代，**不要混用**：
 
 | 文件 | 内容 | 定位 |
 |---|---|---|
-| `web-v2.html` | Web 端 4 视图 + 五态切换 | 设计稿，**无对应实现** |
-| `plugin-v2.html` | 插件端 4 表面 + 5 分区 | 结构参考，配色与组件未落地 |
-| `web-v3.html` | Web 端 v3（证据链 / 锚点 / 预算账本） | 设计提案，**无对应实现** |
-| `plugin-v3.html` | 插件端 v3 | 设计提案，部分已落地 |
+| `design/web-v2.html` | Web 端 4 视图 + 五态切换 | 设计稿，**无对应实现** |
+| `design/plugin-v2.html` | 插件端 4 表面 + 5 分区 | 结构参考，配色与组件未落地 |
+| `design/web-v3.html` | Web 端 v3（证据链 / 锚点 / 预算账本） | 设计提案，**无对应实现** |
+| `design/plugin-v3.html` | 插件端 v3 | 设计提案，部分已落地 |
 
-> 设计稿通过 `qa.mjs` 三档渲染检查（0 error / 0 warn），
+> 设计稿通过 `docs/design/qa.mjs` 三档渲染检查（0 error / 0 warn），
 > 那只证明 **HTML 本身没坏**，不证明产品实现了。旧文档把两者混为一谈。
 
 ## 进度
@@ -147,13 +147,19 @@ memory-ops/                     仓库根（pnpm monorepo）
 ├── work/sz-web/                35 篇 + index
 └── .state/                     events.jsonl + misses.json
 
-本目录（memory-ops-docs）：
+docs/（文档唯一真相源，2026-11-06 起启用）：
 ├── product.md                  完整设计说明（§二 真实状态 / §十五 对账记录）
 ├── README.md                   本文件
-├── web-v2.html / web-v3.html   Web 端设计稿（无实现）
-├── plugin-v2.html / v3.html    插件端设计稿（结构参考）
-├── qa.mjs                      设计稿机器验收（三档渲染）
-└── shots/ shots-v3/            设计稿截图
+└── design/
+    ├── README.md                     设计稿目录说明
+    ├── web-v2.html / web-v3.html      Web 端设计稿（无实现）
+    ├── plugin-v2.html / v3.html       插件端设计稿（结构参考）
+    ├── qa.mjs                         设计稿机器验收（三档渲染）
+    ├── chrome-qa.sh                   QA 用 Chrome 包装器
+    ├── probe.mjs                      溢出定位探针
+    └── screenshots/
+        ├── v2/                         v2 截图（6 张）
+        └── v3/                         v3 截图（15 张）
 ```
 
 ## 维护约定
