@@ -12,6 +12,7 @@ import {
   type DomainView,
   type OverviewView,
   type ResidentBreakdown,
+  type MissesView,
   type SnapshotView,
 } from '../api.ts'
 import { useBridge } from '../data.ts'
@@ -34,6 +35,8 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
     overLimit: number
     lineLimit: number
   }>('health', {})
+  /** 未命中汇总：「未命中该补了 N 条」也是待办，不该只在「未命中」分区可见。 */
+  const misses = useBridge<MissesView>('misses', {})
 
   if (overview.phase === 'loading') return createElement(Skeleton, { rows: 4, height: 46 })
   if (overview.phase === 'error') {
@@ -48,10 +51,10 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
   const queue = snapshot.data?.queue ?? []
   const healthData = health.data
 
-  function doExport(format: 'markdown' | 'json'): void {
+  function doExport(format: 'markdown' | 'json', domain?: string): void {
     setExporting(true)
     setToast(null)
-    void call<{ filename: string; content: string; count: number }>('export', { format })
+    void call<{ filename: string; content: string; count: number }>('export', { format, domain })
       .then((result) => {
         // 浏览器端直接触发下载；不经过宿主文件系统，避免额外写权限
         const blob = new Blob([result.content], { type: format === 'json' ? 'application/json' : 'text/markdown' })
@@ -187,6 +190,22 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
               },
             }, '再留 90 天'))))),
 
+    /**
+     * 未命中汇总行。
+     *
+     * 设计稿把「未命中该补了 N 条」也列进「待你处理」——因为那确实是一件待办：
+     * 库里没有的东西，只有你能补。早先它只出现在「未命中」分区，
+     * 而用户未必会主动去看那一页。
+     */
+    (misses.data?.counts?.['should-fill'] ?? 0) === 0
+      ? null
+      : createElement('div', { className: 'dmo-card' },
+        createElement('div', { className: 'dmo-card-meta' },
+          createElement(Badge, { tone: 'warn' }, '未命中该补了'),
+          createElement('span', null, `${count(misses.data?.counts?.['should-fill'] ?? 0)} 条`)),
+        createElement('div', { className: 'dmo-card-actions' },
+          createElement(Button, { small: true, onClick: () => { onOpenMemory('') } }, '去未命中 →'))),
+
     // 三率
     createElement('div', { className: 'dmo-lane-head', style: { marginTop: 12 } }, '三率'),
     createElement('div', { className: 'dmo-card' },
@@ -226,7 +245,18 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
     createElement('div', { className: 'dmo-lane-head', style: { marginTop: 12 } }, '导出'),
     createElement('div', { className: 'dmo-card-actions' },
       createElement(Button, { small: true, disabled: exporting, onClick: () => { doExport('markdown') } }, '导出 Markdown'),
-      createElement(Button, { small: true, disabled: exporting, onClick: () => { doExport('json') } }, '导出 JSON')),
+      createElement(Button, { small: true, disabled: exporting, onClick: () => { doExport('json') } }, '导出 JSON'),
+      /** 按域导出：设计稿有「仅个人域 / 仅工作域」，因为两个域的用途完全不同。 */
+      createElement(Button, {
+        small: true, disabled: exporting,
+        onClick: () => { doExport('markdown', 'personal') },
+      }, '仅个人域'),
+      createElement(Button, {
+        small: true, disabled: exporting,
+        onClick: () => { doExport('markdown', 'work/sz-web') },
+      }, '仅工作域')),
+    createElement('div', { className: 'dmo-note' },
+      '导出当前范围全部记忆，含 frontmatter 与证据链。'),
     createElement('div', { className: 'dmo-note' },
       `库根目录：${orEmpty(snapshot.data?.root)} · ${count(data.files)} 篇 · ${count(data.tokens)} tokens`))
 }

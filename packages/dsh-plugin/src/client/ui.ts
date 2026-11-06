@@ -265,3 +265,98 @@ export function SelectionBar({ count: selected, total, busy, children, onClear }
     children,
     h(Button, { small: true, disabled: busy === true, onClick: onClear }, '清空选择'))
 }
+
+// ============================================================
+// v3.5 补齐设计稿里的组件
+// ============================================================
+
+/**
+ * 状态筛选药丸（设计稿 `.chip`）。
+ *
+ * 为什么用药丸而不是下拉：这五个状态是**互斥的一次性筛选**，
+ * 下拉要点两下（展开+选择），药丸点一下；而且药丸能直接带上计数，
+ * 让「有多少条待确认」在不展开的情况下可见。
+ */
+export function Chip({ label, count: num, active, onClick }: {
+  label: string
+  count?: number
+  active: boolean
+  onClick: () => void
+}): ReactNode {
+  return h('button', {
+    type: 'button',
+    className: 'dmo-chip',
+    'aria-pressed': active,
+    onClick,
+  },
+  label,
+  num === undefined ? null : h('span', { className: 'dmo-chip-num' }, num))
+}
+
+/**
+ * 五态计数条（设计稿 `.band`）。
+ *
+ * 把「观察 / 该补 / 草稿 / 验证 / 生效」并排显示，
+ * 一眼能看出漏斗卡在哪一级——这是未命中工作台存在的意义。
+ * 早先拆成 3 个 KPI，恰恰丢掉了「漏斗形状」这个信息。
+ */
+export function Band({ cells }: {
+  cells: { label: string; value: number; tone?: 'idle' | 'warn' | 'ok'; active?: boolean }[]
+}): ReactNode {
+  return h('div', { className: 'dmo-band', role: 'group', 'aria-label': '未命中五态' },
+    cells.map(cell => h('div', {
+      key: cell.label,
+      className: 'dmo-band-cell',
+      'data-tone': cell.tone ?? 'idle',
+      'data-active': cell.active === true ? 'true' : undefined,
+    },
+    h('div', { className: 'dmo-band-v' }, cell.value),
+    h('div', { className: 'dmo-band-l', title: cell.label }, cell.label))))
+}
+
+/** 分组容器（设计稿 `.grp`）：标题 + 计数 + 内容。 */
+export function Group({ title, count: num, children, action }: {
+  title: string
+  count?: number | string
+  children?: ReactNode
+  action?: ReactNode
+}): ReactNode {
+  return h('div', { className: 'dmo-group' },
+    h('div', { className: 'dmo-group-head' },
+      h('h3', { className: 'dmo-group-title' }, title),
+      num === undefined ? null : h('span', { className: 'dmo-group-count' }, num),
+      action === undefined ? null : h('span', { style: { marginLeft: 'auto' } }, action)),
+    children)
+}
+
+/**
+ * 直角小签（设计稿 `.tag`）。
+ *
+ * 与 `Badge` 的区别是有意的：badge 是圆角药丸，用于状态；
+ * tag 是直角细框，用于「类别 / 事实类型」这类**名词性**标注。
+ * 两种形状并存，用户能一眼分出「这是状态」还是「这是分类」。
+ */
+export function Tag({ tone = 'mute', children }: {
+  tone?: 'fact' | 'infer' | 'mute'
+  children?: ReactNode
+}): ReactNode {
+  return h('span', { className: `dmo-tag dmo-tag-${tone}` }, children)
+}
+
+/** 锚点状态条（设计稿 `.anchor-note`）：说清「为什么判失效」，不只是给个徽标。 */
+export function AnchorNote({ state, children }: {
+  state: 'fresh' | 'stale'
+  children?: ReactNode
+}): ReactNode {
+  return h('div', { className: 'dmo-anchor-note', 'data-state': state, role: 'note' }, children)
+}
+
+/** 等宽文本（路径 / hash / 数字）。 */
+export function Mono({ children }: { children?: ReactNode }): ReactNode {
+  return h('span', { className: 'dmo-mono' }, children)
+}
+
+/** 证据引文：自动加「」（设计稿用 `<q>`，这里等价）。 */
+export function Quote({ children }: { children?: ReactNode }): ReactNode {
+  return h('p', { className: 'dmo-quote' }, children)
+}

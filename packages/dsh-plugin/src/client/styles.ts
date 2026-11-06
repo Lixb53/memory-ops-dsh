@@ -230,6 +230,103 @@ const CSS = `
 
 /* —— 侧栏图标 —— */
 .dmo-icon { display: block; }
+/* ============================================================
+ * v3.5 补齐设计稿的视觉件
+ * 设计稿 plugin-v3.html 里这些组件都有，实现一直缺；
+ * 名字沿用设计稿的语义（chip / band / tag / anchor-note），
+ * 但值一律用宿主 token，不写死颜色。
+ * ============================================================ */
+
+/* —— 状态筛选药丸（记忆分区）—— */
+.dmo-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.dmo-chip {
+  appearance: none; border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent; color: var(--dsw-alias-label-secondary);
+  border-radius: 12px; padding: 2px 9px; font: inherit; font-size: 11.5px;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 4px; line-height: 1.6;
+}
+.dmo-chip:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
+.dmo-chip[aria-pressed="true"] {
+  background: var(--dsw-alias-brand-primary); border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-bg-base); font-weight: 600;
+}
+.dmo-chip:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dmo-chip-num { font-variant-numeric: tabular-nums; opacity: .8; }
+
+/* —— 五态计数条（未命中）—— */
+.dmo-band { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 9px; }
+.dmo-band-cell {
+  border: 1px solid var(--dsw-alias-border-l1); border-radius: 7px;
+  padding: 6px 4px; text-align: center; background: var(--dsw-alias-bg-layer-1); min-width: 0;
+}
+.dmo-band-cell[data-active="true"] { border-color: var(--dsw-alias-brand-primary); }
+.dmo-band-v { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.dmo-band-l { font-size: 10px; color: var(--dsw-alias-label-secondary); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dmo-band-cell[data-tone="warn"] .dmo-band-v { color: var(--dsw-alias-state-warn-primary); }
+.dmo-band-cell[data-tone="ok"] .dmo-band-v { color: var(--dsw-alias-state-success-primary); }
+
+/* —— 分组容器（本项目 / 未命中）—— */
+.dmo-group { margin-bottom: 11px; }
+.dmo-group-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.dmo-group-title { font-size: 12px; font-weight: 600; margin: 0; }
+.dmo-group-count { font-size: 10.5px; color: var(--dsw-alias-label-secondary); font-weight: 400; }
+
+/* —— 直角小签（设计稿的 tag，与圆角 badge 区分）—— */
+.dmo-tag {
+  display: inline-flex; align-items: center; gap: 3px; padding: 0 5px;
+  border-radius: 4px; font-size: 10px; font-weight: 600; line-height: 15px;
+  border: 1px solid currentColor; white-space: nowrap; opacity: .95;
+}
+.dmo-tag-fact { color: var(--dsw-alias-state-success-primary); }
+.dmo-tag-infer { color: var(--dsw-alias-state-warn-primary); }
+.dmo-tag-mute { color: var(--dsw-alias-label-secondary); }
+
+/* —— 锚点状态条（详情页）—— */
+.dmo-anchor-note {
+  display: flex; gap: 6px; align-items: flex-start;
+  padding: 6px 9px; border-radius: 6px; font-size: 11.5px; line-height: 1.55;
+  margin: 6px 0;
+}
+.dmo-anchor-note[data-state="stale"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent);
+  border-left: 3px solid var(--dsw-alias-state-warn-primary);
+}
+.dmo-anchor-note[data-state="fresh"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 9%, transparent);
+  border-left: 3px solid var(--dsw-alias-state-success-primary);
+}
+.dmo-anchor-note code, .dmo-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; }
+
+/* —— 证据引文（设计稿用 <q> 自动加「」）—— */
+.dmo-quote { margin: 0; font-size: 11.5px; line-height: 1.55; }
+.dmo-quote::before { content: "「"; }
+.dmo-quote::after { content: "」"; }
+
+/* —— 记录流常驻捕获框 —— */
+.dmo-capture-inline { margin-bottom: 9px; }
+.dmo-capture-inline .dmo-textarea { min-height: 46px; }
+.dmo-capture-hint { font-size: 10.5px; color: var(--dsw-alias-label-secondary); margin-top: 3px; }
+
+/* —— 批量操作高亮条（设计稿 bulk）—— */
+.dmo-bulk {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 8px; margin-bottom: 8px; border-radius: 6px;
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 28%, transparent);
+}
+
+/* —— 「刚刚捕获」紧凑列表（快速捕获）—— */
+.dmo-recent-row {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 4px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); font-size: 11.5px;
+}
+.dmo-recent-row:last-child { border-bottom: 0; }
+.dmo-recent-main { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+.dmo-recent-time { flex: 0 0 auto; font-size: 10px; color: var(--dsw-alias-label-secondary); }
+
+/* —— 类型 chips（快速捕获，替代下拉）—— */
+.dmo-types { display: flex; flex-wrap: wrap; gap: 4px; }
+
 `
 
 /** 注入样式表，返回卸载函数。 */

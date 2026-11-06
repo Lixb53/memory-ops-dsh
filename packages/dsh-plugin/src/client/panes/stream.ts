@@ -14,7 +14,6 @@ import {
   Badge, Button, Empty, ErrorState, Kpi, Skeleton, count, orEmpty, truncate,
 } from '../ui.ts'
 
-/** 记录流分区。 */
 /**
  * 记录流分区。
  *
@@ -25,9 +24,21 @@ import {
 export function StreamPane(): ReactNode {
   const [stateFilter, setStateFilter] = useState('')
   const [kindFilter, setKindFilter] = useState('')
+  const [textFilter, setTextFilter] = useState('')
   const [selected, setSelected] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
+  /**
+   * 常驻捕获框：不管记录流有没有内容，这里都能「记一条」。
+   *
+   * 为什么必须常驻而不是只出现在空态：
+   *   1. 用户的第一动作是「记」，而记录流正是「我记了什么」的地方——
+   *      在一个只能看不能记的页面里，他必须先跳到右侧栏或敲 /remember；
+   *   2. 设计稿把它放在空态里是权宜，因为空态时没别的事可做；
+   *      但**有内容时更需要记**（边看边想到新的），所以这里是常驻。
+   */
+  const [draft, setDraft] = useState('')
+  const [draftKind, setDraftKind] = useState('想法')
 
   const { phase, data, error, reload } = useBridge<InboxView>(
     'inbox',
@@ -52,6 +63,46 @@ export function StreamPane(): ReactNode {
       })
   }
 
+  /**
+   * 在记录流里直接记一条。
+   *
+   * 多行输入走 `captureBatch`：一次贴一段清单是真实用法，
+   * 逐条敲会让人放弃。单行走 `capture` 并保留撤销语义。
+   */
+  function captureHere(): void {
+    const content = draft.trim()
+    if (content === '' || busy) return
+    setBusy(true)
+    setToast(null)
+
+    const lines = content.split('\n').map(line => line.trim()).filter(Boolean)
+    if (lines.length > 1) {
+      void call<{ ok: boolean; accepted?: string[]; blocked?: { line: string; reason: string }[] }>(
+        'captureBatch', { text: content, kind: draftKind, domain: 'personal' },
+      )
+        .then((result) => {
+          const ok = result.accepted?.length ?? 0
+          const blocked = result.blocked?.length ?? 0
+          setToast({
+            ok: blocked === 0,
+            text: blocked === 0
+              ? `已记入 ${ok} 条`
+              : `${ok} 条已记入，${blocked} 条被隐私闸门拦下`,
+          })
+          if (ok > 0) setDraft('')
+          reload()
+        })
+        .catch((failure: unknown) => {
+          setToast({ ok: false, text: failure instanceof Error ? failure.message : String(failure) })
+        })
+        .finally(() => { setBusy(false) })
+      return
+    }
+
+    run(() => call('capture', { content, kind: draftKind, domain: 'personal' }), '已记入记录流')
+    setDraft('')
+  }
+
   if (phase === 'loading') return createElement(Skeleton, { rows: 4, height: 38 })
   if (phase === 'error') {
     return createElement(ErrorState, {
@@ -62,7 +113,13 @@ export function StreamPane(): ReactNode {
   if (data === undefined) return createElement(Skeleton, { rows: 2 })
 
   const throughput = data.throughput
-  const allSelected = data.entries.length > 0 && selected.length === data.entries.length
+  /** 文本过滤：本地过滤，不记账（记账属于检索，这里只是看列表）。 */
+  const entries = textFilter.trim() === ''
+    ? data.entries
+    : data.entries.filter(entry =>
+      `${entry.content} ${entry.kind} ${entry.destination}`.toLowerCase()
+        .includes(textFilter.trim().toLowerCase()))
+  const allSelected = entries.length > 0 && selected.length === entries.length
 
   return createElement('div', null,
     // 吞吐 3 格
@@ -71,8 +128,51 @@ export function StreamPane(): ReactNode {
       createElement(Kpi, { label: '待提升', value: count(throughput.toPromote), note: 'done 无去向' }),
       createElement(Kpi, { label: '已处理', value: count(throughput.done), note: 'done' })),
 
-    // 筛选：两个下拉并列在同一个 row 里
-    createElement('div', { className: 'dmo-row', style: { marginBottom: 8 } },
+    // 常驻捕获：有内容没内容都在，随时能记一条
+    createElement('div', { className: 'dmo-capture-inline' },
+      createElement('textarea', {
+        className: 'dmo-textarea',
+        value: draft,
+        placeholder: '记一条…（⌘/Ctrl + Enter 存入，多行会逐条拆开）',
+        'aria-label': '在记录流中记一条',
+        onChange: (event: { target: { value: string } }) => { setDraft(event.target.value) },
+        onKeyDown: (event: { key: string; metaKey?: boolean; ctrlKey?: boolean; preventDefault(): void }) => {
+          if (event.key === 'Enter' && (event.metaKey === true || event.ctrlKey === true)) {
+            event.preventDefault()
+            captureHere()
+          }
+        },
+      }),
+      createElement('div', { className: 'dmo-row', style: { marginTop: 4 } },
+        createElement('select', {
+          className: 'dmo-select',
+          style: { flex: '0 0 auto', width: 'auto' },
+          value: draftKind,
+          'aria-label': '记录类型',
+          onChange: (event: { target: { value: string } }) => { setDraftKind(event.target.value) },
+        },
+        ['想法', '计划', '问题', '待办', '决策'].map(kind =>
+          createElement('option', { key: kind, value: kind }, kind))),
+        createElement(Button, {
+          small: true,
+          variant: 'primary',
+          disabled: busy || draft.trim() === '',
+          onClick: captureHere,
+        }, busy ? '存入中…' : '记一条'),
+        createElement('span', { className: 'dmo-capture-hint' }, '存入后出现在下方列表')),
+      createElement('div', { className: 'dmo-capture-hint' },
+        '过隐私闸门：密钥 / 私钥 / 身份证 / 内网 IP 会被拒写并留审计')),
+
+    // 筛选：文本 + 两个下拉
+    createElement('div', { className: 'dmo-row', style: { marginBottom: 8, flexWrap: 'wrap' } },
+      createElement('input', {
+        className: 'dmo-input',
+        style: { flex: '1 1 120px' },
+        value: textFilter,
+        placeholder: '过滤记录…',
+        'aria-label': '过滤记录',
+        onChange: (event: { target: { value: string } }) => { setTextFilter(event.target.value) },
+      }),
       createElement('select', {
         className: 'dmo-select',
         value: stateFilter,
@@ -127,11 +227,19 @@ export function StreamPane(): ReactNode {
       },
     }, '删除')),
 
-    data.entries.length === 0
-      ? createElement(Empty, { title: '记录流是空的' },
-        createElement('div', null, '捕获入口在右侧栏与 /remember，一句话就能存。'),
-        createElement('div', { className: 'dmo-row', style: { justifyContent: 'center', marginTop: 9 } },
-          createElement(Button, { onClick: reload }, '重新读取')))
+    entries.length === 0
+      ? createElement(Empty, {
+        title: data.entries.length === 0 ? '记录流是空的' : '没有匹配的记录',
+      },
+      createElement('div', null,
+        data.entries.length === 0
+          ? '用上面的输入框、右侧栏，或 /remember 记一条——回车即存。'
+          : '换个关键词试试。'),
+      createElement('div', { className: 'dmo-row', style: { justifyContent: 'center', marginTop: 9 } },
+        createElement(Button, { variant: 'primary', onClick: () => { reload() } }, '重新读取'),
+        data.entries.length === 0
+          ? null
+          : createElement(Button, { onClick: () => { setTextFilter('') } }, '清空过滤')))
       : createElement('div', null,
         createElement('div', { className: 'dmo-row-item' },
           createElement('input', {
@@ -140,12 +248,12 @@ export function StreamPane(): ReactNode {
             checked: allSelected,
             'aria-label': '全选',
             onChange: () => {
-              setSelected(allSelected ? [] : data.entries.map(entry => entry.lineIndex))
+              setSelected(allSelected ? [] : entries.map(entry => entry.lineIndex))
             },
           }),
           createElement('div', { className: 'dmo-row-main dmo-row-sub' },
             `${count(throughput.total)} 条 · ${orEmpty(data.path)}`)),
-        data.entries.map(entry => createElement(RowItem, {
+        entries.map(entry => createElement(RowItem, {
           key: entry.lineIndex,
           entry,
           checked: selected.includes(entry.lineIndex),

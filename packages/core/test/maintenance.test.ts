@@ -13,7 +13,7 @@ import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
 
 import { createActions } from '../src/actions.ts'
-import { expiryOf } from '../src/schema.ts'
+import { MISS_VERIFY_DAYS, expiryOf } from '../src/schema.ts'
 import { createStore } from '../src/store.ts'
 import { INBOX_HEADER } from '../src/parse.ts'
 import {
@@ -806,5 +806,52 @@ describe('引用时间写回（90 天退役的前提）', () => {
     await store.mergeMeta('personal/notes/keep.md', { kind: 'fact', updated: '2026-11-06' })
     const after = await store.readEntry('personal/notes/keep.md')
     assert.equal(after.updatedAt, '2026-01-01', '修补不该把 updated 刷成今天')
+  })
+})
+
+describe('未命中流水线闭环（验证期能走到「已验证生效」）', () => {
+  it('草稿确认后，同一 query 再被检索命中 3 次 → verified', async () => {
+    const { actions, store } = await freshActions('verify-pipeline')
+    await store.recordMiss({ query: 'grep read 怎么限制' })
+    await actions.missConfirm({
+      query: 'grep read 怎么限制',
+      content: 'grep -m 限制匹配数。',
+    })
+    // 落库后，同样的词再检索三次都能命中 → 补对了
+    for (let i = 0; i < 3; i += 1) {
+      await actions.search({ query: 'grep read 怎么限制' })
+    }
+    const board = assertOk<{ pipeline: Record<string, { query: string }[]>; counts: Record<string, number> }>(
+      await actions.misses(),
+    )
+    assert.equal(board.pipeline.verified.length, 1, '满 3 次命中应转为已验证生效')
+    assert.equal(board.pipeline.verifying.length, 0, '不该还留在验证期内')
+    assert.equal(board.counts.verified, 1, '五态计数条应能看到这个数字')
+  })
+
+  it('验证期给出剩余天数与草稿路径', async () => {
+    const { actions, store } = await freshActions('verify-fields')
+    await store.recordMiss({ query: 'q-x' })
+    await actions.missConfirm({ query: 'q-x', content: '结论。' })
+    const board = assertOk<{
+      pipeline: Record<string, { remainingDays: number | null; draftPath: string | null; hits: number }[]>
+    }>(await actions.misses())
+    const item = board.pipeline.verifying[0]!
+    assert.equal(item.remainingDays, MISS_VERIFY_DAYS, '刚进验证期应剩满窗口天数')
+    assert.match(item.draftPath ?? '', /\.md$/, '草稿路径要能被点开')
+    assert.equal(item.hits, 0)
+  })
+
+  it('未命中记录会话集合，UI 才能显示「M 个会话」', async () => {
+    const { actions, store } = await freshActions('miss-sessions')
+    await store.recordMiss({ query: '共性问题', session: 's1' })
+    await store.recordMiss({ query: '共性问题', session: 's2' })
+    await store.recordMiss({ query: '共性问题', session: 's3' })
+    const board = assertOk<{ pipeline: Record<string, { sessions: number; count: number }[]> }>(
+      await actions.misses(),
+    )
+    const item = board.pipeline['should-fill'][0]!
+    assert.equal(item.count, 3, '问过 3 次')
+    assert.equal(item.sessions, 3, '来自 3 个不同会话')
   })
 })

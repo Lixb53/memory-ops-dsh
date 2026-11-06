@@ -308,3 +308,60 @@ describe('路由接线全表（防止「有路由没入口」回潮）', () => {
     )
   })
 })
+
+describe('设计稿对齐（用户点名的缺口不许回退）', () => {
+  it('记录流有常驻捕获入口，不依赖空态', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'stream.ts'), 'utf8')
+    // 用户原话：不管有没有内容，都应该增加记一条的入口
+    assert.match(text, /dmo-capture-inline/, '必须有常驻捕获框的容器类')
+    assert.match(text, /captureHere/, '必须有提交函数')
+    // 允许跨行写法：`call<...>('\n  'captureBatch', ...` —— 早先的紧贴正则漏判过一次
+    assert.match(text, /call(?:<[^>]*>)?\(\s*['"]capture['"]/s, '单条提交走 capture')
+    assert.match(text, /call(?:<[^>]*>)?\(\s*['"]captureBatch['"]/s, '多行提交走 captureBatch')
+    // 捕获框必须在主 return 里，而不是只在空态分支
+    const mainReturn = text.slice(text.indexOf("return createElement('div', null,"))
+    const emptyIdx = mainReturn.indexOf('记录流是空的')
+    const captureIdx = mainReturn.indexOf('dmo-capture-inline')
+    assert.equal(captureIdx >= 0 && captureIdx < emptyIdx, true,
+      '捕获框要排在空态之前——空态里看不等于「随时可记」')
+  })
+
+  it('记忆分区有带计数的状态药丸', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'memory.ts'), 'utf8')
+    assert.match(text, /dmo-chips/, '状态筛选要用药丸容器')
+    assert.match(text, /Chip/, '用药丸组件')
+    assert.match(text, /statusCounts/, '药丸必须带计数')
+  })
+
+  it('未命中分区有五态计数条', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'misses.ts'), 'utf8')
+    assert.match(text, /Band/, '要用 Band 组件而不是 3 格 KPI')
+    for (const label of ['观察', '该补', '草稿', '验证', '生效']) {
+      assert.equal(text.includes(label), true, `五态缺「${label}」`)
+    }
+  })
+
+  it('验证期能显示命中进度与剩余天数', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'misses.ts'), 'utf8')
+    assert.match(text, /remainingDays/, '剩 N 天必须能显示')
+    assert.match(text, /命中 \$\{count\(item\.hits\)\}\/3/, '命中 x/3 必须能显示')
+  })
+
+  it('列表显示引用次数', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'memory.ts'), 'utf8')
+    assert.match(text, /citeCount/, '引用次数要能在列表看到')
+    assert.match(text, /次引用/, '文案要写清是引用次数')
+  })
+
+  it('快速捕获有类型药丸与「刚刚捕获」回显', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'capture-tab.ts'), 'utf8')
+    assert.match(text, /dmo-types/, '类型改用药丸')
+    assert.match(text, /刚刚捕获/, '要有刚捕获的回显列表')
+  })
+
+  it('总览能把未命中汇总进待办', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'overview.ts'), 'utf8')
+    assert.match(text, /未命中该补了/, '总览待办要包含未命中汇总')
+    assert.match(text, /仅个人域/, '导出要能按域')
+  })
+})

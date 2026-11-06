@@ -10,10 +10,10 @@
 
 import { createElement, useState, type ReactNode } from 'react'
 
-import { call, type SnapshotView } from '../api.ts'
+import { call, type MissesView, type SnapshotView } from '../api.ts'
 import { useBridge } from '../data.ts'
 import {
-  Badge, Button, Empty, ErrorState, Kpi, RejectBox, Skeleton, Stepper,
+  Badge, Button, Empty, ErrorState, Group, Kpi, RejectBox, Skeleton, Stepper,
   count, orEmpty, percent, statusLabel, statusTone, truncate,
 } from '../ui.ts'
 
@@ -28,6 +28,13 @@ export function ProjectPane({ project, onOpenMemory, onGoto }: {
     project === undefined ? {} : { project },
     [project],
   )
+  /**
+   * 本项目页也要能看未命中补齐。
+   *
+   * 设计稿在这里有一个「未命中补齐」分组——因为「这个问题我搜过但库里没有」
+   * 恰恰是最该在本项目语境下补的：你知道它属于这个项目，才写得出结论。
+   */
+  const misses = useBridge<MissesView>('misses', {})
 
   if (phase === 'loading') return createElement(Skeleton, { rows: 3 })
   if (phase === 'error') {
@@ -89,12 +96,53 @@ export function ProjectPane({ project, onOpenMemory, onGoto }: {
           }, item.title),
           ` ${count(item.tokens)}`))),
 
+    /**
+     * 未命中补齐：本项目语境下最该补的那几条。
+     *
+     * 只取「该补了」状态（问过 ≥3 次），并给一个去工作台的出口——
+     * 这里不重复完整流水线，那是「未命中」分区的职责。
+     */
+    (misses.data?.['pipeline']?.['should-fill']?.length ?? 0) === 0
+      ? null
+      : createElement(Group, {
+        title: '未命中补齐',
+        count: `${misses.data?.['pipeline']?.['should-fill']?.length} 条可补`,
+        action: createElement(Button, { small: true, onClick: () => { onGoto('misses') } }, '去工作台 →'),
+      },
+      (misses.data?.['pipeline']?.['should-fill'] ?? []).slice(0, 3).map(item => createElement('div', {
+        key: item.query,
+        className: 'dmo-card',
+      },
+      createElement('div', { className: 'dmo-card-title dmo-mono' }, `"${truncate(item.query, 38)}"`),
+      createElement('div', { className: 'dmo-card-meta' },
+        createElement(Badge, { tone: 'warn' }, '可补'),
+        createElement('span', null, `${count(item.count)} 次未命中`),
+        createElement('span', null, `${count(item.sessions ?? 1)} 个会话`)),
+      createElement('div', { className: 'dmo-card-actions' },
+        createElement(Button, {
+          small: true,
+          onClick: () => {
+            void call('missDraft', { query: item.query, type: '问题' }).then(() => { misses.reload() })
+          },
+        }, '生成草稿'))))),
+
     // 待确认优先置顶：一条一次点击
     queue.length === 0 ? null : createElement('div', { style: { marginBottom: 10 } },
       createElement('div', { className: 'dmo-lane-head' }, '待你处理', createElement('span', { className: 'dmo-lane-count' }, `${queue.length} 条`)),
       queue.slice(0, 5).map(item => createElement(QueueCard, {
         key: item.id, item, onOpenMemory, onChanged: reload,
       }))),
+
+    // 项目名分组标题：设计稿有「sz-web-dzh-gslz · 3 条 · 全部 →」
+    entries.length === 0
+      ? null
+      : createElement(Group, {
+        title: project === undefined ? '相关记忆' : project,
+        count: `${count(entries.length)} 条`,
+        action: entries.length > 12
+          ? createElement(Button, { small: true, onClick: () => { onGoto('memory') } }, '全部 →')
+          : null,
+      }),
 
     entries.length === 0
       ? createElement(Empty, { title: '当前项目还没有相关记忆' },

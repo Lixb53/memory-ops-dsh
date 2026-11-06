@@ -71,6 +71,8 @@ export interface EntryView {
   evidence: { session?: string; excerpt?: string; gate?: string }[]
   anchor: Record<string, string> | null
   expiry: { level: string; days: number | null }
+  /** 被 cite 的次数（真正被用上的次数，不含 recall）。 */
+  citeCount: number
 }
 
 export interface QueueItem {
@@ -193,6 +195,7 @@ export interface DomainEntryView {
   tokens: number
   lines: number
   overLineLimit: boolean
+  citeCount: number
 }
 
 /** 域统计（带明细）。 */
@@ -261,13 +264,25 @@ export interface MissItemView {
   state: string
   drafts: string[]
   wastedTokens: number
+  /** 出现过的会话数（比 count 更能说明是不是共性问题）。 */
+  sessions: number
+  /** 验证期内已命中次数（满 3 次转「已验证生效」）。 */
+  hits: number
+  /** 验证期剩余天数；不在验证期时为 null。 */
+  remainingDays: number | null
+  /** 草稿落库路径（验证期内可点开）。 */
+  draftPath: string | null
 }
 
 export interface MissesView {
   pipeline: Record<string, MissItemView[]>
+  /** 五态各自条数，供顶部计数条直接消费。 */
+  counts: Record<'observing' | 'should-fill' | 'drafting' | 'verifying' | 'verified', number>
   total: number
   conversion: number | null
   verifyDays: number
+  /** 问过几次算「该补了」。 */
+  fillThreshold: number
 }
 
 export interface DetailView {
@@ -291,7 +306,15 @@ export interface SessionMemoryView {
   injected: number
   cited: number
   missed: number
-  reasons: { id: string; title: string; why: string; anchor: Record<string, string> | null; tokens: number }[]
+  reasons: {
+    id: string
+    title: string
+    why: string
+    anchor: Record<string, string> | null
+    /** 锚点当前状态：fresh / stale / none（用于显示 hash 对比与失效提示）。 */
+    anchorState: string
+    tokens: number
+  }[]
   recentMisses: { at: string; query?: string }[]
 }
 

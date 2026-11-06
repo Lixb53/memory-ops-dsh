@@ -8,7 +8,7 @@
 import { createElement, useEffect, useState, type ReactNode } from 'react'
 
 import { call, type CaptureResult } from './api.ts'
-import { Badge, Button, count, orEmpty, truncate } from './ui.ts'
+import { Badge, Button, Chip, count, orEmpty, truncate } from './ui.ts'
 
 /** tab kind（与 sidebarRightTabs 注册时的 kind 一致）。 */
 export const CAPTURE_KIND = 'memory-ops'
@@ -22,6 +22,24 @@ export function CapturePane(): ReactNode {
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<CaptureResult | null>(null)
   const [undo, setUndo] = useState<{ path: string; content: string; lineIndex: number } | null>(null)
+  /**
+   * 「刚刚捕获」：最近 5 条。
+   *
+   * 设计稿有这个分组，理由是「存完立刻能看到它真的进去了」——
+   * 捕获是低压动作，但如果不给回显，用户会反复重存同一条。
+   */
+  const [recent, setRecent] = useState<{ content: string; kind: string; at: string }[]>([])
+
+  // 打开时拉一次，让面板一进来就有历史可看
+  useEffect(() => {
+    void call<{ entries: { content: string; kind: string; date: string }[] }>('inbox', { domain: 'personal' })
+      .then((list) => {
+        setRecent([...list.entries].reverse().slice(0, 5).map(entry => ({
+          content: entry.content, kind: entry.kind, at: entry.date,
+        })))
+      })
+      .catch(() => { /* 拉不到就不显示，不打断捕获 */ })
+  }, [])
   const [seconds, setSeconds] = useState(0)
 
   // 撤销倒计时：30 秒
@@ -79,7 +97,13 @@ export function CapturePane(): ReactNode {
               reason: `${accepted} 条已存入，${blocked.length} 条被拦截：${blocked[0]?.reason ?? ''}`,
             })
           }
-          if (accepted > 0) setText('')
+          if (accepted > 0) {
+            setText('')
+            const stamp = new Date().toISOString().slice(0, 10)
+            setRecent(current => [
+              ...lines.map(line => ({ content: line, kind, at: stamp })), ...current,
+            ].slice(0, 5))
+          }
         })
         .catch((failure: unknown) => {
           setResult({ ok: false, reason: failure instanceof Error ? failure.message : String(failure) })
@@ -95,6 +119,8 @@ export function CapturePane(): ReactNode {
           setText('')
           // 拿不到行号也要能撤销：删除最近一条同内容记录
           setUndo({ path: payload.captured?.path ?? '', content, lineIndex: -1 })
+          const stamp = new Date().toISOString().slice(0, 10)
+          setRecent(current => [{ content, kind, at: stamp }, ...current].slice(0, 5))
         }
       })
       .catch((failure: unknown) => {
@@ -130,13 +156,14 @@ export function CapturePane(): ReactNode {
   }
 
   return createElement('div', { className: 'dmo-capture' },
-    createElement('div', { className: 'dmo-row' },
-      createElement('select', {
-        className: 'dmo-select',
-        value: kind,
-        'aria-label': '记录类型',
-        onChange: (event: { target: { value: string } }) => { setKind(event.target.value) },
-      }, KINDS.map(item => createElement('option', { key: item, value: item }, item)))),
+    // 类型药丸：比下拉少一次点击，且五个类型常驻可见
+    createElement('div', { className: 'dmo-types', role: 'group', 'aria-label': '记录类型' },
+      KINDS.map(item => createElement(Chip, {
+        key: item,
+        label: item,
+        active: kind === item,
+        onClick: () => { setKind(item) },
+      }))),
 
     createElement('textarea', {
       className: 'dmo-textarea dmo-capture-input',
@@ -152,6 +179,8 @@ export function CapturePane(): ReactNode {
       },
     }),
 
+    createElement('div', { className: 'dmo-capture-hint' },
+      '⌘/Ctrl + Enter 存入 · 多行会逐条拆开 · 30 秒内可撤销'),
     createElement('div', { className: 'dmo-capture-foot' },
       createElement(Button, {
         variant: 'primary',
@@ -179,6 +208,14 @@ export function CapturePane(): ReactNode {
                 onClick: () => { setText(result.masked ?? '') },
               }, '填入脱敏文本')))
           : null),
+
+    recent.length === 0 ? null : createElement('div', { style: { marginTop: 10 } },
+      createElement('div', { className: 'dmo-group-head' },
+        createElement('h3', { className: 'dmo-group-title' }, '刚刚捕获'),
+        createElement('span', { className: 'dmo-group-count' }, `${recent.length} 条`)),
+      recent.map((item, index) => createElement('div', { key: `${item.at}-${index}`, className: 'dmo-recent-row' },
+        createElement('span', { className: 'dmo-recent-main' }, truncate(item.content, 42)),
+        createElement('span', { className: 'dmo-recent-time' }, `${item.kind} · ${item.at.slice(5)}`)))),
 
     createElement('div', { className: 'dmo-note' },
       '捕获前过隐私闸门：密钥 / 私钥 / 身份证 / 内网 IP 会被拒写并留审计。'),

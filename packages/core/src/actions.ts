@@ -79,8 +79,14 @@ async function guard<T extends object>(run: () => Promise<T>): Promise<{ ok: tru
   }
 }
 
-/** 条目的对外投影（UI 只需要这些字段）。 */
-function projectEntry(entry: MemoryEntry, nowMs: number) {
+/**
+ * 条目的对外投影（UI 只需要这些字段）。
+ *
+ * `citeCount` 由调用方传入引用计数表——投影本身是纯函数，不读事件流。
+ * 设计稿上每张卡片都显示「N 次引用」，那是判断「这条还活着吗」的关键信号，
+ * 早先只有详情页里有，列表上看不到。
+ */
+function projectEntry(entry: MemoryEntry, nowMs: number, citeCounts?: Map<string, number>) {
   return {
     id: entry.id,
     path: entry.path,
@@ -103,7 +109,19 @@ function projectEntry(entry: MemoryEntry, nowMs: number) {
     evidence: entry.evidence,
     anchor: entry.anchor,
     expiry: expiryOf(entry, nowMs),
+    /** 被 cite 的次数（真正被用上的次数，不含 recall）。 */
+    citeCount: citeCounts?.get(entry.id) ?? 0,
   }
+}
+
+/** 从事件流统计每个条目的 cite 次数。 */
+function citeCountsOf(events: { kind?: string; ids?: string[] }[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const event of events) {
+    if (event.kind !== 'cite') continue
+    for (const id of event.ids ?? []) counts.set(id, (counts.get(id) ?? 0) + 1)
+  }
+  return counts
 }
 
 /** 建能力集合。 */
@@ -139,6 +157,8 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
       const scoped = project !== undefined && project !== null && project !== ''
         || domain !== undefined && domain !== null && domain !== ''
       const stats = store.summarize(scoped ? filtered : entries, events, misses, { nowMs: now() })
+      // 引用次数给列表用：设计稿每张卡片都显示「N 次引用」
+      const citeCounts = citeCountsOf(events)
 
       const queue = filtered
         .filter(entry => needsDecision(entry, now()) || entry.status === 'stale')
@@ -171,7 +191,7 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
         projectScoped: project !== undefined && project !== null && project !== '',
         project: project ?? null,
         domain: domain ?? null,
-        entries: filtered.map(entry => projectEntry(entry, now())),
+        entries: filtered.map(entry => projectEntry(entry, now(), citeCounts)),
         stats,
         queue,
         /**
@@ -365,6 +385,7 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
               tokens: entry.tokens,
               lines: entry.lines,
               overLineLimit: entry.overLineLimit,
+              citeCount: citeCountsOf(events).get(entry.id) ?? 0,
             })),
         })),
         rates: stats.rates,
@@ -555,6 +576,14 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
       if (record) {
         if (result.matched) {
           await store.recordCite({ ids: result.hits.map(hit => hit.id), kind: 'recall', session, query: result.query })
+          /**
+           * 命中时推进「验证期」进度。
+           *
+           * 未命中流水线的最后一态（验证期内 → 已验证生效）依赖这个计数：
+           * 草稿落库后，同一个 query 再被检索且**能命中**，说明补对了。
+           * 早先没人写 `hits`，所以最后一态永远是空抽屉。
+           */
+          await store.recordVerifyHit({ query: result.query })
         } else {
           await store.recordMiss({ query: result.query, session })
         }
@@ -712,12 +741,26 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
       const pipeline: Record<string, {
         query: string; count: number; at: string; lastAt: string; state: string
         drafts: string[]; wastedTokens: number
+        /** 出现过的会话数（比 count 更能说明是不是共性问题）。 */
+        sessions: number
+        /** 验证期内已命中次数（满 3 次转「已验证生效」）。 */
+        hits: number
+        /** 验证期剩余天数；不在验证期时为 null。 */
+        remainingDays: number | null
+        /** 草稿落库路径（验证期内点开能跳过去）。 */
+        draftPath: string | null
       }[]> = {
         observing: [], 'should-fill': [], drafting: [], verifying: [], verified: [],
       }
+      const nowMs = now()
       for (const miss of list) {
         const state = miss.state ?? 'observing'
         const bucket = pipeline[state] ?? pipeline.observing
+        // 验证期剩余天数：从进入验证期的时刻起算，缺字段时退回最近活动时间
+        const startedMs = Date.parse(miss.verifyAt ?? miss.stateAt ?? miss.lastAt ?? miss.at)
+        const elapsedDays = Number.isFinite(startedMs)
+          ? Math.floor((nowMs - startedMs) / 86_400_000)
+          : null
         bucket.push({
           query: miss.query,
           count: miss.count ?? 1,
@@ -727,6 +770,12 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
           drafts: miss.drafts ?? [],
           // 平均多花多少 token：一次未命中意味着模型多试一轮，按 120 tokens 估
           wastedTokens: (miss.count ?? 1) * 120,
+          sessions: (miss.sessions ?? [miss.session]).length,
+          hits: miss.hits ?? 0,
+          remainingDays: state === 'verifying' && elapsedDays !== null
+            ? Math.max(0, MISS_VERIFY_DAYS - elapsedDays)
+            : null,
+          draftPath: miss.draftPath ?? null,
         })
       }
       // **按频率降序**：未命中表的价值全在「哪条问得最多」。
@@ -737,9 +786,19 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
       }
       return {
         pipeline,
+        /** 五态各自的条数，供 UI 顶部计数条直接消费（不必自己数）。 */
+        counts: {
+          observing: pipeline.observing.length,
+          'should-fill': pipeline['should-fill'].length,
+          drafting: pipeline.drafting.length,
+          verifying: pipeline.verifying.length,
+          verified: pipeline.verified.length,
+        },
         total: list.length,
         conversion: list.length === 0 ? null : pipeline.verified.length / list.length,
         verifyDays: MISS_VERIFY_DAYS,
+        /** 阈值：问过几次算「该补了」。UI 上要能说清这个数字的来源。 */
+        fillThreshold: 3,
       }
     })
   }
@@ -798,7 +857,9 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
         },
         body: `\n# ${query}\n\n${text}\n`,
       })
-      const updated = await store.updateMiss({ query, state: 'verifying', draftId: entry.id })
+      const updated = await store.updateMiss({
+        query, state: 'verifying', draftId: entry.id, draftPath: relPath,
+      })
       await store.appendEvent({ session, kind: 'miss-confirm', ids: [entry.id], query })
       return {
         entry: { id: entry.id, path: relPath },
@@ -891,16 +952,23 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
       const missesRecent = recent.filter(event => event.kind === 'miss').slice(-10)
       const reasons: {
         id: string; title: string; why: string
-        anchor: Record<string, string> | null; tokens: number
+        anchor: Record<string, string> | null
+        anchorState: string
+        tokens: number
       }[] = []
       if (typeof query === 'string' && query.trim() !== '') {
         const result = searchEntries(entries, query, { project })
         for (const hit of result.hits.slice(0, 5)) {
+          const matched = entries.find(entry => entry.id === hit.id)
           reasons.push({
             id: hit.id,
             title: hit.title,
             why: `关键词命中：${result.terms.join(' ')}`,
-            anchor: entries.find(entry => entry.id === hit.id)?.anchor ?? null,
+            anchor: matched?.anchor ?? null,
+            /** 锚点状态：让「为什么注入」能说清是命中了内容还是命中了失效锚点。 */
+            anchorState: matched?.status === 'stale'
+              ? 'stale'
+              : matched?.anchor === null || matched?.anchor === undefined ? 'none' : 'fresh',
             tokens: hit.tokens,
           })
         }

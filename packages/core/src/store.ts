@@ -91,12 +91,25 @@ export interface MissRecord {
   lastAt?: string
   session: string
   query: string
+  /** 命中次数：草稿落库后，同一个 query 再次检索时命中的次数（验证期用）。 */
   hits: number
   count?: number
   state?: string
   stateAt?: string
   scope?: string
   drafts?: string[]
+  /**
+   * 出现过的会话集合。
+   *
+   * 为什么单独记：`count` 只回答「问过几次」，但「3 个会话都在问」比
+   * 「一个会话里问了 3 次」重要得多——前者说明这是**共性问题**，后者可能只是一次困惑。
+   * UI 上「N 次 / M 个会话」两个数字必须分开显示。
+   */
+  sessions?: string[]
+  /** 草稿落库后所在路径（验证期内点开能跳过去）。 */
+  draftPath?: string
+  /** 进入验证期的时间；配合 MISS_VERIFY_DAYS 算剩余天数。 */
+  verifyAt?: string
 }
 
 /** 一条记忆的身份：优先 frontmatter.id，否则由路径派生。 */
@@ -380,12 +393,16 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
       existing.hits = 0
       existing.count = (existing.count ?? 1) + 1
       existing.lastAt = at
+      // 记录会话集合：UI 要显示「N 次 / M 个会话」，只存 count 算不出后者
+      const sessions = existing.sessions ?? [existing.session]
+      if (!sessions.includes(session)) sessions.push(session)
+      existing.sessions = sessions
       if (existing.state === undefined) existing.state = 'observing'
       if (existing.count >= 3 && existing.state === 'observing') existing.state = 'should-fill'
     } else {
       misses.push({
         at, lastAt: at, session, query: text, hits: 0, count: 1,
-        state: 'observing', scope, drafts: [],
+        state: 'observing', scope, drafts: [], sessions: [session],
       })
     }
     await writeMisses(misses)
@@ -393,9 +410,42 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     return misses.find(item => item.query === text) ?? null
   }
 
+  /**
+   * 记一次「验证期内命中」。
+   *
+   * 这是未命中流水线最后一段（验证期 → 已验证生效）的输入：
+   * 草稿落库后，如果同一个 query 再次检索**能命中**，说明补对了；
+   * 满 3 次即可判 verified。早先这个计数从来没人写，所以 `hits` 恒为 0，
+   * 五态的最后一态永远是空的。
+   */
+  async function recordVerifyHit({ query }: { query: string }): Promise<MissRecord | null> {
+    const text = String(query ?? '').trim()
+    if (text === '') return null
+    const misses = await readMisses()
+    const target = misses.find(item => item.query === text && item.state === 'verifying')
+    if (target === undefined) return null
+    target.hits = (target.hits ?? 0) + 1
+    target.lastAt = new Date(now()).toISOString()
+    // 满 3 次命中 → 这条补库真的生效了
+    if (target.hits >= 3) {
+      target.state = 'verified'
+      target.stateAt = new Date(now()).toISOString()
+    }
+    await writeMisses(misses)
+    return target
+  }
+
   /** 更新一条未命中的状态（草稿 → 确认 → 验证期 → 生效）。 */
-  async function updateMiss({ query, state, draftId }: {
-    query: string; state?: string; draftId?: string
+  /**
+   * 更新一条未命中的状态。
+   *
+   * `draftPath` / `verifyAt` 是 v3.5 补的字段：
+   *   - `draftPath` 让「验证期内」能点开跳到落库的那篇，否则只有一个 query 字符串；
+   *   - `verifyAt` 是 7 天倒计时的起点，缺了它就算不出「剩 N 天」。
+   * 两者都在进入验证期时一次性写入，不进 state 迁移逻辑（那是另一件事）。
+   */
+  async function updateMiss({ query, state, draftId, draftPath, verifyAt }: {
+    query: string; state?: string; draftId?: string; draftPath?: string; verifyAt?: string
   }): Promise<MissRecord> {
     const misses = await readMisses()
     const target = misses.find(item => item.query === query)
@@ -403,10 +453,18 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     if (typeof state === 'string') {
       target.state = state
       target.stateAt = new Date(now()).toISOString()
+      // 进入验证期时开计时；离开验证期清掉，避免「已验证」还挂着倒计时
+      if (state === 'verifying') {
+        target.verifyAt = verifyAt ?? new Date(now()).toISOString()
+        target.hits = 0
+      } else if (state !== 'verifying') {
+        delete target.verifyAt
+      }
     }
     if (typeof draftId === 'string' && !(target.drafts ?? []).includes(draftId)) {
       target.drafts = [...(target.drafts ?? []), draftId]
     }
+    if (typeof draftPath === 'string' && draftPath !== '') target.draftPath = draftPath
     await writeMisses(misses)
     return target
   }
@@ -796,6 +854,7 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     readMisses,
     writeMisses,
     recordMiss,
+    recordVerifyHit,
     updateMiss,
     deleteMiss,
     writeBody,

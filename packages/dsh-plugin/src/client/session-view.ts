@@ -12,11 +12,15 @@ import { call, type SessionMemoryView } from './api.ts'
 import { useBridge } from './data.ts'
 import { useSessionProject, type ClientContextLike } from './session-context.ts'
 import {
-  Badge, Button, ErrorState, Skeleton, count, orEmpty, truncate,
+  AnchorNote, Badge, Button, ErrorState, Skeleton, count, orEmpty, truncate,
 } from './ui.ts'
 
 /** 会话记忆视图。 */
 export function SessionMemoryView(props: Record<string, unknown>): ReactNode {
+  /** 去未命中工作台的回调（宿主未提供时不渲染该按钮）。 */
+  const onGotoMisses = typeof props.onGotoMisses === 'function'
+    ? props.onGotoMisses as () => void
+    : undefined
   const ctx = (props as { ctx?: ClientContextLike }).ctx
   const sessionId = typeof props.sessionId === 'string' ? props.sessionId : undefined
   const { project } = useSessionProject(ctx)
@@ -75,7 +79,13 @@ export function SessionMemoryView(props: Record<string, unknown>): ReactNode {
         createElement('div', { className: 'dmo-card-meta' },
           createElement(Badge, { tone: 'brand' }, reason.why),
           createElement('span', null, `${count(reason.tokens)} tokens`),
-          reason.anchor === null ? null : createElement(Badge, { tone: 'idle' }, '锚点')))),
+          reason.anchor === null
+            ? null
+            : createElement(AnchorNote, { state: reason.anchorState === 'stale' ? 'stale' : 'fresh' },
+              reason.anchorState === 'stale' ? '锚点失效' : '锚点有效',
+              createElement('div', { className: 'dmo-row-sub' },
+                `${orEmpty(reason.anchor.path)}${reason.anchor.symbol === undefined ? '' : ` · ${reason.anchor.symbol}`}`,
+                reason.anchor.hash === undefined ? '' : ` · hash ${reason.anchor.hash.slice(0, 8)}`))))),
 
     // 未命中转草稿
     createElement('div', { className: 'dmo-lane-head', style: { marginTop: 4 } }, '未命中'),
@@ -94,6 +104,14 @@ export function SessionMemoryView(props: Record<string, unknown>): ReactNode {
         onClick: () => { draftFromMiss(miss.query ?? '') },
       }, '转草稿'))),
 
+    data.recentMisses.length === 0
+      ? null
+      : createElement('div', { className: 'dmo-anchor-note', 'data-state': 'stale' },
+        createElement('span', null, '这些检索落空了'),
+        createElement('div', { className: 'dmo-row-sub' },
+          '同一个问题满 3 次会自动进「该补了」，也可以现在就补。')),
+
     createElement('div', { className: 'dmo-row', style: { marginTop: 4 } },
-      createElement(Button, { small: true, onClick: reload }, '刷新')))
+      createElement(Button, { small: true, onClick: reload }, '刷新'),
+      createElement(Button, { small: true, onClick: () => { onGotoMisses?.() } }, '去未命中工作台')))
 }

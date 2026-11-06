@@ -11,7 +11,7 @@ import { createElement, useState, type ReactNode } from 'react'
 import { call, type MissesView } from '../api.ts'
 import { useBridge } from '../data.ts'
 import {
-  Badge, Button, Empty, ErrorState, Kpi, Skeleton, count, orEmpty, percent, truncate,
+  Badge, Band, Button, Empty, ErrorState, Skeleton, count, orEmpty, percent, truncate,
 } from '../ui.ts'
 
 /** 五态的展示名与语气。 */
@@ -58,13 +58,26 @@ export function MissesPane(): ReactNode {
   const total = data.total
 
   return createElement('div', null,
-    createElement('div', { className: 'dmo-kpis' },
-      createElement(Kpi, { label: '未命中总数', value: count(total), note: '累计' }),
-      createElement(Kpi, { label: '该补了', value: count(data.pipeline['should-fill']?.length ?? 0), note: '问过 ≥3 次' }),
-      createElement(Kpi, { label: '补库转化率', value: percent(data.conversion), note: '已验证 / 总' })),
+    /**
+     * 五态计数条：一眼看出漏斗卡在哪一级。
+     *
+     * 早先这里是 3 个 KPI（总数 / 该补 / 转化率），把「漏斗形状」这个信息弄丢了——
+     * 而漏斗形状恰恰是未命中工作台存在的理由：知道「有几条卡在草稿」比知道总数更有用。
+     */
+    createElement(Band, {
+      cells: [
+        { label: '观察', value: data.counts?.observing ?? 0 },
+        { label: '该补', value: data.counts?.['should-fill'] ?? 0, tone: 'warn' },
+        { label: '草稿', value: data.counts?.drafting ?? 0, tone: 'warn' },
+        { label: '验证', value: data.counts?.verifying ?? 0 },
+        { label: '生效', value: data.counts?.verified ?? 0, tone: 'ok' },
+      ],
+    }),
 
     createElement('div', { className: 'dmo-note' },
-      `验证窗口 ${data.verifyDays} 天。草稿必须你确认才落库——自动写库会产生无法审计的臆想。`),
+      `共 ${count(total)} 条 · 补库转化 ${percent(data.conversion)}`
+      + ` · 验证窗口 ${data.verifyDays} 天 · 问过 ≥${data.fillThreshold ?? 3} 次自动进「该补」`,
+      createElement('div', null, '草稿必须你确认才落库——自动写库会产生无法审计的臆想。')),
 
     toast === null ? null : createElement('div', {
       className: `dmo-toast ${toast.ok ? 'dmo-toast-ok' : 'dmo-toast-err'}`,
@@ -108,7 +121,15 @@ export function MissesPane(): ReactNode {
           createElement('div', { className: 'dmo-card-title' }, truncate(item.query, 46)),
           createElement('div', { className: 'dmo-card-meta' },
             createElement(Badge, { tone: item.count >= 3 ? 'warn' : 'idle' }, `问过 ${count(item.count)} 次`),
+            // 会话数与次数分开显示：「3 个会话都在问」比「一个会话问 3 次」重要
+            createElement('span', null, `${count(item.sessions ?? 1)} 个会话`),
             createElement('span', null, `多花 ~${count(item.wastedTokens)} tokens`),
+            // 验证期进度：命中 x/3、剩 N 天
+            lane.id === 'verifying'
+              ? createElement('span', null,
+                `命中 ${count(item.hits)}/3`,
+                item.remainingDays === null ? '' : ` · 剩 ${item.remainingDays} 天`)
+              : null,
             createElement('span', null, orEmpty(item.lastAt.slice(0, 10)))),
           lane.id === 'drafting'
             ? createElement('div', { style: { marginTop: 6 } },

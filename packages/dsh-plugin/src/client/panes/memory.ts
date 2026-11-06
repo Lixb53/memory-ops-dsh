@@ -17,7 +17,7 @@ import { createElement, useState, type ReactNode } from 'react'
 import { call, type DetailView, type SearchView, type SnapshotView } from '../api.ts'
 import { useBridge } from '../data.ts'
 import {
-  Badge, Button, Empty, ErrorState, RejectBox, SelectionBar, Skeleton, Stepper,
+  Badge, Button, Chip, Empty, ErrorState, RejectBox, SelectionBar, Skeleton, Stepper,
   count, orEmpty, statusLabel, statusTone, truncate,
 } from '../ui.ts'
 
@@ -68,6 +68,14 @@ function MemoryList({ project, onOpenMemory }: {
    * → React 抛错 → 整个面板白屏。Hooks 顺序是硬契约，不能有任何条件分支穿过它。
    */
   const [domainFilter, setDomainFilter] = useState('')
+  /**
+   * 状态筛选药丸（设计稿 .chip）。
+   *
+   * ⚠️ hook 顺序：这个 useState 必须与其它 hook 一样位于所有 early return 之前。
+   * 实测踩过：把它写在 `if (phase === 'loading') return` 之后 → 首帧跳过该 hook
+   * → 数据到达后 hook 数量变化 → React 抛错 → 整片白屏。
+   */
+  const [statusFilter, setStatusFilter] = useState('')
 
   const { phase, data, error, reload } = useBridge<SnapshotView>(
     'snapshot',
@@ -100,6 +108,7 @@ function MemoryList({ project, onOpenMemory }: {
       layer: hit.layer,
       tokens: hit.tokens,
       domainLabel: hit.domainLabel,
+      citeCount: undefined as number | undefined,
       snippet: hit.snippet as string | undefined,
     }))
     : data.entries.map(entry => ({
@@ -110,12 +119,35 @@ function MemoryList({ project, onOpenMemory }: {
       layer: entry.layer,
       tokens: entry.tokens,
       domainLabel: entry.domainLabel,
+      citeCount: entry.citeCount,
       snippet: undefined as string | undefined,
     }))
 
-  const list = domainFilter === ''
+  /**
+   * 状态药丸的四个分组。
+   *
+   * 为什么要做成计数药丸而不是下拉：这四组是「我需要处理什么」的直接答案，
+   * 计数必须在**不展开**时就可见。「全部 42 / 待确认 2 / 待复核 1 …」
+   * 一眼能看出库里有多少欠账——下拉只能看到当前选中项。
+   */
+  const statusGroups: { id: string; label: string; match: (status: string) => boolean }[] = [
+    { id: '', label: '全部', match: () => true },
+    { id: 'pending', label: '待确认', match: s => s === 'hypothesis' || s === 'observed' || s === 'pending' },
+    { id: 'stale', label: '待复核', match: s => s === 'stale' },
+    { id: 'confirmed', label: '已确认', match: s => s === 'confirmed' || s === 'active' },
+    { id: 'archived', label: '已归档', match: s => s === 'archived' },
+    { id: 'rejected', label: '已驳回', match: s => s === 'rejected' },
+  ]
+  const statusCounts = statusGroups.map(group => ({
+    ...group,
+    count: rawList.filter(item => group.match(item.status)).length,
+  }))
+  const statusMatched = statusFilter === ''
     ? rawList
-    : rawList.filter(item => item.domainLabel === domainFilter)
+    : rawList.filter(item => (statusGroups.find(g => g.id === statusFilter)?.match(item.status) ?? true))
+  const list = domainFilter === ''
+    ? statusMatched
+    : statusMatched.filter(item => item.domainLabel === domainFilter)
   /** 当前列表里出现过的域（去重），供下拉选择。 */
   const domainOptions = [...new Set(rawList.map(item => item.domainLabel))]
 
@@ -184,6 +216,19 @@ function MemoryList({ project, onOpenMemory }: {
       createElement('option', { value: '' }, '全部域'),
       domainOptions.map(name => createElement('option', { key: name, value: name }, name)))),
 
+    // 状态药丸：计数常驻可见
+    createElement('div', { className: 'dmo-chips', role: 'group', 'aria-label': '状态筛选' },
+      statusCounts.map(group => createElement(Chip, {
+        key: group.id,
+        label: group.label,
+        count: group.count,
+        active: statusFilter === group.id,
+        onClick: () => {
+          setStatusFilter(group.id)
+          setSelected([])
+        },
+      }))),
+
     searching
       ? createElement('div', { className: 'dmo-note' },
         search.phase === 'loading'
@@ -250,7 +295,12 @@ function MemoryList({ project, onOpenMemory }: {
         createElement(Badge, { tone: 'idle' }, entry.layer.toUpperCase()),
         entry.status === 'stale' ? createElement(Badge, { tone: 'warn' }, '待复核') : null,
         createElement('span', null, count(entry.tokens), ' tokens'),
-        createElement('span', null, entry.domainLabel)),
+        createElement('span', null, entry.domainLabel),
+        // 引用次数：判断「这条还活着吗」的关键信号
+        createElement('span', null,
+          entry.citeCount === undefined || entry.citeCount === 0
+            ? '未引用'
+            : `${count(entry.citeCount)} 次引用`)),
       entry.snippet === undefined
         ? createElement('div', { className: 'dmo-row-sub' }, orEmpty(entry.path))
         : createElement('div', { className: 'dmo-row-sub' }, truncate(entry.snippet, 90)))))
