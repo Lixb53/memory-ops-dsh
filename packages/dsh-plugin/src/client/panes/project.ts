@@ -8,12 +8,12 @@
  *   4. 真的没有     → 空态 + 三个出口
  */
 
-import { createElement, type ReactNode } from 'react'
+import { createElement, useState, type ReactNode } from 'react'
 
 import { call, type SnapshotView } from '../api.ts'
 import { useBridge } from '../data.ts'
 import {
-  Badge, Button, Empty, ErrorState, Kpi, Skeleton, Stepper,
+  Badge, Button, Empty, ErrorState, Kpi, RejectBox, Skeleton, Stepper,
   count, orEmpty, percent, statusLabel, statusTone, truncate,
 } from '../ui.ts'
 
@@ -139,6 +139,29 @@ function QueueCard({ item, onOpenMemory }: {
   item: SnapshotView['queue'][number]
   onOpenMemory: (path: string) => void
 }): ReactNode {
+  /** 驳回内联展开：待处理列表是「一眼一批」的场景，弹窗会打断节奏。 */
+  const [rejecting, setRejecting] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
+
+  function run(action: () => Promise<unknown>, success: string): void {
+    setBusy(true)
+    setToast(null)
+    void action()
+      .then(() => {
+        setToast({ ok: true, text: success })
+        setRejecting(false)
+        setReason('')
+      })
+      .catch((failure: unknown) => {
+        setToast({ ok: false, text: failure instanceof Error ? failure.message : String(failure) })
+      })
+      .finally(() => {
+        setBusy(false)
+      })
+  }
+
   return createElement('div', { className: 'dmo-card' },
     createElement('div', { className: 'dmo-card-title' }, truncate(item.title, 46)),
     createElement('div', { className: 'dmo-card-meta' },
@@ -151,6 +174,25 @@ function QueueCard({ item, onOpenMemory }: {
       : createElement('div', { className: 'dmo-evidence' },
         createElement('div', null, truncate(item.evidence[0]?.excerpt ?? '', 70)),
         createElement('div', { className: 'dmo-evidence-src' }, `出处：${orEmpty(item.origin)} · ${orEmpty(item.evidence[0]?.session)}`)),
+
+    toast === null ? null : createElement('div', {
+      className: `dmo-toast ${toast.ok ? 'dmo-toast-ok' : 'dmo-toast-err'}`,
+      role: 'status',
+      style: { marginTop: 6 },
+    }, toast.text),
+
+    rejecting
+      ? createElement(RejectBox, {
+        reason,
+        onReason: setReason,
+        busy,
+        onCancel: () => { setRejecting(false); setReason('') },
+        onSubmit: () => {
+          run(() => call('reject', { path: item.path, reason }), '已驳回，30 天内不再推荐')
+        },
+      })
+      : null,
+
     createElement('div', { className: 'dmo-card-actions' },
       item.kind === 'retire'
         ? createElement(Button, {
@@ -163,6 +205,13 @@ function QueueCard({ item, onOpenMemory }: {
           variant: 'primary',
           onClick: () => { void call('confirm', { path: item.path }) },
         }, '确认'),
+      // 确认与驳回必须并列出现：只给确认，等于替用户做决定。
+      item.kind === 'retire'
+        ? null
+        : createElement(Button, {
+          small: true, variant: 'danger', disabled: busy,
+          onClick: () => { setRejecting(value => !value) },
+        }, rejecting ? '取消驳回' : '驳回'),
       createElement(Button, { small: true, onClick: () => { onOpenMemory(item.path) } }, '看详情'),
       createElement(Button, {
         small: true,

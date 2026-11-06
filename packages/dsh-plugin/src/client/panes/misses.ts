@@ -94,14 +94,21 @@ export function MissesPane(): ReactNode {
     LANES.map((lane) => {
       const items = data.pipeline[lane.id] ?? []
       if (items.length === 0) return null
+      /**
+       * 顺序直接来自 core（已按 count 降序、同频按最近时间兜底）。
+       * 这里**不再二次排序**——排序口径只该有一处，否则两端会分叉。
+       */
+      const top = items[0]
       return createElement('div', { key: lane.id, className: 'dmo-lane' },
         createElement('div', { className: 'dmo-lane-head' },
           createElement(Badge, { tone: lane.tone }, lane.label),
-          createElement('span', { className: 'dmo-lane-count' }, `${items.length} 条`)),
+          createElement('span', { className: 'dmo-lane-count' },
+            `${items.length} 条`,
+            top !== undefined && items.length > 1 ? ` · 最多问过 ${top.count} 次` : '')),
         items.map(item => createElement('div', { key: item.query, className: 'dmo-card' },
           createElement('div', { className: 'dmo-card-title' }, truncate(item.query, 46)),
           createElement('div', { className: 'dmo-card-meta' },
-            createElement('span', null, `问过 ${count(item.count)} 次`),
+            createElement(Badge, { tone: item.count >= 3 ? 'warn' : 'idle' }, `问过 ${count(item.count)} 次`),
             createElement('span', null, `多花 ~${count(item.wastedTokens)} tokens`),
             createElement('span', null, orEmpty(item.lastAt.slice(0, 10)))),
           lane.id === 'drafting'

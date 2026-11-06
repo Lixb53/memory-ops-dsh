@@ -162,11 +162,56 @@ export interface ResidentBreakdown {
   frameTokens: number
   billedTokens: number
   onDemandTokens: number
+  /**
+   * 三态：ok=有 catalog；empty=读到了但没有；error=没读到。
+   * 不区分的话「读不到」会伪装成「没有」，用户会以为 171 就是全部。
+   */
+  state: 'ok' | 'empty' | 'error'
+  error: string
+}
+
+/** 预算账本的一行。 */
+export interface BudgetRowView {
+  layer: string
+  name: string
+  tokens: number
+  files: number
+  limit: number | null
+  /** 付费方式：per-request = 每请求付费；on-demand = 按需加载。 */
+  billing: 'per-request' | 'on-demand'
+  note: string
+  advice: string
+}
+
+/** 域统计里的单篇。 */
+export interface DomainEntryView {
+  id: string
+  path: string
+  title: string
+  layer: string
+  status: string
+  tokens: number
+  lines: number
+  overLineLimit: boolean
+}
+
+/** 域统计（带明细）。 */
+export interface DomainView {
+  key: string
+  label: string
+  files: number
+  bytes: number
+  tokens: number
+  overLimit: number
+  entries: DomainEntryView[]
 }
 
 export interface OverviewView {
   kpi: {
+    /** 每请求付费的常驻前缀（catalog + 框架），**不是**索引层体积。 */
     residentTokens: number
+    /** 索引层体积（所有 layer: l0 文件之和），按需加载。 */
+    indexTokens: number
     residentBudget: number
     hitRate: number | null
     confirmRate: number | null
@@ -174,8 +219,8 @@ export interface OverviewView {
     pending: number
   }
   resident: ResidentBreakdown
-  budget: { layer: string; name: string; tokens: number; files: number; limit: number | null }[]
-  domains: StatsView['domains']
+  budget: BudgetRowView[]
+  domains: DomainView[]
   rates: StatsView['rates']
   counts: StatsView['counts']
   misses: StatsView['misses']
@@ -258,4 +303,112 @@ export interface CaptureResult {
   hint?: string
   captured?: { path: string }
   error?: string
+}
+
+// ============================================================
+// 维护作业（按需触发，无常驻定时器）
+// ============================================================
+
+/** 锚点校验结论。 */
+export type AnchorState = 'fresh' | 'stale' | 'missing' | 'unverifiable'
+
+export interface AnchorCheckView {
+  id: string
+  path: string
+  title: string
+  anchorPath: string
+  symbol: string
+  recordedHash: string
+  actualHash: string
+  state: AnchorState
+  reason: string
+}
+
+export interface AnchorReportView {
+  checks: AnchorCheckView[]
+  summary: Record<AnchorState, number>
+  withoutAnchor: number
+  baseDir: string
+  applied: boolean
+  changed: { path: string; from: string; to: string }[]
+  failed: { path: string; error?: string }[]
+}
+
+export interface CompactCandidateView {
+  path: string
+  title: string
+  before: number
+  after: number
+  removed: number
+  changes: string[]
+  stillOverLimit: boolean
+  splitSuggestions: { heading: string; lines: number }[]
+}
+
+export interface CompactView {
+  candidates: CompactCandidateView[]
+  total: number
+  removableLines: number
+  applied: boolean
+  written: { path: string; removed: number }[]
+  failed: { path: string; error?: string }[]
+  lineLimit: number
+}
+
+export interface ReviewItemView {
+  kind: string
+  title: string
+  detail: string
+  path?: string
+}
+
+export interface ReviewView {
+  window: { days: number; from: string; to: string }
+  events: Record<string, number>
+  counts: {
+    touched: number; pending: number; stale: number; overLimit: number; misses: number
+  }
+  topMisses: { query: string; count: number }[]
+  todo: ReviewItemView[]
+}
+
+export interface PromotePlanView {
+  id: string
+  path: string
+  title: string
+  from: string
+  to: string
+  sessions: string[]
+  reason: string
+}
+
+export interface PromoteView {
+  plans: PromotePlanView[]
+  applied: boolean
+  changed: { path: string; from: string; to: string }[]
+  failed: { path: string; error?: string }[]
+  minSessions: number
+}
+
+/** 一次 frontmatter 修补计划。 */
+export interface RepairFixView {
+  path: string
+  title: string
+  /** 有没有 frontmatter 段。 */
+  hadFrontmatter: boolean
+  /** 会被写入的字段（只含缺失或非法的）。 */
+  patch: Record<string, string>
+  /** 每个字段为什么被补。 */
+  reasons: string[]
+  /** 需要覆盖已有值的字段（只有脏 status 这类）。 */
+  overwrite: string[]
+}
+
+export interface RepairView {
+  fixes: RepairFixView[]
+  healthy: number
+  total: number
+  applied: boolean
+  written: { path: string; fields: string[] }[]
+  failed: { path: string; error?: string }[]
 }

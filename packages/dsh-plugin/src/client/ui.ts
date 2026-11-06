@@ -210,3 +210,58 @@ export function MemoryIcon({ size = 18 }: { size?: number }): ReactNode {
   h('path', { d: 'M5.5 17h9' }),
   h('path', { d: 'M6.5 7h7M6.5 10h4.5' }))
 }
+
+/**
+ * 带理由的驳回块。
+ *
+ * 为什么必须有理由、且不给「快速驳回」：驳回会触发 30 天静默，
+ * 期间这条记忆不再参与纠错。没有理由的驳回，30 天后谁也说不清当初为什么否掉它，
+ * 只能原样恢复——那等于这套机制白转一圈。
+ *
+ * 为什么内联展开而不是弹窗：侧栏宽度有限，弹窗会盖住上下文；
+ * 而驳回恰恰需要看着原文写理由。
+ */
+export function RejectBox({ reason, onReason, onCancel, onSubmit, busy }: {
+  reason: string
+  onReason: (value: string) => void
+  onCancel: () => void
+  onSubmit: () => void
+  busy: boolean
+}): ReactNode {
+  const empty = reason.trim() === ''
+  return h('div', { style: { marginTop: 7 } },
+    h('label', { className: 'dmo-label' }, '驳回理由（必填，30 天后可复查）'),
+    h('textarea', {
+      className: 'dmo-textarea',
+      value: reason,
+      'aria-label': '驳回理由',
+      placeholder: '为什么这条不对？写一句，30 天后回看时你会需要它。',
+      onChange: (event: { target: { value: string } }) => { onReason(event.target.value) },
+    }),
+    h('div', { className: 'dmo-card-actions' },
+      h(Button, {
+        small: true, variant: 'danger', disabled: busy || empty, onClick: onSubmit,
+      }, busy ? '驳回中…' : '确认驳回'),
+      h(Button, { small: true, onClick: onCancel }, '取消'),
+      empty ? h('span', { className: 'dmo-note', style: { margin: 0 } }, '理由为空不能提交') : null))
+}
+
+/**
+ * 多选条：选中 N 条后出现的批量操作行。
+ *
+ * 抽出来是因为「记忆」与「未命中」两处的批量条结构完全一样，
+ * 早先各写一份，样式与文案已经开始分叉。
+ */
+export function SelectionBar({ count: selected, total, busy, children, onClear }: {
+  count: number
+  total: number
+  busy?: boolean
+  children?: ReactNode
+  onClear: () => void
+}): ReactNode {
+  if (selected === 0) return null
+  return h('div', { className: 'dmo-row', style: { marginBottom: 8, flexWrap: 'wrap' } },
+    h('span', { className: 'dmo-note', style: { margin: 0 } }, `已选 ${selected} / ${total} 条`),
+    children,
+    h(Button, { small: true, disabled: busy === true, onClick: onClear }, '清空选择'))
+}

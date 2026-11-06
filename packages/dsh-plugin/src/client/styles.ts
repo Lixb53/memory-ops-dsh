@@ -103,6 +103,10 @@ const CSS = `
 .dmo-budget-fill { height: 100%; border-radius: 3px; background: var(--dsw-alias-brand-primary); }
 .dmo-budget-fill-over { background: var(--dsw-alias-state-warn-primary); }
 .dmo-budget-num { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+/* 预算账本每段：标题行 + 进度条 + 说明 */
+.dmo-budget-item { padding: 7px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+.dmo-budget-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.dmo-budget-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
 
 /* —— 置信度 stepper —— */
 .dmo-stepper { display: flex; align-items: center; gap: 3px; margin: 7px 0; }

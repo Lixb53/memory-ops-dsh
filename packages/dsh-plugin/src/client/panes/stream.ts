@@ -156,6 +156,14 @@ export function StreamPane({ onOpenMemory }: { onOpenMemory: (path: string) => v
               state === 'done' ? '已完成' : '已标 todo',
             )
           },
+          onEdit: (content: string) => {
+            run(
+              () => call('updateInbox', {
+                domain: 'personal', lineIndex: entry.lineIndex, patch: { content },
+              }),
+              '内容已改',
+            )
+          },
           onPromote: () => {
             run(
               () => call('promoteInbox', { domain: 'personal', lineIndex: entry.lineIndex }),
@@ -171,17 +179,28 @@ export function StreamPane({ onOpenMemory }: { onOpenMemory: (path: string) => v
         })))
 }
 
-/** 单行记录：勾选 + 改状态 + 提升 + 删除。 */
-function RowItem({ entry, checked, busy, onToggle, onState, onPromote, onDelete }: {
+/** 单行记录：勾选 + 改状态 + 编辑内容 + 提升 + 删除。 */
+function RowItem({ entry, checked, busy, onToggle, onState, onEdit, onPromote, onDelete }: {
   entry: InboxView['entries'][number]
   checked: boolean
   busy: boolean
   onToggle: () => void
   onState: (state: string) => void
+  onEdit: (content: string) => void
   onPromote: () => void
   onDelete: () => void
 }): ReactNode {
   const needsPromote = entry.state === 'done' && (entry.destination === '—' || entry.destination === '')
+  /**
+   * 行内编辑内容。
+   *
+   * 为什么必须有：捕获是「一句话赶紧存」，所以错字、半句话、写歪的类型都是常态。
+   * 早先只能改状态，内容写错了唯一的出路是「删掉重记」——那会丢掉原始时间戳。
+   * core 的 `updateInboxRow` 一直支持 `content`，只是界面没接。
+   */
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(entry.content)
+
   return createElement('div', { className: 'dmo-row-item' },
     createElement('input', {
       type: 'checkbox',
@@ -191,27 +210,48 @@ function RowItem({ entry, checked, busy, onToggle, onState, onPromote, onDelete 
       onChange: onToggle,
     }),
     createElement('div', { className: 'dmo-row-main' },
-      createElement('div', { className: 'dmo-row-text' }, truncate(entry.content, 46)),
-      createElement('div', { className: 'dmo-row-sub' },
-        `${orEmpty(entry.date)} · ${orEmpty(entry.kind)} · `,
-        createElement(Badge, {
-          tone: entry.state === 'done' ? 'ok' : entry.state === 'dropped' ? 'err' : 'warn',
-        }, entry.state),
-        entry.kindValid ? null : createElement(Badge, { tone: 'err' }, '类型非法'),
-        entry.destination === '—' ? null : createElement('span', null, ` → ${truncate(entry.destination, 24)}`)),
-      createElement('div', { className: 'dmo-card-actions' },
-        entry.state === 'open'
-          ? createElement(Button, { small: true, disabled: busy, onClick: () => { onState('todo') } }, '开始')
-          : null,
-        entry.state !== 'done'
-          ? createElement(Button, { small: true, disabled: busy, onClick: () => { onState('done') } }, '完成')
-          : null,
-        needsPromote
-          ? createElement(Button, {
-            small: true, variant: 'primary', disabled: busy, onClick: onPromote,
-          }, '提升到档案')
-          : null,
-        createElement(Button, {
-          small: true, variant: 'danger', disabled: busy, onClick: onDelete,
-        }, '删除'))))
+      editing
+        ? createElement('div', null,
+          createElement('textarea', {
+            className: 'dmo-textarea',
+            value: draft,
+            'aria-label': '编辑记录内容',
+            onChange: (event: { target: { value: string } }) => { setDraft(event.target.value) },
+          }),
+          createElement('div', { className: 'dmo-card-actions' },
+            createElement(Button, {
+              small: true, variant: 'primary', disabled: busy || draft.trim() === '',
+              onClick: () => { onEdit(draft.trim()); setEditing(false) },
+            }, '保存'),
+            createElement(Button, { small: true, onClick: () => { setDraft(entry.content); setEditing(false) } }, '取消')))
+        : createElement('div', null,
+          createElement('div', { className: 'dmo-row-text' }, truncate(entry.content, 46)),
+          createElement('div', { className: 'dmo-row-sub' },
+            `${orEmpty(entry.date)} · ${orEmpty(entry.kind)} · `,
+            createElement(Badge, {
+              tone: entry.state === 'done' ? 'ok' : entry.state === 'dropped' ? 'err' : 'warn',
+            }, entry.state),
+            entry.kindValid ? null : createElement(Badge, { tone: 'err' }, '类型非法'),
+            entry.destination === '—' ? null : createElement('span', null, ` → ${truncate(entry.destination, 24)}`))),
+      editing
+        ? null
+        : createElement('div', { className: 'dmo-card-actions' },
+          entry.state === 'open'
+            ? createElement(Button, { small: true, disabled: busy, onClick: () => { onState('todo') } }, '开始')
+            : null,
+          entry.state !== 'done'
+            ? createElement(Button, { small: true, disabled: busy, onClick: () => { onState('done') } }, '完成')
+            : null,
+          createElement(Button, {
+            small: true, disabled: busy,
+            onClick: () => { setDraft(entry.content); setEditing(true) },
+          }, '改内容'),
+          needsPromote
+            ? createElement(Button, {
+              small: true, variant: 'primary', disabled: busy, onClick: onPromote,
+            }, '提升到档案')
+            : null,
+          createElement(Button, {
+            small: true, variant: 'danger', disabled: busy, onClick: onDelete,
+          }, '删除'))))
 }

@@ -7,8 +7,15 @@
 
 import { createElement, useState, type ReactNode } from 'react'
 
-import { call, type OverviewView, type ResidentBreakdown, type SnapshotView } from '../api.ts'
+import {
+  call,
+  type DomainView,
+  type OverviewView,
+  type ResidentBreakdown,
+  type SnapshotView,
+} from '../api.ts'
 import { useBridge } from '../data.ts'
+import { MaintenancePanel } from './maintenance.ts'
 import {
   Badge, BudgetRow, Button, Empty, ErrorState, Kpi, Skeleton, Stepper,
   bytes, count, orEmpty, percent, statusLabel, statusTone, truncate,
@@ -71,7 +78,7 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
         type: 'button',
         className: 'dmo-kpi dmo-kpi-btn',
         'aria-expanded': showResident,
-        title: '点开看常驻前缀由哪些内容构成',
+        title: '点开看常驻前缀由哪些内容构成（只算每请求付费的部分）',
         onClick: () => { setShowResident(value => !value) },
       },
       createElement('div', { className: 'dmo-kpi-label' },
@@ -79,7 +86,19 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
         createElement('span', { className: 'dmo-kpi-more' }, showResident ? '收起' : '构成')),
       createElement('div', { className: 'dmo-kpi-value' }, count(data.kpi.residentTokens)),
       createElement('div', { className: 'dmo-kpi-note' },
-        `L0 文件 · 预算 ${count(data.kpi.residentBudget)}`)),
+        `每请求付费 · 预算 ${count(data.kpi.residentBudget)}`)),
+      /**
+       * 索引层单独一格。
+       *
+       * 早先这里没有这一格，索引体积被塞进了「常驻前缀」那一格显示，
+       * 于是顶栏写着 286，而构成面板写着 361 —— 两个数字对不上，
+       * 且按第一格去优化会去删索引表，每请求成本一分不省。
+       */
+      createElement(Kpi, {
+        label: '索引层体积',
+        value: count(data.kpi.indexTokens),
+        note: '按需加载',
+      }),
       createElement(Kpi, { label: '命中率', value: percent(data.kpi.hitRate), note: '30 天' }),
       createElement(Kpi, { label: '待你处理', value: count(data.kpi.pending), note: '需拍板' }),
       createElement(Kpi, { label: '过期率', value: percent(data.kpi.expireRate), note: 'stale+archived' })),
@@ -92,15 +111,24 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
       })
       : null,
 
-    // 预算账本
+    // 预算账本：每段说清「什么时候付费、超了怎么办」
     createElement('div', { className: 'dmo-budget' },
-      createElement('div', { className: 'dmo-lane-head' }, '预算账本'),
-      data.budget.map(row => createElement(BudgetRow, {
-        key: row.layer,
-        name: `${row.layer} ${row.name.replace('层', '')}`,
-        tokens: row.tokens,
-        limit: row.limit,
-      })),
+      createElement('div', { className: 'dmo-lane-head' }, '预算账本',
+        createElement('span', { className: 'dmo-lane-count' }, '数字只在能指导决策时才有用')),
+      data.budget.map(row => createElement('div', { key: row.layer, className: 'dmo-budget-item' },
+        createElement('div', { className: 'dmo-budget-head' },
+          createElement(Badge, { tone: row.billing === 'per-request' ? 'warn' : 'idle' }, row.layer),
+          createElement('span', { className: 'dmo-row-text' }, row.name),
+          createElement(Badge, { tone: row.billing === 'per-request' ? 'err' : 'idle' },
+            row.billing === 'per-request' ? '每请求付费' : '按需加载'),
+          createElement('span', { className: 'dmo-budget-num', style: { marginLeft: 'auto' } },
+            count(row.tokens),
+            row.limit === null ? '' : ` / ${count(row.limit)}`)),
+        row.limit === null ? null : createElement(BudgetRow, {
+          name: '', tokens: row.tokens, limit: row.limit,
+        }),
+        createElement('div', { className: 'dmo-row-sub' }, `${count(row.files)} 个文件 · ${row.note}`),
+        createElement('div', { className: 'dmo-row-sub' }, `→ ${row.advice}`))),
       createElement('div', { className: 'dmo-note', style: { marginBottom: 0 } }, data.cacheNote)),
 
     toast === null ? null : createElement('div', {
@@ -152,17 +180,19 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
           createElement(Badge, { tone: 'idle' }, `驳回静默 ${healthData.silenced.length} 条`),
           createElement(Badge, { tone: 'idle' }, `待复核 ${healthData.stale.length} 条`)))),
 
-    // 域统计
-    createElement('div', { className: 'dmo-lane-head', style: { marginTop: 12 } }, '域统计'),
+    // 域统计：可下钻，看到每个域下具体有哪几篇
+    createElement('div', { className: 'dmo-lane-head', style: { marginTop: 12 } }, '域统计',
+      createElement('span', { className: 'dmo-lane-count' }, '点域展开明细')),
     data.domains.length === 0
       ? createElement('div', { className: 'dmo-note' }, '还没有任何域。')
-      : data.domains.map(domain => createElement('div', { key: domain.key, className: 'dmo-card' },
-        createElement('div', { className: 'dmo-card-title' }, domain.label),
-        createElement('div', { className: 'dmo-card-meta' },
-          createElement('span', null, `${count(domain.files)} 篇`),
-          createElement('span', null, `${count(domain.tokens)} tokens`),
-          createElement('span', null, bytes(domain.bytes)),
-          domain.overLimit > 0 ? createElement(Badge, { tone: 'warn' }, `超限 ${domain.overLimit}`) : null))),
+      : data.domains.map(domain => createElement(DomainCard, {
+        key: domain.key,
+        domain,
+        onOpenMemory,
+      })),
+
+    // 维护作业：修补 / 锚点校验 / 减重 / 爬升 / 复盘
+    createElement(MaintenancePanel, { onOpenMemory }),
 
     // 导出
     createElement('div', { className: 'dmo-lane-head', style: { marginTop: 12 } }, '导出'),
@@ -170,7 +200,7 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
       createElement(Button, { small: true, disabled: exporting, onClick: () => { doExport('markdown') } }, '导出 Markdown'),
       createElement(Button, { small: true, disabled: exporting, onClick: () => { doExport('json') } }, '导出 JSON')),
     createElement('div', { className: 'dmo-note' },
-      `库根目录：${orEmpty(data.files > 0 ? snapshot.data?.root : snapshot.data?.root)} · ${count(data.files)} 篇 · ${count(data.tokens)} tokens`))
+      `库根目录：${orEmpty(snapshot.data?.root)} · ${count(data.files)} 篇 · ${count(data.tokens)} tokens`))
 }
 
 /**
@@ -186,7 +216,26 @@ function ResidentPanel({ resident, onOpenMemory }: {
 }): ReactNode {
   if (resident === undefined) {
     return createElement('div', { className: 'dmo-degrade' },
-      '未能读取常驻前缀构成：宿主未提供 skills 服务。数字仍然可信，只是无法拆分。')
+      '未能读取常驻前缀构成。数字仍然可信，只是无法拆分。')
+  }
+
+  /**
+   * 读不到 skill 时必须说清原因。
+   *
+   * 用户看到「展开后只有一个 171」是很自然的困惑——那意味着
+   * **每请求付费的部分只剩目录框架文字，skill description 一条都没算进去**。
+   * 静默显示 171 会让人以为「我的常驻前缀只有 171，很健康」，
+   * 而实际上真实值应该是 171 + 两个 skill description ≈ 361。
+   */
+  if (resident.state === 'error') {
+    return createElement('div', { className: 'dmo-degrade' },
+      createElement('div', null, `读不到 skill 列表：${resident.error}`),
+      createElement('div', { className: 'dmo-row-sub', style: { marginTop: 3 } },
+        `当前只统计到目录框架 ${count(resident.frameTokens)} tokens，`
+        + 'skill description 未能计入——所以这个数字是偏小的。'),
+      createElement('div', { className: 'dmo-row-sub' },
+        'skill 装在宿主配置的目录里（当前是 /Users/zeze/Desktop/dsh/skill/），'
+        + '插件通过 ctx.get("skills") 读取；取不到时不会假装成 0。'))
   }
 
   const catalogs = resident.items.filter(item => item.kind === 'catalog')
@@ -246,4 +295,59 @@ function ResidentPanel({ resident, onOpenMemory }: {
     createElement('div', { className: 'dmo-note', style: { marginBottom: 0 } },
       '要压缩常驻成本，动的是 skill description；改索引文件不影响每请求开销，' +
       '但改任何一个都会作废当前会话缓存。'))
+}
+
+/**
+ * 一个域的卡片，可展开明细。
+ *
+ * 为什么必须能展开：原来只显示「sz-web 35 篇 / 63,030 tokens」——
+ * 数字是真的，但无法验证、无法下钻，也就无法据此做任何事。
+ * 用户看到 63,030 的第一反应必然是「哪 35 篇占的？」。
+ * 展开后按 tokens 降序排，最重的排最前，直接回答「该看哪篇」。
+ */
+function DomainCard({ domain, onOpenMemory }: {
+  domain: DomainView
+  onOpenMemory: (path: string) => void
+}): ReactNode {
+  const [open, setOpen] = useState(false)
+  const entries = domain.entries ?? []
+
+  return createElement('div', { className: 'dmo-card' },
+    createElement('div', {
+      className: 'dmo-card-title dmo-link',
+      role: 'button',
+      tabIndex: 0,
+      'aria-expanded': open,
+      title: '点开看这个域下有哪些文件',
+      onClick: () => { setOpen(value => !value) },
+      onKeyDown: (event: { key: string }) => {
+        if (event.key === 'Enter' || event.key === ' ') setOpen(value => !value)
+      },
+    }, `${open ? '▾' : '▸'} ${domain.label}`),
+    createElement('div', { className: 'dmo-card-meta' },
+      createElement('span', null, `${count(domain.files)} 篇`),
+      createElement('span', null, `${count(domain.tokens)} tokens`),
+      createElement('span', null, bytes(domain.bytes)),
+      domain.overLimit > 0 ? createElement(Badge, { tone: 'warn' }, `超限 ${domain.overLimit}`) : null),
+
+    open
+      ? createElement('div', { style: { marginTop: 6 } },
+        createElement('div', { className: 'dmo-note', style: { marginTop: 0 } },
+          `共 ${count(entries.length)} 篇，按体积降序。点标题打开详情。`),
+        entries.map(entry => createElement('div', { key: entry.id, className: 'dmo-resident-row' },
+          createElement('div', { className: 'dmo-resident-main' },
+            createElement('div', {
+              className: 'dmo-row-text dmo-link',
+              role: 'button',
+              tabIndex: 0,
+              onClick: () => { onOpenMemory(entry.path) },
+              onKeyDown: (event: { key: string }) => {
+                if (event.key === 'Enter' || event.key === ' ') onOpenMemory(entry.path)
+              },
+            }, truncate(entry.title, 40)),
+            createElement('div', { className: 'dmo-row-sub' },
+              `${entry.path} · ${entry.layer || '未标层'} · ${statusLabel(entry.status)} · ${count(entry.lines)} 行`,
+              entry.overLineLimit ? ' · 超 80 行' : '')),
+          createElement('span', { className: 'dmo-budget-num' }, count(entry.tokens)))))
+      : null)
 }
