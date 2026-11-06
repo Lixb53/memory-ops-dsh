@@ -36,18 +36,12 @@ export {
   rememberStoreOf, type RememberState, type RememberStore,
 }
 
-/** 订阅 store。 */
-function useRememberStore(store: RememberStore | undefined): RememberState {
-  const [state, setState] = useState<RememberState>(() =>
-    store?.getSnapshot() ?? { open: false, content: '', toast: null })
-  useEffect(() => {
-    if (store === undefined) return undefined
-    const sync = (): void => { setState(store.getSnapshot()) }
-    sync()
-    return store.subscribe(sync)
-  }, [store])
-  return state
-}
+/**
+ * 注意：这里曾经有个 `useRememberStore(store)` 自己订阅 store 的 hook。
+ * 现已删除——宿主通过 props 把 `useRemember` 选择器钩子直接交给浮层组件
+ * （见 RememberOverlay），那才是实际生效的订阅路径。
+ * 留着两个订阅源只会让人搞不清状态从哪来。
+ */
 
 /** 触发源需要的回调形状（宿主契约的最小面）。 */
 interface PickOutcomeLike {

@@ -22,7 +22,6 @@ interface OverviewData { kpi: Record<string, number | null>; budget: unknown[]; 
 interface HealthData { overLimit: number; lineLimit: number; silenced: unknown[]; stale: unknown[]; rates: Record<string, number | null>; counts: Record<string, number> }
 interface SessionMemoryData { reasons: { why: string }[]; injected: number; cited: number; missed: number }
 interface ExportData { filename: string; content: string; count: number }
-interface DetailData { entry: { body: string; tokens: number }; trust: Record<string, unknown>; references: unknown[] }
 interface SearchData { matched: boolean; hits: { path: string }[]; total: number; cost: number }
 
 let root: string
@@ -91,7 +90,8 @@ describe('隐私闸门', () => {
 
   it('普通中文内容不误伤', async () => {
     const { actions } = await freshActions('privacy-clean')
-    const result = assertOk(await actions.capture({ content: '今天想清楚一件事：先给结论，别铺垫' }))
+    // 只需断言成功；返回体本身不参与后续检查
+    assertOk(await actions.capture({ content: '今天想清楚一件事：先给结论，别铺垫' }))
   })
 
   it('改正文同样过闸门', async () => {
@@ -134,7 +134,7 @@ describe('记录流能力', () => {
   })
 
   it('批量改状态', async () => {
-    const { actions, store } = await freshActions('inbox-batch-state')
+    const { actions } = await freshActions('inbox-batch-state')
     await actions.captureBatch({ text: 'A\nB' })
     const list = assertOk<InboxData>(await actions.inbox({ domain: 'personal' }))
     const indexes = list.entries.map(entry => entry.lineIndex)
@@ -181,12 +181,12 @@ describe('状态机与证据', () => {
       frontmatter: { title: '推断', status: 'hypothesis' },
       body: 'x',
     })
-    const rejected = assertOk(await actions.reject({ path: 'personal/patterns.md', reason: '不是这样' }))
+    assertOk(await actions.reject({ path: 'personal/patterns.md', reason: '不是这样' }))
     const entry = await store.readEntry('personal/patterns.md')
     assert.equal(entry.status, 'rejected')
     assert.equal(entry.refutedReason, '不是这样')
 
-    const undone = assertOk(await actions.undoReject({ path: 'personal/patterns.md' }))
+    assertOk(await actions.undoReject({ path: 'personal/patterns.md' }))
     assert.equal((await store.readEntry('personal/patterns.md')).status, 'reinforced')
   })
 
@@ -262,7 +262,7 @@ describe('未命中流水线', () => {
     let board = assertOk<MissesData>(await actions.misses())
     assert.equal(board.pipeline['should-fill'].length, 1)
 
-    const draft = assertOk(await actions.missDraft({ query: 'grep read', type: '问题' }))
+    assertOk(await actions.missDraft({ query: 'grep read', type: '问题' }))
     board = assertOk<MissesData>(await actions.misses())
     assert.equal(board.pipeline.drafting.length, 1)
 

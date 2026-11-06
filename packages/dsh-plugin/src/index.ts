@@ -70,7 +70,6 @@ export function apply(ctx: PluginContext, config: PluginConfig = {}): () => void
 
   // skill description 的读取器：由 `ctx.skills` 提供，取不到时返回空数组，
   // 总览会明确标注「未能读取」，而不是悄悄算成 0。
-  let skillsReadable = false
   /** 读不到 skill 时的具体原因——静默返回 0 会让人以为「本来就没有 skill」。 */
   let skillsError = ''
   const env: BridgeEnv = {
@@ -91,7 +90,6 @@ export function apply(ctx: PluginContext, config: PluginConfig = {}): () => void
         // 而本地 skill 通常不写这个标记——那样「常驻前缀」就永远只剩框架开销 171。
         const all = skills.list() as { name: string; description: string; path?: string }[]
         const filtered = all.filter(row => typeof row?.description === 'string' && row.description.trim() !== '')
-        skillsReadable = true
         if (filtered.length === 0) {
           skillsError = all.length === 0
             ? 'skills.list() 返回空数组——宿主的 skill 目录可能没有配置'

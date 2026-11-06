@@ -13,8 +13,9 @@
     "build": "node scripts/build-plugin.mjs",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
-    "check": "pnpm run typecheck && pnpm run test",
-    "clean": "pnpm -r exec rm -rf node_modules lib"
+    "check": "pnpm run typecheck && pnpm run static-audit && pnpm run test",
+    "clean": "pnpm -r exec rm -rf node_modules lib",
+    "static-audit": "node --experimental-strip-types scripts/audit.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

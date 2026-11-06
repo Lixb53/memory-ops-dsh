@@ -33,7 +33,7 @@ import {
 } from '../api.ts'
 import { useBridge } from '../data.ts'
 import {
-  Badge, Button, Empty, ErrorState, Skeleton, count, orEmpty, percent, truncate,
+  Badge, Button, Empty, ErrorState, Skeleton, count, orEmpty, truncate,
 } from '../ui.ts'
 
 /** 维护作业面板（默认收起：低频动作不该占据首屏）。 */

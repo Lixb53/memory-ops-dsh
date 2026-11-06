@@ -80,7 +80,6 @@ export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
     default:
       body = createElement(ProjectPane, {
         project,
-        sessionId: undefined,
         onOpenMemory: openMemory,
         onGoto: (next: string) => {
           setPane(next as PaneId)

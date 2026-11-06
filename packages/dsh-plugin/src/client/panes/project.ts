@@ -18,9 +18,8 @@ import {
 } from '../ui.ts'
 
 /** 本项目分区。 */
-export function ProjectPane({ project, sessionId, onOpenMemory, onGoto }: {
+export function ProjectPane({ project, onOpenMemory, onGoto }: {
   project: string | undefined
-  sessionId: string | undefined
   onOpenMemory: (path: string) => void
   onGoto: (pane: string) => void
 }): ReactNode {

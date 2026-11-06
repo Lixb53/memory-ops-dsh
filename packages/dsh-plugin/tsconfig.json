@@ -7,6 +7,13 @@
     "types": ["node"],
     "strict": true,
     "noImplicitOverride": true,
+    // 未使用的局部变量与参数一律报错。
+    // 这不是洁癖：曾有「参数存在但从未接线」的情况（ProjectPane 的 sessionId、
+    // stream.ts 的 onOpenMemory），它们正是「功能看着有、其实没接上」的直接证据。
+    // 更严重的一次：stream.ts 的 return 变成逗号表达式后，唯一的旁证就是
+    // onOpenMemory 无人使用——开这个开关能让那类 bug 提前暴露。
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,

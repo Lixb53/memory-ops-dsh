@@ -29,6 +29,11 @@ jobs:
       - name: 类型检查
         run: pnpm typecheck
 
+      # 静态审计：抓 tsc 与单测都看不见的渲染层缺陷
+      # （return 逗号表达式丢 UI 块、hook 顺序错致白屏、frontmatter 往返毁数据）
+      - name: 静态审计
+        run: pnpm run static-audit
+
       - name: 单元测试
         run: pnpm test
 
