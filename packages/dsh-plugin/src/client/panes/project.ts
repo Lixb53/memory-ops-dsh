@@ -94,7 +94,7 @@ export function ProjectPane({ project, sessionId, onOpenMemory, onGoto }: {
     queue.length === 0 ? null : createElement('div', { style: { marginBottom: 10 } },
       createElement('div', { className: 'dmo-lane-head' }, '待你处理', createElement('span', { className: 'dmo-lane-count' }, `${queue.length} 条`)),
       queue.slice(0, 5).map(item => createElement(QueueCard, {
-        key: item.id, item, onOpenMemory,
+        key: item.id, item, onOpenMemory, onChanged: reload,
       }))),
 
     entries.length === 0
@@ -135,9 +135,11 @@ export function ProjectPane({ project, sessionId, onOpenMemory, onGoto }: {
 }
 
 /** 待处理卡片：确认 / 驳回 / 归档 / 再留 90 天。 */
-function QueueCard({ item, onOpenMemory }: {
+function QueueCard({ item, onOpenMemory, onChanged }: {
   item: SnapshotView['queue'][number]
   onOpenMemory: (path: string) => void
+  /** 动作成功后刷新队列——否则点了按钮界面毫无变化（§13.1 批评过的同一类缺陷）。 */
+  onChanged: () => void
 }): ReactNode {
   /** 驳回内联展开：待处理列表是「一眼一批」的场景，弹窗会打断节奏。 */
   const [rejecting, setRejecting] = useState(false)
@@ -145,7 +147,7 @@ function QueueCard({ item, onOpenMemory }: {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
 
-  function run(action: () => Promise<unknown>, success: string): void {
+  function run(action: () => Promise<unknown>, success: string, after?: () => void): void {
     setBusy(true)
     setToast(null)
     void action()
@@ -153,6 +155,7 @@ function QueueCard({ item, onOpenMemory }: {
         setToast({ ok: true, text: success })
         setRejecting(false)
         setReason('')
+        after?.()
       })
       .catch((failure: unknown) => {
         setToast({ ok: false, text: failure instanceof Error ? failure.message : String(failure) })
@@ -188,7 +191,7 @@ function QueueCard({ item, onOpenMemory }: {
         busy,
         onCancel: () => { setRejecting(false); setReason('') },
         onSubmit: () => {
-          run(() => call('reject', { path: item.path, reason }), '已驳回，30 天内不再推荐')
+          run(() => call('reject', { path: item.path, reason }), '已驳回，30 天内不再推荐', onChanged)
         },
       })
       : null,
@@ -198,12 +201,12 @@ function QueueCard({ item, onOpenMemory }: {
         ? createElement(Button, {
           small: true,
           variant: 'danger',
-          onClick: () => { void call('archive', { path: item.path, reason: '到期退役' }) },
+          onClick: () => { run(() => call('archive', { path: item.path, reason: '到期退役' }), '已归档', onChanged) },
         }, '归档')
         : createElement(Button, {
           small: true,
           variant: 'primary',
-          onClick: () => { void call('confirm', { path: item.path }) },
+          onClick: () => { run(() => call('confirm', { path: item.path }), '已确认', onChanged) },
         }, '确认'),
       // 确认与驳回必须并列出现：只给确认，等于替用户做决定。
       item.kind === 'retire'
@@ -215,6 +218,6 @@ function QueueCard({ item, onOpenMemory }: {
       createElement(Button, { small: true, onClick: () => { onOpenMemory(item.path) } }, '看详情'),
       createElement(Button, {
         small: true,
-        onClick: () => { void call('keep', { path: item.path }) },
+        onClick: () => { run(() => call('keep', { path: item.path }), '已再留 90 天', onChanged) },
       }, '再留 90 天')))
 }

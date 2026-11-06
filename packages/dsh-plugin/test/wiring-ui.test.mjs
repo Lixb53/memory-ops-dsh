@@ -222,3 +222,55 @@ describe('Hook 顺序（白屏防线）', () => {
     )
   })
 })
+
+describe('交互闭环（点了要有反应）', () => {
+  it('本项目的动作按钮都串了刷新回调', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'project.ts'), 'utf8')
+    // 早先 confirm/archive/keep 直接 void call(...)，点完列表不刷新——
+    // 和 §13.1 批评过的「回车后毫无反应」是同一类缺陷
+    assert.match(text, /onChanged/, 'QueueCard 必须接收刷新回调')
+    assert.match(text, /onChanged: reload/, 'ProjectPane 必须把 reload 传下去')
+    // 逐个检查 run(() => call('x'...)) 这一行是否以 onChanged 结尾
+    const runLines = text.split('\n').filter(line => /run\(\(\) => call\('/.test(line))
+    assert.equal(runLines.length >= 3, true, `本项目应有多个 run 调用，实际 ${runLines.length}`)
+    const missingAfter = runLines.filter(line => !/onChanged\s*\)/.test(line))
+    assert.deepEqual(
+      missingAfter, [],
+      '这些动作缺刷新回调，点完界面不会有反应：\n' + missingAfter.join('\n'),
+    )
+    // 不许再有裸 void call 的动作按钮
+    assert.deepEqual(
+      text.match(/void call\('(confirm|archive|keep)'/g) ?? [], [],
+      '这些按钮不能再裸调 call 而不刷新',
+    )
+  })
+
+  it('总览的待处理队列能直接确认或归档', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'overview.ts'), 'utf8')
+    assert.match(text, /call\('confirm'/, '总览应能直接确认')
+    assert.match(text, /call\('archive'/, '到期项应能直接归档')
+    // 手册写的是「总览 → 待你处理 → 确认 / 驳回」，界面必须有对应入口
+    assert.match(text, /'驳回…'/, '总览的驳回入口要标明需去详情写理由')
+  })
+
+  it('证据闸门用契约常量，不用硬编码 G1', async () => {
+    const text = await fsp.readFile(path.join(SRC_DIR, 'tools.ts'), 'utf8')
+    assert.match(text, /ORIGIN_NEEDS_EVIDENCE/, 'schema.ts 声明的契约必须真的被执行')
+    // 只看代码行，排除注释里提到这个写法的说明文字
+    const codeLines = text.split('\n').filter(line => !/^\s*(\/\/|\*|\/\*)/.test(line))
+    assert.equal(
+      codeLines.some(line => /origin !== 'G1'/.test(line)), false,
+      '硬编码 G1 会让「改契约常量不生效」——契约就白写了',
+    )
+  })
+
+  it('agent 工具不暴露维护作业（改可信度必须由人点）', async () => {
+    const text = await fsp.readFile(path.join(SRC_DIR, 'tools.ts'), 'utf8')
+    for (const action of ['verifyAnchor', 'compact', 'promote', 'repairMeta', 'review']) {
+      assert.equal(
+        new RegExp(`actions\\.${action}\\(`).test(text), false,
+        `维护作业 ${action} 不该对 agent 开放：它会改记忆的可信度或内容`,
+      )
+    }
+  })
+})

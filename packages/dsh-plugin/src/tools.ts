@@ -9,7 +9,7 @@
  */
 
 import type { Actions } from '@memory-ops/core/actions'
-import { ORIGINS } from '@memory-ops/core/schema'
+import { ORIGINS, ORIGIN_NEEDS_EVIDENCE, type Origin } from '@memory-ops/core/schema'
 
 /** 工具结果里给模型看的文本块。 */
 interface TextBlock { type: 'text'; text: string }
@@ -180,9 +180,13 @@ export function registerTools({ actions }: { actions: Actions }) {
         }
 
         if (mode === 'inbox') {
-          // 捕获只进 INBOX 等人工流转，不直接进常驻——这是「写权限分级」的落地：
-          // G2 捕获上限每日 50 条、单会话 15 条熔断的语义在这里由「只进 INBOX」承接，
-          // 所以证据强制只作用于 mode=entry。
+          // 捕获只进 INBOX 等人工流转，不直接进常驻——这是「写权限分级」的落地。
+          //
+          // ⚠️ 诚实声明：product.md §11.3 写的「G2 每日 50 条 / 单会话 15 条熔断」
+          // **并未实现**。这里只有「只进 INBOX」这一层语义约束——它保证了
+          // 自动写入不会直接变成被信任的结论，但没有任何计数拦截：
+          // 模型在一个会话里写 500 条 INBOX 也不会被拒。
+          // 单人使用下风险有限，但不要以为有熔断。
           const result = await actions.capture({
             content,
             kind: args.kind ?? '想法',
@@ -207,7 +211,11 @@ export function registerTools({ actions }: { actions: Actions }) {
         }
 
         // 正式条目：无证据不得入库（挡幻觉写入）
-        if (origin !== 'G1' && String(args.evidence ?? '').trim() === '') {
+        //
+        // 用契约里的 ORIGIN_NEEDS_EVIDENCE 而不是硬编码 `origin !== 'G1'`：
+        // 那个常量是 schema.ts 声明的「唯一真相」。硬编码看似等价，
+        // 但将来若调整哪个闸门需要证据，改常量不会生效——契约就白写了。
+        if (ORIGIN_NEEDS_EVIDENCE[origin as Origin] === true && String(args.evidence ?? '').trim() === '') {
           return { ok: false, message: '证据必填：origin 为 G2/G3/G4 时必须给 evidence（无证据不得入库）' }
         }
 

@@ -16,7 +16,7 @@ import { searchEntries, searchCost, type SearchHit } from './search.ts'
 import { inspectText, auditRecord } from './privacy.ts'
 import { parseSections } from './parse.ts'
 import {
-  compactBody, hashOf, needsCompact, planPromotions, planRepairs, verifyAnchors, weeklyReview,
+  compactBody, needsCompact, planPromotions, planRepairs, verifyAnchors, weeklyReview,
   type AnchorReader,
 } from './maintenance.ts'
 import type { MemoryEntry, Store } from './store.ts'
@@ -973,8 +973,16 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
             continue
           }
           try {
-            await store.patchMeta(check.path, { status: 'stale' })
+            /**
+             * 一次写完，不分两次。
+             *
+             * 分两次调 `patchMeta` 有真实风险：两次各自取文件锁，
+             * 中间若失败（进程被杀、磁盘满），会留下「status 已改 stale、
+             * 但没有 anchor_checked_at」的半成品——那条记忆从此说不清
+             * 是「锚点校验判的」还是「人手工降的」。
+             */
             const updated = await store.patchMeta(check.path, {
+              status: 'stale',
               anchor_checked_at: new Date(now()).toISOString(),
               anchor_state: check.state,
             })
@@ -1009,11 +1017,18 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
         return {
           path: entry.path,
           title: entry.title,
-          before: entry.lines,
-          after: entry.lines - result.removed,
+          /**
+           * 行数一律用**正文口径**（`compactBody.before`），不用 `entry.lines`。
+           *
+           * `entry.lines` 是整个文件（含 frontmatter + 结尾换行），而
+           * `result.removed` 只统计正文。两者混用会让「7 行 → 3 行」看起来
+           * 像删掉了 4 行正文——实际一行正文都没删。同一个界面里的数字必须同口径。
+           */
+          before: result.before,
+          after: result.after,
           removed: result.removed,
           changes: result.changes,
-          /** 压缩后仍超限 → 该人工拆分，这里只给建议。 */
+          /** 压缩后仍超限 → 该人工拆分，这里只给建议（超限判定用文件口径，与 store 一致）。 */
           stillOverLimit: entry.lines - result.removed > FILE_LINE_LIMIT,
           splitSuggestions: result.splitSuggestions,
         }

@@ -37,8 +37,8 @@
 
 | 包 | 状态 |
 |---|---|
-| `packages/core` | ✅ 已实现，116 项测试 |
-| `packages/dsh-plugin` | ✅ 已实现并安装运行，60 项测试 |
+| `packages/core` | ✅ 已实现，121 项测试 |
+| `packages/dsh-plugin` | ✅ 已实现并安装运行，64 项测试 |
 | `packages/memory-web` | ❌ **未实现**（没有代码） |
 
 仓库：https://github.com/Lixb53/memory-ops-dsh
@@ -80,7 +80,7 @@
 
 **唯一剩下的大缺口是 Web 管理端**：`packages/memory-web` 不存在。
 
-> 口径提醒：真实库 13 篇超限文件，机械压缩**只省 13 行**。
+> 口径提醒：真实库 14 篇超限文件，无损压缩空间已被前一次 apply 用尽（现在 **0 行**）。
 > 这不是失败——无损压缩就不该省出几百行，否则说明它在删真内容。
 > 剩下的必须人工摘要或拆文件。
 
@@ -110,8 +110,8 @@
 | 产品设计 + 信息架构 | 完成（见 `product.md`） |
 | 个人域数据骨架 | 完成，`~/.memory-ops/personal/` 6 文件，真实结论 |
 | 工作域数据 | 完成，`~/.memory-ops/work/sz-web/` 35 篇 |
-| `@memory-ops/core` | **已实现**，116 项测试 |
-| `@memory-ops/dsh-plugin` host（34 路由 + 2 工具） | **已实现**，60 项测试 |
+| `@memory-ops/core` | **已实现**，121 项测试 |
+| `@memory-ops/dsh-plugin` host（34 路由 + 2 工具） | **已实现**，64 项测试 |
 | `@memory-ops/dsh-plugin` client（4 表面 + 5 分区） | **已挂载**，部分能力未接入 UI |
 | **Web 管理端** | **未实现**（无代码） |
 | v3 契约（frontmatter v2 + events.jsonl + 三率） | **已实现** |
@@ -146,10 +146,10 @@ Web 端只要复用 core 的 `actions` 就能拿到同样的能力，不需要�
 memory-ops/                     仓库根（pnpm monorepo）
 ├── packages/core/              ✅ 已实现
 │   ├── src/                    schema parse store search privacy actions
-│   └── test/                   116 项
+│   └── test/                   121 项
 ├── packages/dsh-plugin/        ✅ 已实现
 │   ├── src/                    index bridge tools + client/
-│   └── test/                   60 项
+│   └── test/                   64 项
 └── packages/memory-web/        ❌ 不存在
 
 ~/.memory-ops/                  ✅ 真相源（与 ~/.dsh 同级）

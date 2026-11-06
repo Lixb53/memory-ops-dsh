@@ -700,3 +700,56 @@ describe('总览口径一致性（用户困惑的直接来源）', () => {
     assert.equal(empty.resident.state, 'empty')
   })
 })
+
+describe('减重行数口径（before/after/removed 必须同口径）', () => {
+  it('无结尾换行不会被算成「压缩后变长」', () => {
+    const r = compactBody('a\nb')
+    // 早先 removed 会算出 -1，UI 显示「2 → 3 行」
+    assert.equal(r.removed >= 0, true, `removed 不许为负：${r.removed}`)
+    assert.equal(r.after <= r.before, true, `after(${r.after}) 不许大于 before(${r.before})`)
+  })
+
+  it('有结尾换行与无结尾换行得到同样的行数', () => {
+    const a = compactBody('a\nb\n')
+    const b = compactBody('a\nb')
+    assert.equal(a.before, b.before, '两者的「内容行数」都应是 2')
+    assert.equal(a.before, 2)
+    assert.equal(a.after, b.after)
+  })
+
+  it('折叠空行后行数确实减少，且减少量等于报告值', () => {
+    // 'a\n\n\n\nb\n' 去末尾换行后是 'a\n\n\n\nb' → split 得 5 项（a/空/空/空/b）
+    const input = 'a\n\n\n\nb\n'
+    const r = compactBody(input)
+    assert.equal(r.before, 5, '内容行数：a + 三个空行 + b = 5')
+    assert.equal(r.after, 3, '折叠连续空行后：a / 一个空行 / b = 3')
+    assert.equal(r.removed, 2)
+    assert.equal(r.before - r.after, r.removed)
+  })
+
+  it('空正文不产生负行数', () => {
+    const r = compactBody('')
+    assert.equal(r.before, 0)
+    assert.equal(r.after, 0)
+    assert.equal(r.removed, 0)
+  })
+
+  it('compact 预览里 before/after 来自正文口径，不再是整个文件行数', async () => {
+    const { actions, store } = await freshActions('compact-lines')
+    // 正文 3 行 + frontmatter，entry.lines 会明显大于正文行数
+    await store.createEntry({
+      relPath: 'personal/notes/withfm.md',
+      frontmatter: { title: '带 frontmatter', layer: 'l2', status: 'confirmed' },
+      body: '# 标题\n\n正文。\n',
+    })
+    const entry = await store.readEntry('personal/notes/withfm.md')
+    const result = assertOk<{ candidates: { before: number; after: number; removed: number }[] }>(
+      await actions.compact({ paths: ['personal/notes/withfm.md'] }),
+    )
+    const item = result.candidates[0]!
+    // before 必须是正文口径（3 行），而不是 entry.lines（含 frontmatter，会更大）
+    assert.equal(item.before, 3, `before 应是正文 3 行，实际 ${item.before}（entry.lines=${entry.lines}）`)
+    assert.equal(item.before < entry.lines, true, 'cannot: 若相等说明还在用文件口径')
+    assert.equal(item.after <= item.before, true)
+  })
+})

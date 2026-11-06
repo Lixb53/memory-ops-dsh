@@ -12,7 +12,7 @@ import { call, type SessionMemoryView } from './api.ts'
 import { useBridge } from './data.ts'
 import { useSessionProject, type ClientContextLike } from './session-context.ts'
 import {
-  Badge, Button, Empty, ErrorState, Skeleton, count, orEmpty, truncate,
+  Badge, Button, ErrorState, Skeleton, count, orEmpty, truncate,
 } from './ui.ts'
 
 /** 会话记忆视图。 */

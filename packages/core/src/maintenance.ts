@@ -160,6 +160,19 @@ export async function verifyAnchors(
 // 二、每日减重（80 行上限的可执行出口）
 // ============================================================
 
+/**
+ * 数「内容行数」—— 去掉末尾换行带来的空项。
+ *
+ * `'a\nb'.split('\n')` 是 2 项，`'a\nb\n'.split('\n')` 是 3 项，
+ * 但它们在编辑器里都是 **2 行**。行数报给用户看时必须用后者这个口径，
+ * 否则「只补了个结尾换行」会被显示成「压缩后变长了一行」。
+ */
+function contentLines(text: string): number {
+  if (text === '') return 0
+  const trimmed = text.endsWith('\n') ? text.slice(0, -1) : text
+  return trimmed.split('\n').length
+}
+
 /** 一次减重能做的机械压缩。 */
 export interface CompactResult {
   /** 压缩后的正文。 */
@@ -230,9 +243,16 @@ export function compactBody(body: unknown): CompactResult {
 
   return {
     body: result.length === 0 ? '' : `${result.join('\n')}\n`,
-    before: lines.length,
-    after: result.length + 1,
-    removed: lines.length - (result.length + 1),
+    before: contentLines(text),
+    /**
+     * `before` / `after` / `removed` 全部走 `contentLines`，口径完全统一。
+     *
+     * 早先 `after` 写的是 `result.length + 1`（把补上的结尾换行算成一行），
+     * 于是「本来没有结尾换行」的文件会算出 `removed = -1`——压缩反而报告变长。
+     * `removed <= 0` 时 apply 会跳过、不会写坏数据，但把负数展示给用户就是错的。
+     */
+    after: contentLines(result.length === 0 ? '' : `${result.join('\n')}\n`),
+    removed: Math.max(0, contentLines(text) - contentLines(result.length === 0 ? '' : `${result.join('\n')}\n`)),
     changes,
     splitSuggestions: splitSuggestionsOf(result),
   }
@@ -645,13 +665,4 @@ export function planRepairs(entries: MemoryEntry[], today: string): RepairPlan {
     if (fix !== null) fixes.push(fix)
   }
   return { fixes, healthy: entries.length - fixes.length, total: entries.length }
-}
-
-/** 从未被引用且已过标灰线的条目。 */
-export function neverCited(entries: MemoryEntry[], nowMs = Date.now()): MemoryEntry[] {
-  return entries.filter((entry) => {
-    const expiry = expiryOf(entry, nowMs)
-    return entry.lastCitedAt === undefined && expiry.level !== 'fresh'
-      && (expiry.days ?? 0) >= STALE_AFTER_DAYS
-  })
 }

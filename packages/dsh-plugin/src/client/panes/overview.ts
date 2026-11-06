@@ -151,6 +151,34 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
             createElement('span', null, orEmpty(item.origin))),
           createElement(Stepper, { status: item.status }),
           createElement('div', { className: 'dmo-card-actions' },
+            /**
+             * 总览也要能直接拍板。
+             *
+             * 早先这里只有「看详情 / 再留」，用户想确认还得跳去「本项目」——
+             * 而 manual.md 写的是「总览 → 待你处理 → 确认 / 驳回」。
+             * 文档与界面必须有同一个答案，否则用户会以为按钮消失了。
+             */
+            item.kind === 'retire'
+              ? createElement(Button, {
+                small: true, variant: 'danger',
+                onClick: () => {
+                  void call('archive', { path: item.path, reason: '到期退役' })
+                    .then(() => { snapshot.reload() })
+                },
+              }, '归档')
+              : createElement(Button, {
+                small: true, variant: 'primary',
+                onClick: () => {
+                  void call('confirm', { path: item.path }).then(() => { snapshot.reload() })
+                },
+              }, '确认'),
+            item.kind === 'retire'
+              ? null
+              : createElement(Button, {
+                small: true, variant: 'danger',
+                onClick: () => { onOpenMemory(item.path) },
+                title: '驳回需要写理由，去详情里填',
+              }, '驳回…'),
             createElement(Button, { small: true, onClick: () => { onOpenMemory(item.path) } }, '看详情'),
             createElement(Button, {
               small: true,
