@@ -75,6 +75,25 @@ const CSS = `
 .dmo-field { margin-bottom: 8px; }
 .dmo-label { display: block; font-size: 11px; color: var(--dsw-alias-label-secondary); margin-bottom: 3px; }
 .dmo-row { display: flex; gap: 6px; align-items: center; }
+/**
+ * 单行工具栏：搜索框 + 若干筛选下拉挤在同一行。
+ *
+ * 为什么要单独一个类：.dmo-select 带 width:100%（表单里需要撑满），
+ * 放进 flex 行会被当成「占满整行」而被迫换行——实测记录流就变成了三行：
+ * 搜索 / 状态 / 类型各占一行，白占 60px 高度且割裂了「这仨是同一组筛选项」的语义。
+ * 这里显式覆盖成 width:auto，让它们真正并排。
+ *
+ * ⚠️ 注意：本文件整体是模板字符串，注释里**不能出现反引号**，
+ * 否则会提前闭合字符串、把后面的 CSS 变成代码。这个坑刚踩过一次。
+ */
+.dmo-toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.dmo-toolbar > .dmo-select { width: auto; flex: 0 0 auto; }
+.dmo-toolbar > .dmo-input { flex: 1 1 90px; min-width: 0; }
+/* 窄屏（侧栏 400px 左右）放不下就允许换行，但每项各自保持紧凑 */
+@media (max-width: 520px) {
+  .dmo-toolbar { flex-wrap: wrap; }
+  .dmo-toolbar > .dmo-input { flex: 1 1 100%; }
+}
 .dmo-row > * { min-width: 0; }
 
 /* —— 列表行 —— */

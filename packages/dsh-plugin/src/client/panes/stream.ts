@@ -163,11 +163,10 @@ export function StreamPane(): ReactNode {
       createElement('div', { className: 'dmo-capture-hint' },
         '过隐私闸门：密钥 / 私钥 / 身份证 / 内网 IP 会被拒写并留审计')),
 
-    // 筛选：文本 + 两个下拉
-    createElement('div', { className: 'dmo-row', style: { marginBottom: 8, flexWrap: 'wrap' } },
+    // 筛选：搜索框 + 两个下拉，同一行
+    createElement('div', { className: 'dmo-toolbar' },
       createElement('input', {
         className: 'dmo-input',
-        style: { flex: '1 1 120px' },
         value: textFilter,
         placeholder: '过滤记录…',
         'aria-label': '过滤记录',

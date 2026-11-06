@@ -365,3 +365,33 @@ describe('设计稿对齐（用户点名的缺口不许回退）', () => {
     assert.match(text, /仅个人域/, '导出要能按域')
   })
 })
+
+describe('布局：筛选项必须同行', () => {
+  /**
+   * `.dmo-select` 带 `width: 100%`（表单里需要撑满），放进 flex 行会被当成
+   * 「占满整行」而被迫换行——实测记录流因此变成三行：搜索 / 状态 / 类型各占一行，
+   * 白占 60px 高度，还割裂了「这仨是同一组筛选项」的语义。
+   *
+   * 这条测试查的是「有没有用单行工具栏类」，因为那才是修复的关键。
+   */
+  it('记录流筛选区用 .dmo-toolbar，而不是裸 dmo-row', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'stream.ts'), 'utf8')
+    assert.match(text, /dmo-toolbar/, '筛选区必须用单行工具栏类')
+    // 捕捉「用 dmo-row 装一组筛选项」这种回退写法
+    const rowWithFilter = text.slice(text.indexOf('过滤记录') - 400, text.indexOf('过滤记录'))
+    assert.equal(/dmo-row/.test(rowWithFilter), false, '不要用 dmo-row 装筛选项——它不会覆盖 width:100%')
+  })
+
+  it('.dmo-toolbar 显式覆盖 select 的 width:100%', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'styles.ts'), 'utf8')
+    assert.match(text, /\.dmo-toolbar > \.dmo-select \{ width: auto/, '必须显式覆盖成 width:auto，否则仍会换行')
+    assert.match(text, /\.dmo-toolbar > \.dmo-input/, '搜索框要能弹性伸缩')
+  })
+
+  it('styles.ts 的注释里不出现反引号（会提前闭合模板字符串）', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'styles.ts'), 'utf8')
+    // 模板字符串是 const CSS = `...`；内容里的反引号会提前闭合，把后面的 CSS 变成代码
+    const body = text.slice(text.indexOf('const CSS = `') + 13, text.lastIndexOf('`'))
+    assert.equal(/`/.test(body), false, 'styles.ts 的 CSS 里出现了反引号：会提前闭合模板字符串')
+  })
+})

@@ -189,10 +189,9 @@ function MemoryList({ project, onOpenMemory }: {
       createElement(Button, { small: true, onClick: () => { setSubmitted(query) } }, '检索')),
 
     // 范围 + 域筛选：这一页默认看全库，因为它是唯一能看到全貌的地方
-    createElement('div', { className: 'dmo-row', style: { marginBottom: 8, flexWrap: 'wrap' } },
+    createElement('div', { className: 'dmo-toolbar' },
       createElement('select', {
         className: 'dmo-select',
-        style: { flex: '0 0 auto', width: 'auto' },
         value: scope,
         'aria-label': '范围',
         onChange: (event: { target: { value: string } }) => {
@@ -205,7 +204,6 @@ function MemoryList({ project, onOpenMemory }: {
         project === undefined ? '仅本项目（未识别到项目）' : `仅本项目 · ${project}`)),
       createElement('select', {
         className: 'dmo-select',
-        style: { flex: '0 0 auto', width: 'auto' },
         value: domainFilter,
         'aria-label': '按域筛选',
         onChange: (event: { target: { value: string } }) => {
