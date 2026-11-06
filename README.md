@@ -45,7 +45,8 @@ packages/
 │   ├── store.ts                  原子追加（tmp + rename + 文件锁）
 │   ├── search.ts                 全文检索，无向量库
 │   ├── privacy.ts                隐私闸门
-│   └── actions.ts                29 条能力的唯一实现
+│   ├── actions.ts                34 条能力的唯一实现
+│   └── maintenance.ts            维护作业（锚点/减重/复盘/爬升）
 └── dsh-plugin/                   DSH 插件（host + client 双半体）
 ```
 

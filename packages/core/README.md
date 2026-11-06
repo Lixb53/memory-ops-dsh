@@ -23,7 +23,8 @@ DSH 插件的 host 半体调它，未来的 Web 管理端也调它。组件不�
 | `store.ts` | 真相源读写：原子写（tmp+rename）、文件锁、append-only 事件流、归档 |
 | `search.ts` | 全文检索：CJK 子串 + 拉丁词边界，带相关度与片段 |
 | `privacy.ts` | 隐私闸门：密钥 / 私钥 / 身份证 / 内网 IP / 口令赋值 |
-| `actions.ts` | 能力层：30 条能力的唯一实现，host 路由与 agent 工具都调它 |
+| `actions.ts` | 能力层：34 条能力的唯一实现，host 路由与 agent 工具都调它 |
+| `maintenance.ts` | 维护作业：锚点校验 / 减重 / 每周复盘 / 自动爬升（纯函数，按需触发） |
 
 ## 数据契约（不可随意改）
 
