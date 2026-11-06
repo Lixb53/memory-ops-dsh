@@ -11,7 +11,7 @@ import { createElement, useState, type ReactNode } from 'react'
 import { call, type MissesView } from '../api.ts'
 import { useBridge } from '../data.ts'
 import {
-  Badge, Band, Button, Empty, ErrorState, Skeleton, count, orEmpty, percent, truncate,
+  Badge, Band, Button, Empty, ErrorState, Quote, Skeleton, count, orEmpty, percent, truncate,
 } from '../ui.ts'
 
 /** 五态的展示名与语气。 */
@@ -31,7 +31,9 @@ export function MissesPane(): ReactNode {
   const [drafting, setDrafting] = useState<string | null>(null)
   const [draftText, setDraftText] = useState('')
   const [draftType, setDraftType] = useState('问题')
-  const { phase, data, error, reload } = useBridge<MissesView>('misses', {})
+  /** 排序口径：三种都能回答不同问题（见 core misses 的注释）。 */
+  const [sort, setSort] = useState('frequency')
+  const { phase, data, error, reload } = useBridge<MissesView>('misses', { sort }, [sort])
 
   function run(action: () => Promise<unknown>, success: string): void {
     setBusy(true)
@@ -74,10 +76,22 @@ export function MissesPane(): ReactNode {
       ],
     }),
 
+    createElement('div', { className: 'dmo-toolbar' },
+      createElement('select', {
+        className: 'dmo-select',
+        value: sort,
+        'aria-label': '未命中排序',
+        onChange: (event: { target: { value: string } }) => { setSort(event.target.value) },
+      },
+      createElement('option', { value: 'frequency' }, '按频率'),
+      createElement('option', { value: 'recent' }, '按最近'),
+      createElement('option', { value: 'breadth' }, '按会话广度')),
+      createElement('span', { className: 'dmo-row-sub', style: { marginLeft: 'auto', marginTop: 0 } },
+        `补库转化 ${percent(data.conversion)} · 共 ${count(total)} 条`)),
+
     createElement('div', { className: 'dmo-note' },
-      `共 ${count(total)} 条 · 补库转化 ${percent(data.conversion)}`
-      + ` · 验证窗口 ${data.verifyDays} 天 · 问过 ≥${data.fillThreshold ?? 3} 次自动进「该补」`,
-      createElement('div', null, '草稿必须你确认才落库——自动写库会产生无法审计的臆想。')),
+      `验证窗口 ${data.verifyDays} 天 · 问过 ≥${data.fillThreshold ?? 3} 次自动进「该补」。`
+      + ' 草稿必须你确认才落库——自动写库会产生无法审计的臆想。'),
 
     toast === null ? null : createElement('div', {
       className: `dmo-toast ${toast.ok ? 'dmo-toast-ok' : 'dmo-toast-err'}`,
@@ -88,7 +102,10 @@ export function MissesPane(): ReactNode {
     total === 0
       ? createElement(Empty, { title: '没有未命中记录' },
         createElement('div', null, '这是好事：说明检索都在库里命中了。'),
-        createElement('div', { className: 'dmo-note' }, '每次 memory_recall 未命中都会记在这里。'))
+        createElement('div', { className: 'dmo-note' },
+          '最近 30 天没有检索落空。补库入口在这，等有输入再来。'),
+        createElement('div', { className: 'dmo-row', style: { justifyContent: 'center', marginTop: 9 } },
+          createElement(Button, { small: true, onClick: reload }, '看检索日志')))
       : null,
 
     // 批量生成草稿
@@ -97,11 +114,11 @@ export function MissesPane(): ReactNode {
     },
     createElement('span', { className: 'dmo-note', style: { margin: 0 } }, `已选 ${selected.length} 条`),
     createElement(Button, {
-      small: true, disabled: busy,
+      small: true, variant: 'primary', disabled: busy,
       onClick: () => {
         run(() => call('missBatchDraft', { queries: selected }), '已生成草稿，去「草稿待确认」逐条确认')
       },
-    }, '批量生成草稿')),
+    }, `批量生成 ${selected.length} 条草稿（仍需逐条确认）`)),
 
     LANES.map((lane) => {
       const items = data.pipeline[lane.id] ?? []
@@ -124,9 +141,15 @@ export function MissesPane(): ReactNode {
             // 会话数与次数分开显示：「3 个会话都在问」比「一个会话问 3 次」重要
             createElement('span', null, `${count(item.sessions ?? 1)} 个会话`),
             createElement('span', null, `多花 ~${count(item.wastedTokens)} tokens`),
-            // 验证期进度：命中 x/3、剩 N 天
+            /**
+             * 验证期进度：落点 + 命中 x/3 + 剩 N 天。
+             *
+             * 三者缺一不可：光说「验证期内」用户不知道它在哪；
+             * 光说天数不知道补得对不对（命中次数才是判据）。
+             */
             lane.id === 'verifying'
               ? createElement('span', null,
+                item.draftPath === null ? '' : `已进 ${item.draftPath.split('/').pop()} · `,
                 `命中 ${count(item.hits)}/3`,
                 item.remainingDays === null ? '' : ` · 剩 ${item.remainingDays} 天`)
               : null,
@@ -158,13 +181,35 @@ export function MissesPane(): ReactNode {
                       },
                     }, '确认落库'),
                     createElement(Button, { small: true, onClick: () => { setDrafting(null) } }, '取消')))
-                : createElement(Button, {
-                  small: true, variant: 'primary',
-                  onClick: () => {
-                    setDrafting(item.query)
-                    setDraftText('')
-                  },
-                }, '写结论'))
+                : createElement('div', null,
+                  /**
+                   * 草稿态直接展示「已经有什么」，而不是只给一个「写结论」按钮。
+                   *
+                   * 设计稿在这里有一段草稿正文 + 免责说明「草稿 · 待你确认，
+                   * 不是 agent 自己写进库的」。那句免责声明很关键：
+                   * 它明确告诉用户「这段文字还不是记忆，只有你点了才算」。
+                   */
+                  createElement('div', { className: 'dmo-evidence' },
+                    createElement(Quote, null, item.drafts.length > 0
+                      ? '（草稿已生成，点「写结论」补充具体结论）'
+                      : '这条问题还没有结论——点「写结论」写下你查到的东西。'),
+                    createElement('div', { className: 'dmo-evidence-src' },
+                      '草稿 · 待你确认，不是 agent 自己写进库的')),
+                  createElement('div', { className: 'dmo-card-actions' },
+                    createElement(Button, {
+                      small: true, variant: 'primary',
+                      onClick: () => {
+                        setDrafting(item.query)
+                        setDraftText('')
+                      },
+                    }, '写结论'),
+                    // 丢弃草稿：不补了，把它从流水线里摘掉
+                    createElement(Button, {
+                      small: true, disabled: busy,
+                      onClick: () => {
+                        run(() => call('missDelete', { query: item.query }), '已丢弃这条草稿')
+                      },
+                    }, '丢弃'))))
             : createElement('div', { className: 'dmo-card-actions' },
               lane.id === 'observing' || lane.id === 'should-fill'
                 ? createElement('input', {
@@ -184,6 +229,19 @@ export function MissesPane(): ReactNode {
                   small: true, disabled: busy,
                   onClick: () => { run(() => call('missDraft', { query: item.query, type: '问题' }), '已生成草稿') },
                 }, '转草稿')
+                : null,
+              /**
+               * 「不补」= 明确决定这条不值得沉淀。
+               *
+               * 与「删除」的区别在语义而非行为：删除是「我看过了，清掉」，
+               * 不补是「这个问题我已经判断不需要进库」。两者都移除记录，
+               * 但按钮文案反映了用户的判断，而不是让他去猜「删除」意味着什么。
+               */
+              lane.id === 'should-fill' || lane.id === 'observing'
+                ? createElement(Button, {
+                  small: true, disabled: busy,
+                  onClick: () => { run(() => call('missDelete', { query: item.query }), '已标记不补') },
+                }, '不补')
                 : null,
               createElement(Button, {
                 small: true, variant: 'danger', disabled: busy,

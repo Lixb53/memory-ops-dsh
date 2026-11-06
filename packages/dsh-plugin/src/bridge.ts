@@ -54,7 +54,8 @@ export const ROUTES: Readonly<Record<string, RouteSpec>> = {
   inbox: { method: 'POST', run: (a, b) => a.inbox(b as never) },
   search: { method: 'POST', run: (a, b) => a.search(b as never) },
   detail: { method: 'POST', run: (a, b) => a.detail(b as never) },
-  misses: { method: 'POST', run: a => a.misses() },
+  // 未命中支持排序：三种口径见 core misses() 的注释
+  misses: { method: 'POST', run: (a, b) => a.misses(b as never) },
   health: { method: 'POST', run: a => a.health() },
   index: { method: 'POST', run: (a, b) => a.index(b as never) },
   // —— 记录流写 ——

@@ -835,7 +835,7 @@ describe('未命中流水线闭环（验证期能走到「已验证生效」）'
     await actions.missConfirm({ query: 'q-x', content: '结论。' })
     const board = assertOk<{
       pipeline: Record<string, { remainingDays: number | null; draftPath: string | null; hits: number }[]>
-    }>(await actions.misses())
+    }>(await actions.misses({}))
     const item = board.pipeline.verifying[0]!
     assert.equal(item.remainingDays, MISS_VERIFY_DAYS, '刚进验证期应剩满窗口天数')
     assert.match(item.draftPath ?? '', /\.md$/, '草稿路径要能被点开')
@@ -853,5 +853,50 @@ describe('未命中流水线闭环（验证期能走到「已验证生效」）'
     const item = board.pipeline['should-fill'][0]!
     assert.equal(item.count, 3, '问过 3 次')
     assert.equal(item.sessions, 3, '来自 3 个不同会话')
+  })
+})
+
+describe('未命中排序三口径', () => {
+  /** 造三条各有特点的记录：高频 / 近期 / 広会话。 */
+  async function seedSortCases() {
+    const ctx = await freshActions('miss-sort')
+    // 高频但只在一个会话里：count=5, sessions=1
+    for (let i = 0; i < 5; i += 1) await ctx.store.recordMiss({ query: '高频单会话', session: 's1' })
+    // 低频但多个会话都在问：count=2, sessions=2
+    await ctx.store.recordMiss({ query: '多会话共问', session: 'a' })
+    await ctx.store.recordMiss({ query: '多会话共问', session: 'b' })
+    return ctx
+  }
+
+  it('按频率：问得最多的排最前', async () => {
+    const { actions } = await seedSortCases()
+    const board = assertOk<{ pipeline: Record<string, { query: string }[]>; sort: string }>(
+      await actions.misses({ sort: 'frequency' }),
+    )
+    assert.equal(board.sort, 'frequency', 'UI 要能回显当前口径')
+    assert.equal(board.pipeline['should-fill'][0]!.query, '高频单会话')
+  })
+
+  it('按会话广度：多会话共问的优先', async () => {
+    const { actions } = await seedSortCases()
+    const board = assertOk<{ pipeline: Record<string, { query: string; sessions: number }[]> }>(
+      await actions.misses({ sort: 'breadth' }),
+    )
+    // 广度优先时，同分组的排序应按 sessions 降序
+    const groups = Object.values(board.pipeline).filter(group => group.length > 0)
+    for (const group of groups) {
+      for (let i = 1; i < group.length; i += 1) {
+        assert.equal(group[i - 1]!.sessions >= group[i]!.sessions, true, '会话广度排序不正确')
+      }
+    }
+  })
+
+  it('三种口径都返回 sort 回显，且不改变数据本身', async () => {
+    const { actions } = await seedSortCases()
+    for (const sort of ['frequency', 'recent', 'breadth']) {
+      const board = assertOk<{ sort: string; total: number }>(await actions.misses({ sort }))
+      assert.equal(board.sort, sort)
+      assert.equal(board.total, 2, '排序不该改变条目数')
+    }
   })
 })

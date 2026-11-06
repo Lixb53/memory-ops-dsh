@@ -735,7 +735,15 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
   }
 
   /** 未命中工作台：全量聚类 + 五态流水线。 */
-  async function misses() {
+  /**
+   * 未命中工作台。
+   *
+   * @param sort - 排序口径：frequency（按频率，默认）/ recent（按最近）/ breadth（按会话广度）
+   *
+   * 为什么排序交给 core 而不是 UI：排序口径只该有一处实现，
+   * 否则 Web 端接了之后必然与插件端分叉（这个教训在 §14.4 记过）。
+   */
+  async function misses({ sort = 'frequency' }: { sort?: string } = {}) {
     return guard(async () => {
       const list = await store.readMisses()
       const pipeline: Record<string, {
@@ -778,11 +786,24 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
           draftPath: miss.draftPath ?? null,
         })
       }
-      // **按频率降序**：未命中表的价值全在「哪条问得最多」。
-      // 早先直接按 misses.json 的写入顺序渲染，等于把最有价值的信息埋在列表末尾。
-      // 同频时用最近一次时间兜底，保证顺序稳定（避免每次刷新都跳）。
+      /**
+       * 排序：三种口径都能回答不同的问题。
+       *
+       *   frequency  哪条问得最多 → 该先补哪条（默认）
+       *   recent     最近在问什么 → 跟当前任务相关的可能性大
+       *   breadth    多少会话都在问 → 共性问题优先
+       *
+       * 早先固定按频率，且注释写着「排序口径只该有一处」——那条原则是对的，
+       * 但结论错了：**口径应该可切换，实现应该只有一处**。现在这一处就是这里。
+       */
       for (const bucket of Object.values(pipeline)) {
-        bucket.sort((a, b) => b.count - a.count || String(b.lastAt).localeCompare(String(a.lastAt)))
+        if (sort === 'recent') {
+          bucket.sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)))
+        } else if (sort === 'breadth') {
+          bucket.sort((a, b) => b.sessions - a.sessions || b.count - a.count)
+        } else {
+          bucket.sort((a, b) => b.count - a.count || String(b.lastAt).localeCompare(String(a.lastAt)))
+        }
       }
       return {
         pipeline,
@@ -799,6 +820,8 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
         verifyDays: MISS_VERIFY_DAYS,
         /** 阈值：问过几次算「该补了」。UI 上要能说清这个数字的来源。 */
         fillThreshold: 3,
+        /** 当前排序口径，UI 用来回显选中的那一项。 */
+        sort,
       }
     })
   }

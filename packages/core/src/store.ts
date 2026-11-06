@@ -106,7 +106,15 @@ export interface MissRecord {
    * UI 上「N 次 / M 个会话」两个数字必须分开显示。
    */
   sessions?: string[]
-  /** 草稿落库后所在路径（验证期内点开能跳过去）。 */
+  /**
+   * 草稿落库后所在路径（验证期内点开能跳过去）。
+   *
+   * 设计稿写的是「已进 INBOX 第 N 行」，但实现里草稿落成独立 md 文件
+   * （personal/misses/日期-slug.md），不是 INBOX 的一行。
+   * 差异原因是：草稿是「一条结论」，适合独立成篇；
+   * 而 INBOX 是「待流转的速记」。所以 UI 显示路径而不是行号——
+   * 两者都指向「它落到哪了」，但如实反映实际落点更重要。
+   */
   draftPath?: string
   /** 进入验证期的时间；配合 MISS_VERIFY_DAYS 算剩余天数。 */
   verifyAt?: string
