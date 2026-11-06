@@ -20,7 +20,14 @@ export interface Loaded<T> {
   reload: () => void
 }
 
-/** 加载一次桥数据。 */
+/**
+ * 加载一次桥数据。
+ *
+ * ⚠️ `deps` 会展开进 useEffect 的依赖数组，所以**长度必须恒定**。
+ * React 要求依赖数组长度在渲染之间不变；若某个调用点按条件增减 deps，
+ * 会触发 hook 依赖不一致的警告。当前所有调用点都传固定长度。
+ * 新增调用点时不要写 `cond ? [a, b] : [a]` 这种形态。
+ */
 export function useBridge<T>(
   route: string,
   body: Record<string, unknown>,
