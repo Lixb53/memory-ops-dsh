@@ -49,9 +49,11 @@ async function clientSource() {
 
 /** 某个路由在客户端是否有调用点（call 或 useBridge 任一种）。 */
 function hasCallSite(sources, route) {
+  // 允许 `(` 与路由名之间有任意空白（含换行）——memory.ts 就是跨行写的，
+  // 早先的正则要求紧贴，导致 search 的调用点被漏判。
   const patterns = [
-    new RegExp(`\\bcall(?:<[^>]*>)?\\(\\s*['"]${route}['"]`),
-    new RegExp(`\\buseBridge(?:<[^>]*>)?\\(\\s*['"]${route}['"]`),
+    new RegExp(`\\bcall(?:<[^>]*>)?\\(\\s*['"]${route}['"]`, 's'),
+    new RegExp(`\\buseBridge(?:<[^>]*>)?\\(\\s*['"]${route}['"]`, 's'),
   ]
   return sources.filter(source => patterns.some(pattern => pattern.test(source.text)))
 }
@@ -88,9 +90,12 @@ describe('UI 接线：product.md §2.3 的缺口不许回潮', () => {
   it('记忆分区用 search 记检索账，而不是客户端 filter', async () => {
     const file = path.join(CLIENT_DIR, 'panes', 'memory.ts')
     const text = await fsp.readFile(file, 'utf8')
-    // 注意：调用写法是跨行的 `useBridge<SearchView>(\n  'search',`，所以按字段断言而非单行正则
-    assert.match(text, /SearchView/, '必须调用 search 路由（用 SearchView 类型）')
-    assert.match(text, /record:/, 'search 调用必须带 record 参数，否则不记账')
+    // 真实调用点断言：用允许跨行的正则，而不是匹配类型名（那是弱断言）
+    assert.match(
+      text, /useBridge<SearchView>\(\s*'search'/s,
+      '必须以 search 路由发起检索（跨行写法也要认）',
+    )
+    assert.match(text, /record:\s*submitted\.trim\(\) !== ''/, 'search 调用必须按「是否主动检索」决定记不记账')
     assert.match(text, /setSubmitted/, '必须有一次显式提交动作（否则每敲一个字都记一条 miss）')
   })
 
@@ -272,5 +277,34 @@ describe('交互闭环（点了要有反应）', () => {
         `维护作业 ${action} 不该对 agent 开放：它会改记忆的可信度或内容`,
       )
     }
+  })
+})
+
+describe('路由接线全表（防止「有路由没入口」回潮）', () => {
+  /**
+   * 允许没有 UI 入口的路由，每个都要写明**为什么**。
+   * 这份白名单是人工确认过的：新出现不在名单里的路由，下面那条测试会红。
+   */
+  const ALLOWED_WITHOUT_UI = {
+    // 内部索引能力：给 agent 与诊断用，没有面向用户的入口需求
+    index: '内部索引能力',
+    // 底层原语：被 confirm / reject / undoReject 三个语义化路由封装
+    setStatus: '被 confirm/reject/undoReject 封装',
+    // 诊断端点：供 curl 与宿主探活，不进 UI
+    healthCheck: '诊断端点',
+  }
+
+  it('除白名单外，每条路由都有 UI 调用点', async () => {
+    const bridge = await fsp.readFile(path.join(SRC_DIR, 'bridge.ts'), 'utf8')
+    const names = [...bridge.matchAll(/^\s{2}([a-zA-Z]+):\s*\{/gm)].map(m => m[1])
+    assert.equal(names.length >= 34, true, `路由数偏少：${names.length}`)
+
+    const sources = await clientSource()
+    const missing = names.filter(name => !(name in ALLOWED_WITHOUT_UI) && hasCallSite(sources, name).length === 0)
+
+    assert.deepEqual(
+      missing, [],
+      `这些路由没有 UI 入口（若确属内部能力，请加进 ALLOWED_WITHOUT_UI 并写明理由）：\n${missing.join(', ')}`,
+    )
   })
 })

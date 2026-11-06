@@ -381,3 +381,42 @@ describe('agent 工具契约', () => {
     assert.match(value.message, /origin 必须是/)
   })
 })
+
+describe('命中率闭环（cite 必须真的能产生）', () => {
+  it('memory_recall 带 cite 时写 cite 事件，命中率不再恒为 0', async () => {
+    const { tools } = mount()
+    const recall = tools.find(tool => tool.name === 'memory_recall')
+
+    // 1. 先搜一次 → 记 recall（分母）
+    const first = await recall.execute({ query: '索引' }, { agent: { id: 'test' } })
+    assert.equal(first.matched, true)
+    const targetId = first.hits[0].id
+
+    // 2. 回填 cite（分子）—— 这才是「真的用上了」
+    await recall.execute({ query: '索引', cite: [targetId] }, { agent: { id: 'test' } })
+
+    const events = (await fsp.readFile(path.join(root, '.state', 'events.jsonl'), 'utf8'))
+      .trim().split('\n').map(line => JSON.parse(line))
+    assert.equal(events.some(e => e.kind === 'recall'), true, '缺 recall（分母）')
+    assert.equal(events.some(e => e.kind === 'cite'), true, '缺 cite（分子）——命中率会恒为 0')
+
+    // 3. 统计里命中率必须是可算的
+    const route = mount().routes.find(item => item.path.endsWith('/overview'))
+    const { req, res, captured } = makeCall({ url: `${BRIDGE_PREFIX}/overview`, body: '{}' })
+    await route.handler(req, res)
+    const overview = JSON.parse(captured.payload)
+    assert.notEqual(overview.kpi.hitRate, null, '命中率不该是 null')
+    assert.equal(overview.kpi.hitRate > 0, true, '记了 cite 之后命中率必须大于 0')
+  })
+
+  it('cite 里不存在的 id 被丢弃（不许凭空记引用）', async () => {
+    const { tools } = mount()
+    const recall = tools.find(tool => tool.name === 'memory_recall')
+    const before = (await fsp.readFile(path.join(root, '.state', 'events.jsonl'), 'utf8'))
+      .split('\n').filter(line => line.includes('"kind":"cite"')).length
+    await recall.execute({ query: '索引', cite: ['根本不存在的.id'] }, { agent: { id: 'test' } })
+    const after = (await fsp.readFile(path.join(root, '.state', 'events.jsonl'), 'utf8'))
+      .split('\n').filter(line => line.includes('"kind":"cite"')).length
+    assert.equal(after, before, '不在命中列表里的 id 不该被记 cite')
+  })
+})

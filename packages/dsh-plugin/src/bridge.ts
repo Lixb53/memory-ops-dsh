@@ -9,7 +9,6 @@
  */
 
 import type { Actions, ResidentSkill } from '@memory-ops/core/actions'
-import { estimateTokens } from '@memory-ops/core/schema'
 
 /** 一条能力的传输声明。 */
 export interface RouteSpec {

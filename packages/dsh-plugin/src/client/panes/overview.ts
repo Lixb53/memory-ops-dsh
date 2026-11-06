@@ -18,7 +18,7 @@ import { useBridge } from '../data.ts'
 import { MaintenancePanel } from './maintenance.ts'
 import {
   Badge, BudgetRow, Button, Empty, ErrorState, Kpi, Skeleton, Stepper,
-  bytes, count, orEmpty, percent, statusLabel, statusTone, truncate,
+  bytes, count, orEmpty, percent, statusLabel, truncate,
 } from '../ui.ts'
 
 /** 总览分区。 */

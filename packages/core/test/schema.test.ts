@@ -6,7 +6,12 @@
  */
 
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import fsp from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { after, before, describe, it } from 'node:test'
+
+import { createStore } from '../src/store.ts'
 
 import {
   INBOX_COLUMNS, INBOX_KINDS, INBOX_STATES, canTransition, estimateTokens,
@@ -16,6 +21,16 @@ import {
   INBOX_HEADER, escapeCell, parseFrontmatter, parseInbox, parseInboxRow,
   serializeFrontmatter, serializeInboxRow, splitFrontmatter, splitTableRow,
 } from '../src/parse.ts'
+
+let root: string
+
+before(async () => {
+  root = await fsp.mkdtemp(path.join(os.tmpdir(), 'memory-ops-schema-'))
+})
+
+after(async () => {
+  await fsp.rm(root, { recursive: true, force: true })
+})
 
 describe('schema 契约', () => {
   it('INBOX 五列顺序固定', () => {
@@ -203,5 +218,67 @@ describe('到期与待办判定', () => {
     const old = { status: 'rejected', refutedAt: new Date(now - 40 * DAY).toISOString() }
     assert.equal(needsDecision(recent, now), true)
     assert.equal(needsDecision(old, now), false)
+  })
+})
+
+/**
+ * frontmatter 块列表 —— 这类数据损坏最隐蔽：
+ * 解析错误不会报错，只在「写回」时才把用户手写的内容毁掉。
+ */
+describe('frontmatter 块列表（写回不得毁数据）', () => {
+  it('缩进块列表解析成字符串数组，不被合并', () => {
+    const { frontmatter } = splitFrontmatter('---\ntags:\n  - 前端\n  - 性能\n---\n')
+    const parsed = parseFrontmatter(frontmatter)
+    // 早先会得到 [{ value: '前端 性能' }] —— 两个标签被拼成一个对象
+    assert.deepEqual(parsed.tags, ['前端', '性能'])
+  })
+
+  it('零缩进块列表也不许丢（YAML 合法写法）', () => {
+    const { frontmatter } = splitFrontmatter('---\ntags:\n- a\n- b\n---\n')
+    const parsed = parseFrontmatter(frontmatter)
+    // 早先会得到 []，写回时用户标签全部消失
+    assert.deepEqual(parsed.tags, ['a', 'b'])
+  })
+
+  it('对象数组（evidence）仍能正确解析并支持多字段续行', () => {
+    const { frontmatter } = splitFrontmatter(
+      '---\nevidence:\n  - session: s1\n    excerpt: e1\n  - session: s2\n    excerpt: e2\n---\n',
+    )
+    const parsed = parseFrontmatter(frontmatter)
+    assert.deepEqual(parsed.evidence, [
+      { session: 's1', excerpt: 'e1' },
+      { session: 's2', excerpt: 'e2' },
+    ])
+  })
+
+  it('解析 → 序列化 → 再解析是稳定的（往返不漂移）', () => {
+    const cases = [
+      'tags:\n  - 前端\n  - 性能',
+      'tags:\n- a\n- b',
+      'tags: [a, b]',
+      'tags: []',
+      'evidence:\n  - session: s1\n    excerpt: e1',
+    ]
+    for (const body of cases) {
+      const once = parseFrontmatter(body)
+      const text = serializeFrontmatter(once as Record<string, unknown>)
+      const twice = parseFrontmatter(splitFrontmatter(`${text}\n`).frontmatter)
+      assert.deepEqual(twice, once, `往返漂移：${body}\n→ ${text}`)
+    }
+  })
+
+  it('写回时手写标签不丢（真实破坏场景）', async () => {
+    const store = createStore({ root: path.join(root, 'fm-tags') })
+    await store.ensureLayout()
+    await fsp.writeFile(
+      path.join(root, 'fm-tags', 'personal', 'x.md'),
+      '---\ntitle: X\ntags:\n  - 前端\n  - 性能\n---\n\n# X\n\n正文。\n',
+      'utf8',
+    )
+    // 触发一次 frontmatter 写回（这正是 repairMeta / setStatus 走的路）
+    await store.patchMeta('personal/x.md', { status: 'confirmed' })
+    const entry = await store.readEntry('personal/x.md')
+    assert.deepEqual(entry.tags, ['前端', '性能'], '写回后标签必须原样保留')
+    assert.equal(entry.body.includes('正文。'), true, '正文不许被破坏')
   })
 })

@@ -24,7 +24,7 @@ import crypto from 'node:crypto'
 
 import {
   AUTO_PROMOTABLE_STATES, FILE_LINE_LIMIT, REINFORCE_MIN_SESSIONS,
-  STALE_AFTER_DAYS, daysSince, expiryOf, truncate,
+  daysSince, expiryOf, truncate,
   type ConfidenceState,
 } from './schema.ts'
 import type { MemoryEntry, MemoryEvent, MissRecord } from './store.ts'

@@ -1028,8 +1028,14 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
           after: result.after,
           removed: result.removed,
           changes: result.changes,
-          /** 压缩后仍超限 → 该人工拆分，这里只给建议（超限判定用文件口径，与 store 一致）。 */
-          stillOverLimit: entry.lines - result.removed > FILE_LINE_LIMIT,
+          /**
+           * 压缩后是否仍超限。
+           *
+           * 必须用**同一口径**：`before`/`after` 都是正文行数，这里不能用
+           * `entry.lines`（含 frontmatter）去减正文口径的 `removed`——
+           * 那会算出比实际小 5~10 行的假象，让「压缩后合规了」的判断提前成立。
+           */
+          stillOverLimit: result.after + (entry.lines - result.before) > FILE_LINE_LIMIT,
           splitSuggestions: result.splitSuggestions,
         }
       })

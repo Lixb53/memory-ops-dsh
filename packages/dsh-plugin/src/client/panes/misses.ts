@@ -56,7 +56,6 @@ export function MissesPane(): ReactNode {
   if (data === undefined) return createElement(Skeleton, { rows: 2 })
 
   const total = data.total
-  const verified = data.pipeline.verified?.length ?? 0
 
   return createElement('div', null,
     createElement('div', { className: 'dmo-kpis' },

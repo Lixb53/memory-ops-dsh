@@ -66,7 +66,7 @@ export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
   let body: ReactNode
   switch (pane) {
     case 'stream':
-      body = createElement(StreamPane, { onOpenMemory: openMemory })
+      body = createElement(StreamPane, null)
       break
     case 'memory':
       body = createElement(MemoryPane, { project, onOpenMemory: openMemory, detailPath })

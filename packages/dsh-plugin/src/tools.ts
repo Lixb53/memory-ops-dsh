@@ -47,6 +47,11 @@ export function registerTools({ actions }: { actions: Actions }) {
           query: { type: 'string', description: '检索词，可空格分隔多个' },
           project: { type: 'string', description: '限定项目名（work/<project> 的 project 部分），省略表示全部' },
           limit: { type: 'number', description: '返回条数上限，默认 5' },
+          cite: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '本次**实际用到**的条目 id。读完详情后回填，用来算命中率（不填则只记 recall）',
+          },
         },
         required: ['query'],
       },
@@ -82,7 +87,9 @@ export function registerTools({ actions }: { actions: Actions }) {
         },
       },
       async execute(rawArgs: unknown, exec: unknown) {
-        const args = (rawArgs ?? {}) as { query?: string; project?: string; limit?: number }
+        const args = (rawArgs ?? {}) as {
+          query?: string; project?: string; limit?: number; cite?: string[]
+        }
         const agent = (exec as { agent?: { id?: string } } | undefined)?.agent
         const limit = Number.isFinite(args.limit) ? Number(args.limit) : 5
         const result = await actions.search({
@@ -90,6 +97,29 @@ export function registerTools({ actions }: { actions: Actions }) {
           project: args.project,
           session: agent?.id ?? 'agent',
         })
+
+        /**
+         * `cite` = 「这条记忆真的被我用上了」。
+         *
+         * 这是命中率的**分子**，而 `search` 只记分母（recall）。
+         * 早先全仓没有任何地方写 cite，所以命中率恒为 0——
+         * 分母一直涨、分子永远是零，那个指标从上线起就没通过。
+         *
+         * 为什么不在 search 里顺手记 cite：搜到 ≠ 用到。
+         * 若搜到就算命中，命中率会虚高到接近 100%，这个指标就失去了意义。
+         * 所以必须由模型在真正消费了某条记忆之后显式回填。
+         */
+        if (result.ok && Array.isArray(args.cite) && args.cite.length > 0) {
+          const valid = args.cite.filter(id => result.hits.some(hit => hit.id === id))
+          if (valid.length > 0) {
+            await actions.store.recordCite({
+              ids: valid,
+              kind: 'cite',
+              session: agent?.id ?? 'agent',
+              query: String(args.query ?? ''),
+            })
+          }
+        }
         if (!result.ok) {
           return { matched: false, total: 0, cost: 0, text: `记忆库检索失败：${result.error}` }
         }

@@ -652,10 +652,48 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
   }
 
   /** 记一次引用（cite / recall）。 */
+  /**
+   * 记一次引用（cite / recall），并把 `last_cited` 写回被引用的条目。
+   *
+   * ## 为什么必须写回 `last_cited`
+   *
+   * `expiryOf()` 的判定顺序是 `lastCitedAt ?? updatedAt ?? createdAt`。
+   * 早先这里只 append 事件、从不写 `last_cited`，于是无论一条记忆被引用多少次，
+   * 到期判定始终退回 `updatedAt`——**「90 天未被引用」这个核心机制其实没生效过**：
+   * 一条被天天读的记忆，只要 `updated` 是 100 天前，照样会被判「该退役」。
+   *
+   * ## 为什么只对 cite 写，不对 recall 写
+   *
+   * `recall` 是「搜到了」，不等于「用上了」。搜索命中 5 条就更新 5 条的引用时间，
+   * 会让所有被搜到过的记忆永远不过期，过期率永远是 0。
+   * 只有 `cite`（模型显式声明用了哪条）才算真正的引用。
+   *
+   * 失败不抛：写回是**附带收益**，不该因为某个文件被删就让记账失败。
+   */
   async function recordCite({ ids, kind = 'cite', session = 'plugin', query }: {
     ids: string[]; kind?: string; session?: string; query?: string
   }): Promise<MemoryEvent> {
-    return appendEvent({ session, kind, ids, query })
+    const event = await appendEvent({ session, kind, ids, query })
+    if (kind !== 'cite' || ids.length === 0) return event
+
+    const at = new Date(now()).toISOString().slice(0, 10)
+    try {
+      // 事件里存的是 id，写回需要路径：扫一次全库建映射（条目数百量级，可接受）
+      const entries = await scan()
+      const byId = new Map(entries.map(entry => [entry.id, entry]))
+      for (const id of ids) {
+        const entry = byId.get(id)
+        if (entry === undefined) continue
+        try {
+          await patchMeta(entry.path, { last_cited: at })
+        } catch {
+          // 单条写失败（文件被删/无权限）不影响其余条目
+        }
+      }
+    } catch {
+      // 扫描失败就跳过写回：事件已经记上了，这是附带收益
+    }
+    return event
   }
 
   /** 汇总统计（唯一口径，两端共用）。 */

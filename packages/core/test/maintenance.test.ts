@@ -13,6 +13,7 @@ import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
 
 import { createActions } from '../src/actions.ts'
+import { expiryOf } from '../src/schema.ts'
 import { createStore } from '../src/store.ts'
 import { INBOX_HEADER } from '../src/parse.ts'
 import {
@@ -751,5 +752,59 @@ describe('减重行数口径（before/after/removed 必须同口径）', () => {
     assert.equal(item.before, 3, `before 应是正文 3 行，实际 ${item.before}（entry.lines=${entry.lines}）`)
     assert.equal(item.before < entry.lines, true, 'cannot: 若相等说明还在用文件口径')
     assert.equal(item.after <= item.before, true)
+  })
+})
+
+describe('引用时间写回（90 天退役的前提）', () => {
+  it('cite 会写回 last_cited，让「未被引用」判定真的生效', async () => {
+    const { store } = await freshActions('cite-lastcited')
+    await store.createEntry({
+      relPath: 'personal/notes/cited.md',
+      frontmatter: { title: '被引用过', status: 'confirmed', layer: 'l2', updated: '2026-01-01' },
+      body: 'x',
+    })
+    const before = await store.readEntry('personal/notes/cited.md')
+    assert.equal(before.lastCitedAt, undefined, '初始没有 last_cited')
+
+    await store.recordCite({ ids: [before.id], kind: 'cite', session: 's1' })
+
+    const after = await store.readEntry('personal/notes/cited.md')
+    assert.notEqual(after.lastCitedAt, undefined, 'cite 之后必须写回 last_cited')
+    // 关键：过期判定不能再退回 updatedAt（那是 2026-01-01，早该退役）
+    const expiry = expiryOf(after, Date.parse('2026-11-06T00:00:00Z'))
+    assert.equal(expiry.level, 'fresh', '刚被引用过就不该判过期')
+  })
+
+  it('recall 不写 last_cited（搜到 ≠ 用到）', async () => {
+    const { store } = await freshActions('recall-no-lastcited')
+    await store.createEntry({
+      relPath: 'personal/notes/recalled.md',
+      frontmatter: { title: '只是被搜到', status: 'confirmed', layer: 'l2' },
+      body: 'x',
+    })
+    const entry = await store.readEntry('personal/notes/recalled.md')
+    await store.recordCite({ ids: [entry.id], kind: 'recall', session: 's1' })
+    const after = await store.readEntry('personal/notes/recalled.md')
+    assert.equal(after.lastCitedAt, undefined,
+      '若 recall 也写引用时间，那被搜到过的记忆永远不会过期，过期率恒为 0')
+  })
+
+  it('引用不存在的 id 不报错也不写坏文件', async () => {
+    const { store } = await freshActions('cite-unknown')
+    const event = await store.recordCite({ ids: ['根本不存在'], kind: 'cite', session: 's1' })
+    assert.equal(event.kind, 'cite', '事件仍要记账')
+  })
+
+  it('补 frontmatter 时 updated 已有值就不覆盖（防退役倒计时被清零）', async () => {
+    const { store } = await freshActions('keep-updated')
+    await store.createEntry({
+      relPath: 'personal/notes/keep.md',
+      frontmatter: { title: 'x', status: 'confirmed', layer: 'l2', updated: '2026-01-01' },
+      body: 'x',
+    })
+    // mergeMeta 是修补走的路径：它不刷新 updated
+    await store.mergeMeta('personal/notes/keep.md', { kind: 'fact', updated: '2026-11-06' })
+    const after = await store.readEntry('personal/notes/keep.md')
+    assert.equal(after.updatedAt, '2026-01-01', '修补不该把 updated 刷成今天')
   })
 })

@@ -46,11 +46,48 @@ export function CapturePane(): ReactNode {
     }
   }, [undo])
 
+  /**
+   * 提交：单行走 capture，多行走 captureBatch。
+   *
+   * 早先只有单条，`captureBatch` 路由零 UI 调用——而 product.md §5.1 写着
+   * 「✅ 单行速记 + 批量捕获」。把多行输入直接交给批量路由，
+   * 既兑现了那句承诺，也让「贴一段清单进来」这种真实用法不用一条条敲。
+   */
   function submit(): void {
     const content = text.trim()
     if (content === '' || busy) return
     setBusy(true)
     setResult(null)
+
+    const lines = content.split('\n').map(line => line.trim()).filter(Boolean)
+    if (lines.length > 1) {
+      void call<{ ok: boolean; accepted?: string[]; blocked?: { line: string; reason: string }[]; total?: number }>(
+        'captureBatch', { text: content, kind },
+      )
+        .then((payload) => {
+          const accepted = payload.accepted?.length ?? 0
+          const blocked = payload.blocked ?? []
+          if (blocked.length === 0) {
+            setResult({
+              ok: true,
+              captured: { path: `已存入 ${accepted} 条` },
+            })
+          } else {
+            // 部分被闸门拦下：说清几条进了、几条没进、为什么
+            setResult({
+              ok: false,
+              reason: `${accepted} 条已存入，${blocked.length} 条被拦截：${blocked[0]?.reason ?? ''}`,
+            })
+          }
+          if (accepted > 0) setText('')
+        })
+        .catch((failure: unknown) => {
+          setResult({ ok: false, reason: failure instanceof Error ? failure.message : String(failure) })
+        })
+        .finally(() => { setBusy(false) })
+      return
+    }
+
     void call<CaptureResult>('capture', { content, kind })
       .then((payload) => {
         setResult(payload)

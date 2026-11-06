@@ -78,32 +78,43 @@ export function parseFrontmatter(raw: unknown): Frontmatter {
   for (const line of lines) {
     if (line.trim() === '' || line.trim().startsWith('#')) continue
 
-    const itemMatch = /^(\s+)-\s*(.*)$/.exec(line)
-    if (itemMatch !== null && currentKey !== null && itemMatch[1].length >= 2) {
-      const payload = itemMatch[2]
-      if (currentItem !== null && KEY_PREFIX.test(payload)) {
+    /**
+     * 块列表项：`- xxx`（缩进 0 到 N 都算）。
+     *
+     * 早先的写法要求缩进 ≥2，于是 `tags:\n- a\n- b`（YAML 合法的零缩进块列表）
+     * 完全解析不出来：`- a` 落到 key 分支被丢弃，`tags` 变成 `[]`，
+     * 写回时**用户手写的标签全部丢失**。现在零缩进也认。
+     *
+     * 更早还有第二个坑：列表项没有 `:` 时被包成 `{ value: 'a' }`，
+     * 于是连续两个标量项会被「上一个对象的续行」逻辑拼成一个
+     * （`- 前端` + `- 性能` → `{ value: '前端 性能' }`）。
+     * 现在用 `currentItem` 是否为**对象项**来区分，标量项不再走续行分支。
+     */
+    const itemMatch = /^(\s*)-\s+(.*)$|^(\s*)-\s*$/.exec(line)
+    if (itemMatch !== null && currentKey !== null) {
+      const payload = (itemMatch[2] ?? '').trim()
+      const isObjectItem = KEY_PREFIX.test(payload)
+      const list = Array.isArray(result[currentKey]) ? result[currentKey] as unknown[] : []
+
+      if (isObjectItem) {
         const colon = payload.indexOf(':')
-        currentItem[payload.slice(0, colon).trim()] = unquote(payload.slice(colon + 1))
-      } else if (currentItem !== null) {
-        // 上一个对象的续行
-        const previous = currentItem as Record<string, string>
-        const lastKey = Object.keys(previous).pop()
-        if (lastKey !== undefined) previous[lastKey] = `${previous[lastKey]} ${payload}`.trim()
-      } else {
-        currentItem = KEY_PREFIX.test(payload)
-          ? (() => {
-            const colon = payload.indexOf(':')
-            return { [payload.slice(0, colon).trim()]: unquote(payload.slice(colon + 1)) }
-          })()
-          : { value: unquote(payload) }
-        const list = Array.isArray(result[currentKey]) ? result[currentKey] as unknown[] : []
-        list.push(currentItem)
+        const item: Record<string, string> = {
+          [payload.slice(0, colon).trim()]: unquote(payload.slice(colon + 1)),
+        }
+        list.push(item)
         result[currentKey] = list
+        currentItem = item
+      } else {
+        // 标量项：直接进列表，且**不设置** currentItem，
+        // 这样下一个 `- xxx` 不会把它当作续行目标
+        list.push(unquote(payload))
+        result[currentKey] = list
+        currentItem = null
       }
       continue
     }
 
-    // 缩进续行：上一个块列表项对象的下一个字段（`    excerpt: "..."`）
+    // 缩进续行：上一个**对象项**的下一个字段（`    excerpt: "..."`）
     const continuation = /^(\s{2,})([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line)
     if (continuation !== null && currentItem !== null && currentKey !== null) {
       currentItem[continuation[2]] = unquote(continuation[3])

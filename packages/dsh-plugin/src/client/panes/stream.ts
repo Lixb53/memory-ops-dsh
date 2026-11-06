@@ -15,7 +15,14 @@ import {
 } from '../ui.ts'
 
 /** 记录流分区。 */
-export function StreamPane({ onOpenMemory }: { onOpenMemory: (path: string) => void }): ReactNode {
+/**
+ * 记录流分区。
+ *
+ * 注意：这里**不需要 onOpenMemory**——记录流的行是 INBOX 表格行，
+ * 不是记忆条目，没有「详情页」可跳。早先签名里带了这个参数却从未使用，
+ * 是照抄其它分区留下的。去掉它，也让调用方知道这里不用传。
+ */
+export function StreamPane(): ReactNode {
   const [stateFilter, setStateFilter] = useState('')
   const [kindFilter, setKindFilter] = useState('')
   const [selected, setSelected] = useState<number[]>([])
@@ -64,7 +71,7 @@ export function StreamPane({ onOpenMemory }: { onOpenMemory: (path: string) => v
       createElement(Kpi, { label: '待提升', value: count(throughput.toPromote), note: 'done 无去向' }),
       createElement(Kpi, { label: '已处理', value: count(throughput.done), note: 'done' })),
 
-    // 筛选
+    // 筛选：两个下拉并列在同一个 row 里
     createElement('div', { className: 'dmo-row', style: { marginBottom: 8 } },
       createElement('select', {
         className: 'dmo-select',
@@ -76,7 +83,7 @@ export function StreamPane({ onOpenMemory }: { onOpenMemory: (path: string) => v
         },
       },
       createElement('option', { value: '' }, '全部状态'),
-      (data.states ?? []).map(state => createElement('option', { key: state, value: state }, state)))),
+      (data.states ?? []).map(state => createElement('option', { key: state, value: state }, state))),
       createElement('select', {
         className: 'dmo-select',
         value: kindFilter,
@@ -176,7 +183,7 @@ export function StreamPane({ onOpenMemory }: { onOpenMemory: (path: string) => v
               '已删除',
             )
           },
-        })))
+        }))));
 }
 
 /** 单行记录：勾选 + 改状态 + 编辑内容 + 提升 + 删除。 */
