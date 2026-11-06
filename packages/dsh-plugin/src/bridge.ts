@@ -32,6 +32,13 @@ export interface BridgeEnv {
    * 自己扫 SKILL.md 会算出与真实付费量不一致的数字。
    */
   listSkills?: () => ResidentSkill[]
+  /**
+   * 为什么没读到 skill。
+   *
+   * 空数组不解释等于「本来就没有」——而实际情况常常是「宿主没给服务」
+   * 或「skill 没有 description」。两种情况的处理方式完全不同，必须让人看见。
+   */
+  skillsError?: () => string
 }
 
 /** 能力表：路由名 → 实现。与 product.md §8.1 的「30 条」对齐。 */
@@ -40,7 +47,10 @@ export const ROUTES: Readonly<Record<string, RouteSpec>> = {
   snapshot: { method: 'POST', run: (a, b) => a.snapshot(b as never) },
   overview: {
     method: 'POST',
-    run: (a, _b, env) => a.overview({ skillDescriptions: env.listSkills?.() ?? [] }),
+    run: (a, _b, env) => a.overview({
+      skillDescriptions: env.listSkills?.() ?? [],
+      skillsError: env.skillsError?.() ?? '',
+    }),
   },
   inbox: { method: 'POST', run: (a, b) => a.inbox(b as never) },
   search: { method: 'POST', run: (a, b) => a.search(b as never) },
@@ -69,6 +79,12 @@ export const ROUTES: Readonly<Record<string, RouteSpec>> = {
   missConfirm: { method: 'POST', run: (a, b) => a.missConfirm(b as never) },
   missBatchDraft: { method: 'POST', run: (a, b) => a.missBatchDraft(b as never) },
   missDelete: { method: 'POST', run: (a, b) => a.missDelete(b as never) },
+  // —— 维护（按需触发，无常驻定时器）——
+  verifyAnchor: { method: 'POST', run: (a, b) => a.verifyAnchor(b as never) },
+  compact: { method: 'POST', run: (a, b) => a.compact(b as never) },
+  review: { method: 'POST', run: (a, b) => a.review(b as never) },
+  promote: { method: 'POST', run: (a, b) => a.promote(b as never) },
+  repairMeta: { method: 'POST', run: (a, b) => a.repairMeta(b as never) },
   // —— 其他 ——
   export: { method: 'POST', run: (a, b) => a.export(b as never) },
   sessionMemory: { method: 'POST', run: (a, b) => a.sessionMemory(b as never) },

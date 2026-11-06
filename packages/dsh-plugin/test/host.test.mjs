@@ -15,6 +15,15 @@ import { apply, BRIDGE_PREFIX } from '../lib/index.js'
 
 let root
 
+/**
+ * 路由条数。
+ *
+ * 为什么不做成 `routes.length` 自证：那样测试会变成同义反复，
+ * 加一条路由、删一条路由都测不出来。这个数字必须**手写**，
+ * 每次增删能力都强制回来看一眼——它是「能力集合变更」的人工确认点。
+ */
+const ROUTE_COUNT = 34
+
 before(async () => {
   root = await fsp.mkdtemp(path.join(os.tmpdir(), 'memory-ops-host-'))
   await fsp.mkdir(path.join(root, 'personal'), { recursive: true })
@@ -100,9 +109,9 @@ function makeCall({ method = 'POST', url = '/', body = '', remote = '127.0.0.1' 
 }
 
 describe('host 路由', () => {
-  it('注册 29 条 exact 路由，路径不重复', () => {
+  it(`注册 ${ROUTE_COUNT} 条 exact 路由，路径不重复`, () => {
     const { routes } = mount()
-    assert.equal(routes.length, 29)
+    assert.equal(routes.length, ROUTE_COUNT)
     const paths = routes.map(route => route.path)
     assert.equal(new Set(paths).size, paths.length)
     for (const route of routes) {
@@ -119,7 +128,7 @@ describe('host 路由', () => {
     const payload = JSON.parse(captured.payload)
     assert.equal(payload.ok, true)
     assert.equal(payload.root, root)
-    assert.equal(payload.routes, 29)
+    assert.equal(payload.routes, ROUTE_COUNT)
   })
 
   it('非回环请求一律 403', async () => {
@@ -173,6 +182,81 @@ describe('host 路由', () => {
     const payload = JSON.parse(captured.payload)
     assert.equal(payload.blocked, true)
     assert.equal(payload.masked.includes('sk-abcdefghijklmnopqrstuvwx'), false)
+  })
+})
+
+describe('维护作业路由', () => {
+  /** 走一次路由并返回解析后的载荷。 */
+  async function hit(routes, name, body = {}) {
+    const route = routes.find(item => item.path.endsWith(`/${name}`))
+    assert.notEqual(route, undefined, `路由 ${name} 未注册`)
+    const { req, res, captured } = makeCall({
+      url: `${BRIDGE_PREFIX}/${name}`, body: JSON.stringify(body),
+    })
+    await route.handler(req, res)
+    return { status: captured.status, payload: JSON.parse(captured.payload) }
+  }
+
+  it('review 返回窗口、事件计数与行动项', async () => {
+    const { routes } = mount()
+    const { status, payload } = await hit(routes, 'review', { days: 7 })
+    assert.equal(status, 200)
+    assert.equal(payload.ok, true)
+    assert.equal(payload.window.days, 7)
+    assert.equal(typeof payload.events, 'object')
+    assert.equal(Array.isArray(payload.todo), true)
+  })
+
+  it('promote 默认 dry-run：有计划也不改库', async () => {
+    const { routes } = mount()
+    const { payload } = await hit(routes, 'promote', {})
+    assert.equal(payload.ok, true)
+    assert.equal(payload.applied, false)
+    assert.equal(payload.changed.length, 0)
+  })
+
+  it('compact 默认 dry-run：列候选但不写盘', async () => {
+    const { routes } = mount()
+    const { payload } = await hit(routes, 'compact', {})
+    assert.equal(payload.ok, true)
+    assert.equal(payload.applied, false)
+    assert.equal(Array.isArray(payload.candidates), true)
+    assert.equal(payload.written.length, 0)
+  })
+
+  it('verifyAnchor 默认 dry-run，并如实报出基准目录', async () => {
+    const { routes } = mount()
+    const { payload } = await hit(routes, 'verifyAnchor', { baseDir: '/some/repo' })
+    assert.equal(payload.ok, true)
+    assert.equal(payload.applied, false)
+    assert.equal(payload.baseDir, '/some/repo')
+    assert.equal(payload.changed.length, 0)
+    // 测试库里的条目没有 anchor，应全部计入 withoutAnchor 而不是报错
+    assert.equal(payload.checks.length, 0)
+    assert.equal(payload.withoutAnchor >= 1, true)
+  })
+
+  it('锚点读取器拒绝穿越与绝对路径（读不到 → 不判 fresh）', async () => {
+    const { routes } = mount()
+    const entry = [
+      '---',
+      'id: work.demo.escape',
+      'title: 越界锚点',
+      'anchor:',
+      '  - path: ../../../etc/passwd',
+      '    symbol: root',
+      '---',
+      '',
+      '# 越界锚点',
+      '',
+    ].join('\n')
+    await fsp.mkdir(path.join(root, 'work', 'demo'), { recursive: true })
+    await fsp.writeFile(path.join(root, 'work', 'demo', 'escape.md'), entry, 'utf8')
+
+    const { payload } = await hit(routes, 'verifyAnchor', {})
+    const check = payload.checks.find(item => item.path === 'work/demo/escape.md')
+    assert.notEqual(check, undefined, '带锚点的条目必须被校验')
+    assert.notEqual(check.state, 'fresh', '越界路径不许被判成有效')
   })
 })
 
