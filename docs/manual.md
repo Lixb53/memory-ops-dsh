@@ -400,7 +400,7 @@ UI 的确认按钮走的是 `setStatus`，而它当时用自动表校验。
 3. **产物是新的吗**：`ls -la packages/dsh-plugin/lib/`
    改了源码**必须**重新构建，`client.js` 的时间戳应该晚于你的改动：
    ```bash
-   cd /Users/zeze/Desktop/dsh/memory-ops && pnpm run build
+   cd /Users/zeze/Desktop/dsh/memory-ops-dsh && pnpm run build
    ```
 4. **重启 GUI**：浏览器半体是页面加载时注入的，**构建完必须刷新页面**（或重启 GUI）。
 
