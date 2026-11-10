@@ -15,6 +15,7 @@ import { createStore } from '../src/store.ts'
 
 import {
   INBOX_COLUMNS, INBOX_KINDS, INBOX_STATES, canHumanTransition, canTransition,
+  isStateAllowed, statesOfKind,
   estimateTokens, expiryOf, needsDecision, orEmpty, truncate,
 } from '../src/schema.ts'
 import {
@@ -303,5 +304,38 @@ describe('frontmatter 块列表（写回不得毁数据）', () => {
     const entry = await store.readEntry('personal/x.md')
     assert.deepEqual(entry.tags, ['前端', '性能'], '写回后标签必须原样保留')
     assert.equal(entry.body.includes('正文。'), true, '正文不许被破坏')
+  })
+})
+
+describe('按类型区分的状态机（决策没有「进行中」）', () => {
+  /**
+   * 真实困扰：记一条**决策**，界面也给出「开始」按钮。
+   * 点完状态变 todo，系统没记录任何新事实——纯粹是借来的待办模板。
+   */
+  it('待办/计划/问题支持「进行中」', () => {
+    for (const kind of ['待办', '计划', '问题']) {
+      assert.equal(statesOfKind(kind).includes('todo'), true, `${kind} 该支持 todo`)
+    }
+  })
+
+  it('决策与想法没有「进行中」阶段', () => {
+    for (const kind of ['决策', '想法']) {
+      assert.equal(statesOfKind(kind).includes('todo'), false, `${kind} 不该有 todo`)
+      // 但完成与丢弃仍然合法
+      assert.equal(isStateAllowed(kind, 'done'), true)
+      assert.equal(isStateAllowed(kind, 'dropped'), true)
+    }
+  })
+
+  it('非法类型退回全集，不吞掉数据问题', () => {
+    // 老数据可能有非枚举类型；此时不该把它所有状态都判非法
+    assert.deepEqual(statesOfKind('未知类型'), [...INBOX_STATES])
+  })
+
+  it('状态校验按类型判定', () => {
+    assert.equal(isStateAllowed('决策', 'open'), true)
+    assert.equal(isStateAllowed('决策', 'todo'), false)
+    assert.equal(isStateAllowed('待办', 'todo'), true)
+    assert.equal(isStateAllowed('决策', 'done'), true)
   })
 })
