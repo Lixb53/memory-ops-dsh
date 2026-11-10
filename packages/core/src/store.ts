@@ -17,7 +17,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 import {
-  INBOX_KINDS, INBOX_STATES, FILE_LINE_LIMIT, estimateTokens, expiryOf, orEmpty,
+  INBOX_KINDS, INBOX_STATES, FILE_LINE_LIMIT, SHARED_BRANCH, SHARED_ALLOWED_KINDS,
+  canShareAcrossBranches, estimateTokens, expiryOf, orEmpty,
   type Expiry,
 } from './schema.ts'
 import {
@@ -25,6 +26,7 @@ import {
   parseInbox, serializeInboxRow, parseInboxRow,
   type Frontmatter, type InboxRow,
 } from './parse.ts'
+import { isUnscopedEntry, scopeOfPath } from './scope.ts'
 
 /** 默认根目录：与 ~/.dsh 同级，不在 .dsh 内部。 */
 export function defaultRoot(): string {
@@ -49,6 +51,16 @@ export interface MemoryEntry {
   domain: string
   domainLabel: string
   project: string | null
+  /** 分支作用域：`null` = 项目级/共享/未落分支，对所有分支可见。 */
+  branch: string | null
+  /**
+   * 是否「还没落到分支目录」（待迁移）。
+   *
+   * 与 `branch === null` **不等价**：`_shared/` 也是 null 但属于有意共享。
+   * 界面要用它区分「这条对所有分支生效」和「这条还没归类」——
+   * 否则迁移进度永远显示不出来。
+   */
+  unscoped: boolean
   title: string
   kind: string
   scope: string
@@ -147,6 +159,40 @@ export function domainKeyOf(relPath: string): string {
 export function projectOf(relPath: string): string | null {
   const parts = relPath.split('/')
   return parts[0] === 'work' && parts[1] !== undefined ? parts[1] : null
+}
+
+/**
+ * 条目的分支作用域：**路径优先，frontmatter 兜底**。
+ *
+ * ## 为什么路径优先
+ *
+ * 路径是物理事实——文件躺在 `work/sz-web/V2.1.25-dev/` 下，它就是那个分支的。
+ * frontmatter 的 `branch` 是自述，可能忘了改、可能写错（现存数据里就有
+ * `branch: "V2.1.25-dev / gslx"` 这种把分支和模块混写的值）。
+ *
+ * 但老数据全在扁平结构里（`work/sz-web/issues/`），路径推不出分支，
+ * 这时才认 frontmatter —— 且必须能解析出**单个**分支名，
+ * 含分隔符的复合值视为无效（宁可当作项目级共享，也不要猜错归属）。
+ *
+ * 返回值 `null` 语义有两种（项目级 or 无法判定），调用方用
+ * `branchSourceOf` 区分——见 `actions.snapshot` 的 `unscoped` 提示。
+ */
+export function branchOfEntry(pathBranch: string | null, declared: unknown): string | null {
+  if (pathBranch !== null && pathBranch !== '') return pathBranch
+  const text = typeof declared === 'string' ? declared.trim() : ''
+  if (text === '') return null
+  // 复合值（`A / B`、`A,B`）无法归属到单一分支，按共享处理而不是瞎选一个
+  if (/[\/,、]/.test(text)) return null
+  return text
+}
+
+/** 分支是否由 frontmatter 自述而来（而非路径派生）。 */
+export function branchSourceOf(relPath: string, declared: unknown): 'path' | 'frontmatter' | 'none' {
+  const pathScope = scopeOfPath(relPath)
+  if (pathScope.branch !== null && pathScope.branch !== '') return 'path'
+  const text = typeof declared === 'string' ? declared.trim() : ''
+  if (text === '' || /[\/,、]/.test(text)) return 'none'
+  return 'frontmatter'
 }
 
 /** 相对路径安全校验：拒绝绝对路径与 `..` 穿越。 */
@@ -279,8 +325,13 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     await fsp.mkdir(path.join(base, ARCHIVE_DIR), { recursive: true })
   }
 
-  /** 读一个条目的完整快照。 */
-  async function readEntry(relPath: string): Promise<MemoryEntry> {
+  /**
+   * 读一个条目的完整快照。
+   *
+   * @param declaredBranches - 该条目所属项目已声明的分支表。
+   *   缺省时退回版本号形态推断（见 `looksLikeBranch` 的兼容说明）。
+   */
+  async function readEntry(relPath: string, declaredBranches?: Iterable<string>): Promise<MemoryEntry> {
     const absolute = absoluteOf(relPath)
     const stat = await fsp.stat(absolute)
     const source = await fsp.readFile(absolute, 'utf8')
@@ -291,12 +342,15 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
       ? meta.evidence.filter((item): item is Record<string, string> => typeof item === 'object' && item !== null)
       : []
     const anchor = normalizeAnchor(meta.anchor)
+    const pathScope = scopeOfPath(relPath, declaredBranches)
     return {
       path: relPath,
       id: identityOf(relPath, meta),
       domain: domainKeyOf(relPath),
       domainLabel: domainLabelOf(relPath),
-      project: projectOf(relPath),
+      project: pathScope.project,
+      branch: branchOfEntry(pathScope.branch, meta.branch),
+      unscoped: isUnscopedEntry(relPath, declaredBranches),
       title: orEmpty(meta.title ?? path.basename(relPath, '.md')),
       kind: orEmpty(meta.kind),
       scope: orEmpty(meta.scope),
@@ -328,12 +382,42 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
   }
 
   /** 全量扫描：所有 markdown 条目。 */
+  /**
+   * 扫描全库。
+   *
+   * 两趟：先扫一遍收集各项目的 `branches:` 声明，再带着声明重扫。
+   * 为什么值得多一趟 IO：分支识别依赖项目自述，而声明写在
+   * `work/<project>/index.md` —— 只有先读到它，才能判定
+   * `work/p/V2.1.25-dev/` 的第三段是分支还是分类目录。单趟扫描会出现
+   * 「按文件名字母序，index.md 排在后面就没读到声明」的不确定行为。
+   */
   async function scan(): Promise<MemoryEntry[]> {
     const files = await listMarkdown(base)
+
+    /** 第一趟：只读 index.md 的 frontmatter，收集分支声明与父子关系。 */
+    const declared = new Map<string, string[]>()
+    for (const relPath of files) {
+      const parts = relPath.split('/')
+      if (parts[0] !== 'work' || parts.length !== 3) continue
+      if (parts[2]!.toLowerCase() !== 'index.md') continue
+      try {
+        const { frontmatter } = splitFrontmatter(await fsp.readFile(absoluteOf(relPath), 'utf8'))
+        const meta = parseFrontmatter(frontmatter)
+        const branches = Array.isArray(meta.branches)
+          ? meta.branches.map(item => String(item).trim()).filter(item => item !== '')
+          : []
+        if (branches.length > 0) declared.set(parts[1]!, branches)
+      } catch {
+        // 声明读不到就退回形态推断，不阻断扫描
+      }
+    }
+
+    /** 第二趟：带声明读全量。 */
     const entries: MemoryEntry[] = []
     for (const relPath of files) {
       try {
-        entries.push(await readEntry(relPath))
+        const project = projectOf(relPath)
+        entries.push(await readEntry(relPath, project === null ? undefined : declared.get(project)))
       } catch {
         // 读失败不阻断整表——UI 用「读取失败」态单独呈现
       }
@@ -548,11 +632,58 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     })
   }
 
-  /** 新建条目。 */
+  /**
+   * 构造条目路径：**按需创建分支目录**，并在写入前校验 `_shared` 准入。
+   *
+   * ## 为什么写入要管路径（而不是让调用方自己拼）
+   *
+   * 统一按分支建目录后，`work/<project>/<branch>/…` 的 `<branch>` 有三个来源：
+   * 会话识别的分支、人显式指定的分支、`_shared`（有意共享）。
+   * 如果每个调用方各自拼路径，拼错的形态会是「少一层分支」——
+   * 而少一层分支恰好等于「全分支可见」，**错得静默**。
+   *
+   * 所以路径在这里统一构造：不给分支就落到会话分支，给 `_shared` 就校验准入。
+   *
+   * @param project - 项目名（`work/<project>`）。
+   * @param branch - 分支名；`_shared` 表示有意跨分支共享。
+   * @param tail - 分支目录下的相对路径（如 `issues/xxx.md`）。
+   * @param kind - 知识类型，用于 `_shared` 准入校验。
+   */
+  function branchPathOf({
+    project, branch, tail, kind,
+  }: { project: string; branch: string; tail: string; kind?: string }): string {
+    const safeProject = String(project).replace(/[\\/]/g, '')
+    const safeBranch = String(branch).replace(/[\\/]/g, '')
+    const safeTail = safeRelPath(tail)
+    if (safeProject === '') throw new Error('项目名不能为空')
+    if (safeBranch === '') throw new Error('分支名不能为空（跨分支共享请显式用 _shared）')
+    if (safeBranch === SHARED_BRANCH && kind !== undefined && !canShareAcrossBranches(kind)) {
+      throw new Error(
+        `「${kind}」不能放进 _shared：随版本变化的知识必须落到具体分支。`
+        + `允许共享的类型：${SHARED_ALLOWED_KINDS.join(' / ')}`,
+      )
+    }
+    return `work/${safeProject}/${safeBranch}/${safeTail}`
+  }
+
+  /**
+   * 新建条目。
+   *
+   * ## 写入路径必须自己校验作用域（真事故）
+   *
+   * 早先把 `_shared` 准入校验写在 `branchPathOf` 里，而 `branchPathOf` 只被
+   * **测试**调用——真正的写入函数（`createEntry`）压根没接它。
+   * 结果：8 项测试全绿，实际写入零拦截。这正是本仓库反复批评的形态：
+   * 「机制写了、测试绿了、没接线」。
+   *
+   * 所以校验下沉到这里，而不是指望每个调用方记得先调 `branchPathOf`。
+   * 调用方越多，越不能靠自觉。
+   */
   async function createEntry({ relPath, frontmatter = {}, body = '' }: {
     relPath: string; frontmatter?: Record<string, unknown>; body?: string
   }): Promise<MemoryEntry> {
     const relative = safeRelPath(relPath)
+    assertSharedAdmission(relative, frontmatter)
     const absolute = absoluteOf(relative)
     return withLock(absolute, async () => {
       if (fs.existsSync(absolute)) throw new Error(`条目已存在：${relative}`)
@@ -568,9 +699,27 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
         tags: Array.isArray(frontmatter.tags) ? frontmatter.tags : [],
         ...frontmatter,
       }
+      // 目录按需创建：新分支第一次写入时自动建，不必预先铺满空目录
       await atomicWrite(absolute, `${serializeFrontmatter(meta)}\n${String(body).replace(/^\n+/, '')}`)
       return readEntry(relative)
     })
+  }
+
+  /**
+   * `_shared` 准入闸门：随版本变化的知识不许进共享层。
+   *
+   * 只对 `work/<project>/_shared/...` 生效；其他路径原样放行。
+   * 类型从 frontmatter 的 `knowledgeKind` 读——不是目录名，也不是标题措辞。
+   */
+  function assertSharedAdmission(relPath: string, frontmatter: Record<string, unknown>): void {
+    const parts = relPath.split('/')
+    if (parts[0] !== 'work' || parts[2] !== SHARED_BRANCH) return
+    const kind = frontmatter.knowledgeKind
+    if (canShareAcrossBranches(kind)) return
+    throw new Error(
+      `不能写入 ${SHARED_BRANCH}/：knowledgeKind「${String(kind ?? '未标注')}」随版本变化，必须落到具体分支。`
+      + `允许共享：${SHARED_ALLOWED_KINDS.join(' / ')}`,
+    )
   }
 
   /** INBOX 路径：默认个人域。 */
@@ -869,6 +1018,7 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     patchMeta,
     mergeMeta,
     createEntry,
+    branchPathOf,
     inboxPathOf,
     appendInbox,
     readInbox,

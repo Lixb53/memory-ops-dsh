@@ -38,7 +38,8 @@ export interface ProjectResolution {
   project: string | null
   /** 实际命中的那一段 cwd（诊断用，也让界面能说清「由谁推断」）。 */
   matchedAlias: string | null
-  matchedBy: 'name' | 'alias' | 'prefix' | null
+  /** `remote` = 由 git remote 仓库名判定（最可靠）；其余为路径匹配的层级。 */
+  matchedBy: 'name' | 'alias' | 'prefix' | 'remote' | null
   /** 归一化后的 cwd，回显给界面。 */
   cwd: string | null
   /** 库里有记忆的项目全集——解析失败时用它来提示「你可能想要哪个」。 */
@@ -58,10 +59,21 @@ export function cwdSegments(cwd: unknown): string[] {
 }
 
 /**
- * 从条目里收集「项目 + 别名」。
+ * 从条目里收集项目。
  *
  * 只认 `work/<project>/index.md`：索引文件是项目的声明处，
- * 不该让任意一篇的子目录里写的 aliases 都能改项目归属。
+ * 不该让任意一篇的子目录里改出的东西改变项目归属。
+ *
+ * ## `aliases` 已废弃（2026-11）
+ *
+ * 早先靠 `aliases` 登记「哪些目录名属于我」（分支目录、子模块目录）。
+ * 后来发现它在承担两个已经独立的职责：
+ *   - 分支归属 → 由目录结构和 `branches`/路径派生，不该进别名
+ *   - 仓库身份 → 由 `git remote` 判定，比目录名可靠（改名也不失效）
+ *
+ * 于是它只剩「未建项目的子模块目录」这一个用途，而这本该用建项目目录解决。
+ * 字段保留解析但**不再读取**：旧数据里的 `aliases` 会被忽略，不报错也不生效，
+ * 避免删字段时让老库直接崩。
  */
 export function projectAliasesOf(
   entries: { path: string; frontmatter?: Record<string, unknown> }[],
@@ -71,12 +83,7 @@ export function projectAliasesOf(
     const parts = String(entry.path ?? '').split('/')
     if (parts[0] !== 'work' || parts.length !== 3) continue
     if (parts[2]!.toLowerCase() !== 'index.md') continue
-    const name = parts[1]!
-    const declared = entry.frontmatter?.aliases
-    const aliases = Array.isArray(declared)
-      ? declared.map(item => String(item).trim()).filter(item => item !== '' && item !== name)
-      : []
-    byName.set(name, { name, aliases })
+    byName.set(parts[1]!, { name: parts[1]!, aliases: [] })
   }
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -110,8 +117,25 @@ export function resolveProject(cwd: unknown, projects: ProjectAlias[]): ProjectR
       const needle = candidate.value.toLowerCase()
       if (needle === '') continue
       for (const segment of segments) {
-        if (segment === needle) {
-          tiers.push({ by: candidate.by, score: needle.length * 10, project: item.name, alias: candidate.value })
+        /**
+         * 隐藏目录也要能匹配：`.dsh` ↔ 项目 `dsh`。
+         *
+         * ## 为什么必须有这一条（真场景）
+         *
+         * DSH 的运行时目录是 `~/.dsh`（sessions / cache / profiles 都在这下面），
+         * 而它的记忆项目叫 `dsh`。带点的目录名与项目名**永远不相等**，
+         * 于是在 `~/.dsh` 或 `~/.dsh/sessions` 下开会话认不出项目 → 假空态。
+         *
+         * 这是通用问题，不止 `.dsh`：`.config`、`.vscode`、`.memory-ops`
+         * 都是同样的形态。归一化时去掉**前导点**再比，比给每个项目手写别名可靠。
+         *
+         * 只去前导点、不动中间的点：`v2.1.25-dev` 这类版本名里的点必须保留。
+         */
+        const bare = segment.startsWith('.') ? segment.slice(1) : segment
+        if (segment === needle || bare === needle) {
+          // 精确匹配隐藏目录给略低的分：同分时优先非隐藏目录（更具体）
+          const score = needle.length * 10 - (segment === needle ? 0 : 0.5)
+          tiers.push({ by: candidate.by, score, project: item.name, alias: candidate.value })
           continue
         }
         // 前缀只认「别名 + 分隔符」，避免 `sz` 误吃 `sz-web-everything`
@@ -136,7 +160,25 @@ export function resolveProject(cwd: unknown, projects: ProjectAlias[]): ProjectR
     }
   }
 
-  const best = tiers.sort((a, b) => b.score - a.score)[0]!
+  /**
+   * 排序：**项目名精确命中 > 别名精确命中 > 前缀命中**，同层长别名优先。
+   *
+   * ## 为什么「项目名」必须整层压过「别名」（真缺陷）
+   *
+   * 主仓 `sz-web` 的别名表里登记了子模块名 `sz-web-dzh-gslx`（历史遗留）。
+   * 于是子模块自己的 cwd 会出现两个同分候选：
+   *   - 别名 `sz-web-dzh-gslx` → 主仓 sz-web
+   *   - 项目名 `sz-web-dzh-gslx` → 子模块自己
+   * 原来同分时依赖数组顺序，子模块被解析成主仓 —— 正好违反「子模块记忆独立」。
+   *
+   * 现在按 `by` 分层比较：**更具体的归属优先**。子模块名是它自己的项目名，
+   * 就该归它自己；主仓哪怕把子模块名写进别名表，也赢不了精确项目名。
+   * 这也让「主仓别名表写错」不再是致命错误——它最多影响前缀命中。
+   */
+  const tierRank: Record<'name' | 'alias' | 'prefix', number> = { name: 3, alias: 2, prefix: 1 }
+  const best = tiers.sort((a, b) =>
+    tierRank[b.by] - tierRank[a.by] || b.score - a.score || b.alias.length - a.alias.length,
+  )[0]!
   return {
     project: best.project,
     matchedAlias: best.alias,

@@ -11,6 +11,7 @@
  */
 
 import { STALE_WEIGHT, estimateTokens, truncate } from './schema.ts'
+import { isEntryVisible, type ScopeResolution } from './scope.ts'
 import type { MemoryEntry } from './store.ts'
 
 /** 一条命中。 */
@@ -114,20 +115,27 @@ function scoreOf(entry: MemoryEntry, terms: string[]): number {
  * 在条目集合里检索。
  * @param entries - 全量条目（store.scan 的结果）
  * @param query - 检索词
- * @param options - 过滤条件
+ * @param options - 过滤条件。`scope` 给定时按**作用域可见性**过滤（含父项目继承与分支相容），
+ *   `project` 保留为严格等值过滤（老调用方行为不变）。
  * @returns 命中列表 + 是否命中
  */
 export function searchEntries(
   entries: MemoryEntry[],
   query: unknown,
-  options: { project?: string | null } = {},
+  options: { project?: string | null; scope?: ScopeResolution | null } = {},
 ): SearchResult {
   const text = String(query ?? '').trim()
   if (text === '') return { query: text, terms: [], hits: [], matched: false }
   const terms = text.split(/\s+/).filter(Boolean)
-  const scoped = options.project === undefined || options.project === null || options.project === ''
-    ? entries
-    : entries.filter(entry => entry.project === options.project)
+  const scope = options.scope
+  const scoped = scope !== undefined && scope !== null
+    ? entries.filter(entry => isEntryVisible(
+        { project: entry.project, branch: entry.branch },
+        { project: scope.project, branch: scope.branch, parents: scope.parents },
+      ))
+    : options.project === undefined || options.project === null || options.project === ''
+      ? entries
+      : entries.filter(entry => entry.project === options.project)
   const hits = scoped
     .filter(entry => entryMatches(entry, terms))
     .map(entry => ({
