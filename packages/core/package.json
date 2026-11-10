@@ -12,9 +12,12 @@
     "./store": "./src/store.ts",
     "./search": "./src/search.ts",
     "./privacy": "./src/privacy.ts",
-    "./actions": "./src/actions.ts"
+    "./actions": "./src/actions.ts",
+    "./project": "./src/project.ts"
   },
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "scripts": {
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "typecheck": "tsc --noEmit"

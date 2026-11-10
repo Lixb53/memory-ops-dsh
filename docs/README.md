@@ -37,8 +37,8 @@
 
 | 包 | 状态 |
 |---|---|
-| `packages/core` | ✅ 已实现，136 项测试 |
-| `packages/dsh-plugin` | ✅ 已实现并安装运行，77 项测试 |
+| `packages/core` | ✅ 已实现，149 项测试 |
+| `packages/dsh-plugin` | ✅ 已实现并安装运行，89 项测试 |
 | `packages/memory-web` | ❌ **未实现**（没有代码） |
 
 仓库：https://github.com/Lixb53/memory-ops-dsh
@@ -110,8 +110,8 @@
 | 产品设计 + 信息架构 | 完成（见 `product.md`） |
 | 个人域数据骨架 | 完成，`~/.memory-ops/personal/` 6 文件，真实结论 |
 | 工作域数据 | 完成，`~/.memory-ops/work/sz-web/` 35 篇 |
-| `@memory-ops/core` | **已实现**，136 项测试 |
-| `@memory-ops/dsh-plugin` host（34 路由 + 2 工具） | **已实现**，77 项测试 |
+| `@memory-ops/core` | **已实现**，149 项测试 |
+| `@memory-ops/dsh-plugin` host（34 路由 + 2 工具） | **已实现**，89 项测试 |
 | `@memory-ops/dsh-plugin` client（4 表面 + 5 分区） | **已挂载**，部分能力未接入 UI |
 | **Web 管理端** | **未实现**（无代码） |
 | v3 契约（frontmatter v2 + events.jsonl + 三率） | **已实现** |
@@ -120,6 +120,8 @@
 | v3.3 项目视图索引口径 | 已完成（`product.md` §十四） |
 | **v3.4 文档与代码对账** | **已完成**（2026-11-06，`product.md` §十五） |
 | v3.4 驳回入口 / 检索记账 / 锚点作业 / 减重复盘 / 自动爬升 | **已实现**（见 `product.md` §十七） |
+| **v3.6 四个「看起来正常」的缺陷** | **已修**（`product.md` §十八）：项目别名解析 / 人拍板状态表 / 会话注入原因 / async skills |
+| **v3.7 跨表面跳转** | **已修**（`product.md` §十九）：会话 tab「去未命中工作台」点了没反应 —— 接线断了 + 两棵 React 树 |
 
 ## 卡在哪
 
@@ -146,10 +148,10 @@ Web 端只要复用 core 的 `actions` 就能拿到同样的能力，不需要�
 memory-ops/                     仓库根（pnpm monorepo）
 ├── packages/core/              ✅ 已实现
 │   ├── src/                    schema parse store search privacy actions
-│   └── test/                   136 项
+│   └── test/                   149 项
 ├── packages/dsh-plugin/        ✅ 已实现
 │   ├── src/                    index bridge tools + client/
-│   └── test/                   77 项
+│   └── test/                   89 项
 └── packages/memory-web/        ❌ 不存在
 
 ~/.memory-ops/                  ✅ 真相源（与 ~/.dsh 同级）

@@ -48,8 +48,14 @@ after(async () => {
   }
 })
 
-/** 挂一个假宿主，收集注册项。 */
-function mount(config = {}) {
+/**
+ * 挂一个假宿主，收集注册项。
+ *
+ * `services` 可以注入一两个宿主服务（如 `skills`），
+ * 用来验证「读得到 skill 时数字要算进去」——早先所有用例都拿不到服务，
+ * 于是那条路径从没被跑过，`all.filter is not a function` 才能一直藏着。
+ */
+function mount(config = {}, services = {}) {
   const routes = []
   const tools = []
   const child = {
@@ -76,8 +82,8 @@ function mount(config = {}) {
     inject(_services, run) {
       return run(child)
     },
-    get() {
-      return undefined
+    get(name) {
+      return services[name]
     },
   }
   apply(ctx, { root, ...config })
@@ -107,6 +113,56 @@ function makeCall({ method = 'POST', url = '/', body = '', remote = '127.0.0.1' 
   }
   return { req, res, captured }
 }
+
+describe('常驻前缀的 skill 计入（异步宿主服务）', () => {
+  it('skills.list() 是 async 时，catalog 必须算进每请求付费', async () => {
+    /**
+     * 这条用例是为一个被静默吞掉的 TypeError 加的。
+     *
+     * 宿主 `skills.list()` 返回 Promise，早先同步当数组 filter →
+     * 抛 `all.filter is not a function` → 被 catch 成「读不到 skill」→
+     * 常驻前缀恒等于框架 171。数字有值，所以没人怀疑它错。
+     */
+    const { routes } = mount({}, {
+      skills: {
+        async list() {
+          await new Promise(resolve => setTimeout(resolve, 3))
+          return [
+            { name: 'personal-memory', description: '读我的个人画像时使用', path: '/s/a/SKILL.md' },
+            { name: 'memory-ops', description: '记东西与查记忆时使用，别把整库塞进上下文', path: '/s/b/SKILL.md' },
+          ]
+        },
+      },
+    })
+    const route = routes.find(item => item.path.endsWith('/overview'))
+    const { req, res, captured } = makeCall({ url: `${BRIDGE_PREFIX}/overview`, body: '{}' })
+    await route.handler(req, res)
+    const payload = JSON.parse(captured.payload)
+
+    assert.equal(payload.resident.state, 'ok', `读不到 skill：${payload.resident.error}`)
+    assert.equal(payload.resident.error, '')
+    // 两条 description 的 token 必须真的计入，而不是只剩框架
+    assert.equal(payload.resident.catalogTokens > 0, true, 'catalogTokens 必须大于 0')
+    assert.equal(payload.resident.billedTokens, payload.resident.catalogTokens + payload.resident.frameTokens)
+    assert.equal(payload.kpi.residentTokens, payload.resident.billedTokens, 'KPI 必须取 billedTokens 口径')
+    assert.equal(
+      payload.resident.items.filter(item => item.kind === 'catalog').length, 2,
+      '两条有 description 的 skill 都该出现在构成里',
+    )
+  })
+
+  it('skills.list() 抛错时明确标 error，不冒充「没有 skill」', async () => {
+    const { routes } = mount({}, {
+      skills: { async list() { throw new Error('boom') } },
+    })
+    const route = routes.find(item => item.path.endsWith('/overview'))
+    const { req, res, captured } = makeCall({ url: `${BRIDGE_PREFIX}/overview`, body: '{}' })
+    await route.handler(req, res)
+    const payload = JSON.parse(captured.payload)
+    assert.equal(payload.resident.state, 'error')
+    assert.match(payload.resident.error, /boom/)
+  })
+})
 
 describe('host 路由', () => {
   it(`注册 ${ROUTE_COUNT} 条 exact 路由，路径不重复`, () => {

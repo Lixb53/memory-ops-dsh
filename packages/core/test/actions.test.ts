@@ -190,14 +190,48 @@ describe('状态机与证据', () => {
     assert.equal((await store.readEntry('personal/patterns.md')).status, 'reinforced')
   })
 
-  it('非法迁移被拒（hypothesis 不能直接 confirmed）', async () => {
-    const { actions, store } = await freshActions('status-illegal')
+  /**
+   * 这条曾经断言「hypothesis → confirmed 必须失败」——而那正是 bug 本身。
+   *
+   * 待处理队列里 hypothesis 是最常见的一类（manual.md：库里 2 条待拍板、
+   * 全是推断待确认），所以那个断言等价于「确认按钮永远不该能用」。
+   * 现在反过来：走 UI 的 `confirm` 必须成功。
+   */
+  it('人确认 hypothesis 直接成功（这是界面「确认」按钮的实现）', async () => {
+    const { actions, store } = await freshActions('status-confirm-hypothesis')
     await store.createEntry({
       relPath: 'personal/p.md',
       frontmatter: { title: 'P', status: 'hypothesis' },
       body: 'x',
     })
-    const result = await actions.setStatus({ path: 'personal/p.md', status: 'confirmed' })
+    const result = await actions.confirm({ path: 'personal/p.md' })
+    assert.equal(result.ok, true, (result as { error?: string }).error)
+    const entry = await store.readEntry('personal/p.md')
+    assert.equal(entry.status, 'confirmed')
+    assert.equal(entry.confidence, 0.9)
+  })
+
+  it('人确认 observed 也成功，stale 复核通过同样成功', async () => {
+    for (const status of ['observed', 'stale']) {
+      const { actions, store } = await freshActions(`status-confirm-${status}`)
+      await store.createEntry({
+        relPath: 'personal/p.md',
+        frontmatter: { title: 'P', status },
+        body: 'x',
+      })
+      const result = await actions.confirm({ path: 'personal/p.md' })
+      assert.equal(result.ok, true, `${status} 确认失败：${(result as { error?: string }).error}`)
+    }
+  })
+
+  it('非法迁移仍被拒（人也不能把 confirmed 降回 hypothesis）', async () => {
+    const { actions, store } = await freshActions('status-illegal')
+    await store.createEntry({
+      relPath: 'personal/p.md',
+      frontmatter: { title: 'P', status: 'confirmed' },
+      body: 'x',
+    })
+    const result = await actions.setStatus({ path: 'personal/p.md', status: 'hypothesis' })
     assert.equal(result.ok, false)
     assert.match(result.error ?? '', /非法状态迁移/)
   })

@@ -5,10 +5,11 @@
  * 不允许出现「只能记、不能管」的单向漏斗。差异只允许在承载方式上。
  */
 
-import { createElement, useState, type ReactNode } from 'react'
+import { createElement, useEffect, useState, type ReactNode } from 'react'
 
 import { MemoryIcon, TabBar } from './ui.ts'
-import { useSessionProject, type ClientContextLike } from './session-context.ts'
+import { PANEL_ID, consumePaneRequest, usePaneRequest, type PaneId } from './pane-nav.ts'
+import { scopeBody, useSessionProject, type ClientContextLike } from './session-context.ts'
 import { ProjectPane } from './panes/project.ts'
 import { StreamPane } from './panes/stream.ts'
 import { MemoryPane } from './panes/memory.ts'
@@ -18,7 +19,7 @@ import { useBridge } from './data.ts'
 import type { MissesView, SnapshotView } from './api.ts'
 
 /** 面板 id（同时用作 sidebar.panellist 的 id 与 main 的 key）。 */
-export const PANEL_ID = 'memory-ops'
+export { PANEL_ID }
 
 /** 5 个分区。 */
 const PANES = [
@@ -27,9 +28,7 @@ const PANES = [
   { id: 'memory', label: '记忆' },
   { id: 'misses', label: '未命中' },
   { id: 'overview', label: '总览' },
-] as const
-
-type PaneId = (typeof PANES)[number]['id']
+] as const satisfies readonly { id: PaneId; label: string }[]
 
 /** 侧栏图标。 */
 export function PanelIcon({ size }: { size?: number }): ReactNode {
@@ -39,12 +38,30 @@ export function PanelIcon({ size }: { size?: number }): ReactNode {
 /** 主面板页面。 */
 export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
   const ctx = (props as { ctx?: ClientContextLike }).ctx
-  const { project } = useSessionProject(ctx)
+  const { cwd, project } = useSessionProject(ctx)
   const [pane, setPane] = useState<PaneId>('project')
   const [detailPath, setDetailPath] = useState<string | undefined>(undefined)
+  const requestedPane = usePaneRequest()
+
+  /**
+   * 消费其它表面发来的「跳到某个分区」请求。
+   *
+   * 会话记忆 tab 上的「去未命中工作台」就是靠这条通道落到「未命中」分区的——
+   * 早先面板根本没有接收侧，请求即使写下来也没人读。
+   */
+  useEffect(() => {
+    const next = consumePaneRequest()
+    if (next === undefined) return
+    setPane(next)
+    if (next !== 'memory') setDetailPath(undefined)
+  }, [requestedPane])
 
   // 徽标：待处理条数 + 未命中「该补了」条数
-  const snapshot = useBridge<SnapshotView>('snapshot', project === undefined ? {} : { project }, [project])
+  /**
+   * 徽标也要跟当前项目走，所以这里和「本项目」分区用同一套范围参数。
+   * 早先它只传 `project`（末段目录名），于是徽标和列表可能一个有一个没有。
+   */
+  const snapshot = useBridge<SnapshotView>('snapshot', scopeBody(cwd, project), [cwd, project])
   const misses = useBridge<MissesView>('misses', {})
   const queueBadge = snapshot.data?.queue.length ?? 0
   const missBadge = (misses.data?.pipeline['should-fill']?.length ?? 0)
@@ -69,7 +86,7 @@ export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
       body = createElement(StreamPane, null)
       break
     case 'memory':
-      body = createElement(MemoryPane, { project, onOpenMemory: openMemory, detailPath })
+      body = createElement(MemoryPane, { project, cwd, onOpenMemory: openMemory, detailPath })
       break
     case 'misses':
       body = createElement(MissesPane, null)
@@ -80,6 +97,7 @@ export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
     default:
       body = createElement(ProjectPane, {
         project,
+        cwd,
         onOpenMemory: openMemory,
         onGoto: (next: string) => {
           setPane(next as PaneId)

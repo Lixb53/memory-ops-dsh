@@ -17,3 +17,16 @@ export {
 // registerRemember 本身不返回 JSX（组件是模块内常量），所以可以安全导出。
 // 组件渲染由 host 的 slots.register 负责，测试只断言「注册了什么」。
 export { registerRemember } from './remember.ts'
+
+/**
+ * 跨表面跳转的纯逻辑。
+ *
+ * 早先「去未命中工作台」按钮点了没反应，是因为它读的回调根本没人传
+ * （`undefined?.()`）。这类 bug 逻辑全对、单测全绿，只有接线断了——
+ * 所以必须让测试能直接调到 `gotoPane`，断言它真的写了分区请求、
+ * 真的调了宿主的 `layout.selectPanel`。
+ */
+export {
+  PANEL_ID, consumePaneRequest, gotoPane, paneRequestStore, requestPane,
+  type PaneId, type PaneRequestState, type PaneRequestStore,
+} from './pane-nav.ts'

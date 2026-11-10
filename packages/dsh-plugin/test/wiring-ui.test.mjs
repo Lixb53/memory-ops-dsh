@@ -128,6 +128,60 @@ describe('UI 接线：product.md §2.3 的缺口不许回潮', () => {
   })
 })
 
+describe('项目上下文（假空态的三个入口）', () => {
+  it('三个入口都送 cwd，不由客户端猜项目名', async () => {
+    const sources = await clientSource()
+    const names = ['panes/project.ts', 'panes/memory.ts', 'session-view.ts', 'panel.ts']
+    for (const name of names) {
+      const found = sources.find(item => item.file.endsWith(name))
+      assert.ok(found !== undefined, `找不到 ${name}`)
+      // 早先这三个入口各自把 cwd 末段当项目名（V2.1.25-dev / sz-web-dzh-gslx），
+      // 于是永远匹配不到库里的 sz-web，界面显示「本项目还没有记忆」。
+      assert.match(found.text, /scopeBody/, `${name} 必须走 scopeBody（cwd 优先）`)
+    }
+  })
+
+  it('scopeBody 优先 cwd，其次兜底项目名，最后才空对象', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'session-context.ts'), 'utf8')
+    assert.match(text, /if \(cwd !== undefined && cwd.trim\(\) !== ''\) return \{ cwd \}/)
+    assert.match(text, /return \{ project \}/)
+    assert.match(text, /return \{\}/)
+  })
+
+  it('本项目空态标题不再谎称「当前项目没有记忆」', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'project.ts'), 'utf8')
+    // 曾恒为这句，即使真实原因是「没认出是哪个项目」
+    assert.equal(
+      /'当前项目还没有相关记忆'/.test(text),
+      false,
+      '空态标题必须随「为什么空」变化，不能恒定归咎于项目',
+    )
+    assert.match(text, /没认出当前项目/)
+    assert.match(text, /没拿到当前目录/)
+  })
+
+  it('会话 tab 的项目解析失败要说原因，不是静默', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'session-view.ts'), 'utf8')
+    assert.match(text, /resolution/)
+    assert.match(text, /没能从当前目录认出项目/)
+  })
+})
+
+describe('总览的动作反馈（点了要有反应）', () => {
+  it('确认 / 归档 / 再留都走 runAction 并把失败摆出来', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'overview.ts'), 'utf8')
+    // 早先是 void call(...).then(reload)：失败连一句提示都没有，
+    // 而当时 confirm 恰好必然失败 → 用户看到「点确认无效」。
+    // 只看真正的语句行：注释里引用了旧写法，不该被当成违规
+    const bareVoid = text.split('\n')
+      .filter(line => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .filter(line => /void call\('(confirm|archive|keep)'/.test(line))
+    assert.deepEqual(bareVoid, [], '这些动作不能再是静默 void call：\n' + bareVoid.join('\n'))
+    assert.match(text, /runAction\('confirm'/)
+    assert.match(text, /dmo-toast-err/)
+  })
+})
+
 describe('路由与能力的对应关系', () => {
   it('bridge 注册的每条路由在 core 里都有同名能力', async () => {
     const bridge = await fsp.readFile(path.join(SRC_DIR, 'bridge.ts'), 'utf8')
@@ -252,8 +306,10 @@ describe('交互闭环（点了要有反应）', () => {
 
   it('总览的待处理队列能直接确认或归档', async () => {
     const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'overview.ts'), 'utf8')
-    assert.match(text, /call\('confirm'/, '总览应能直接确认')
-    assert.match(text, /call\('archive'/, '到期项应能直接归档')
+    // 动作既可以裸 call，也可以走 runAction 包一层反馈——两者都算「有入口」，
+    // 但必须有反馈层（否则失败会静默，见下一个断言）
+    assert.match(text, /(call|runAction)\('confirm'/, '总览应能直接确认')
+    assert.match(text, /(call|runAction)\('archive'/, '到期项应能直接归档')
     // 手册写的是「总览 → 待你处理 → 确认 / 驳回」，界面必须有对应入口
     assert.match(text, /'驳回…'/, '总览的驳回入口要标明需去详情写理由')
   })
@@ -393,5 +449,71 @@ describe('布局：筛选项必须同行', () => {
     // 模板字符串是 const CSS = `...`；内容里的反引号会提前闭合，把后面的 CSS 变成代码
     const body = text.slice(text.indexOf('const CSS = `') + 13, text.lastIndexOf('`'))
     assert.equal(/`/.test(body), false, 'styles.ts 的 CSS 里出现了反引号：会提前闭合模板字符串')
+  })
+})
+
+describe('跨表面跳转：会话 tab 的「去未命中工作台」必须真的跳', () => {
+  /**
+   * 实测 bug：会话记忆 tab 上那颗按钮点下去**没有任何反应**。
+   *
+   * 根因是接线断了，不是逻辑错：`SessionMemoryView` 读 `props.onGotoMisses`，
+   * 而 `registerSessionView` 注入的只有 `{ ctx }` → 执行 `undefined?.()`。
+   * 这种 bug 纯函数测试全绿、类型检查也可能全绿（可选调用合法），
+   * 只有「按钮背后到底有没有实现」这类断言能拦住它。
+   *
+   * 所以这里测两件事：
+   *   1. 会话 tab 的注入面必须提供跳转入口（不能只给 ctx）；
+   *   2. 跳转实现必须真的写分区请求 + 调 layout.selectPanel 拉起主面板。
+   */
+  it('会话 tab 的 inject 必须给出 onGotoMisses（不能只给 ctx）', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'register.ts'), 'utf8')
+    const start = text.indexOf('export function registerSessionView')
+    assert.notEqual(start, -1, 'registerSessionView 必须存在')
+    // 只取这一个函数体：后面的捕获 tab 也注入 { ctx }，不是本用例的对象
+    const next = text.indexOf('export function registerCaptureTab', start)
+    const block = text.slice(start, next === -1 ? undefined : next)
+    assert.match(block, /onGotoMisses/, '会话 tab 必须在注入面提供 onGotoMisses')
+    assert.match(block, /gotoPane/, 'onGotoMisses 必须走 gotoPane，而不是空实现')
+    assert.equal(
+      /inject:\s*\(\):\s*\{\s*ctx:\s*ClientContext\s*\}\s*=>\s*\(\{\s*ctx\s*\}\)/.test(block),
+      false,
+      '不能退回「只注入 ctx」——那正是按钮点了没反应的写法',
+    )
+  })
+
+  it('会话 tab 组件不再静默吞掉跳转（必须有兜底 + 失败提示）', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'session-view.ts'), 'utf8')
+    assert.equal(/onGotoMisses\?\.\(\)/.test(text), false, '可选调用会把「没传回调」变成静默无反应')
+    assert.match(text, /goMisses/, '跳转要走具名函数，便于兜底与提示')
+    assert.match(text, /gotoPane\(ctx, 'misses'\)/, '宿主没给回调时要退回内置跳转')
+    assert.match(text, /打不开记忆面板/, '两条路都不通时必须说话，不能继续静默')
+  })
+
+  it('面板必须消费分区请求（否则请求写下来也没人读）', async () => {
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panel.ts'), 'utf8')
+    assert.match(text, /usePaneRequest/, '面板要订阅待处理的跳转请求')
+    assert.match(text, /consumePaneRequest/, '面板要消费请求并切换分区')
+  })
+
+  it('gotoPane 真的写请求并调用 layout.selectPanel', async () => {
+    const { consumePaneRequest, gotoPane } = await import('../lib/client-logic.mjs')
+    const calls = []
+    const ctx = {
+      get(name) {
+        if (name !== 'layout') return undefined
+        return { selectPanel: id => { calls.push(id) } }
+      },
+    }
+    assert.equal(gotoPane(ctx, 'misses'), true)
+    assert.deepEqual(calls, ['memory-ops'], '必须调用 layout.selectPanel 把主面板拉起来')
+    assert.equal(consumePaneRequest(), 'misses', '必须留下待消费的分区请求')
+    assert.equal(consumePaneRequest(), undefined, '消费后要清空，不能反复跳')
+  })
+
+  it('宿主没有 layout 服务时返回 false（调用方据此提示，而不是假装成功）', async () => {
+    const { gotoPane, consumePaneRequest } = await import('../lib/client-logic.mjs')
+    assert.equal(gotoPane({ get: () => undefined }, 'misses'), false)
+    // 请求仍要留下：面板下次被打开时还能落在正确分区
+    assert.equal(consumePaneRequest(), 'misses')
   })
 })

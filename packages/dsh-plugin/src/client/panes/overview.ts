@@ -27,6 +27,26 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
   const [exporting, setExporting] = useState(false)
   const [showResident, setShowResident] = useState(false)
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
+  /**
+   * 待处理动作的反馈层。
+   *
+   * ## 这里曾经完全静默（真事故）
+   *
+   * 早先每个按钮都是 `void call('confirm', …).then(() => snapshot.reload())`：
+   * 成功没提示（靠列表消失来暗示），**失败则一个提示都没有**——
+   * 而当时 confirm 恰好因为状态机用错表必然失败。
+   * 于是用户看到的是「点确认无效」，而不是「确认报了非法迁移」。
+   * 失败而不解释，比失败本身更糟：它会让人怀疑整套系统坏了。
+   *
+   * 现在每条动作都要么成功地说「已确认」，要么把宿主的错误原文摆出来。
+   *
+   * ⚠️ 这两个 useState 必须位于所有 early return **之前**：
+   * 放在 early return 后面会触发首帧跳过 hook → 数据到达后 hook 数量变化
+   * → React 抛错 → 整个面板白屏（本仓已踩过一次，见 §17.11）。
+   */
+  const [action, setAction] = useState<{ ok: boolean; text: string } | null>(null)
+  const [actionBusy, setActionBusy] = useState(false)
+
   const overview = useBridge<OverviewView>('overview', {})
   const snapshot = useBridge<SnapshotView>('snapshot', {})
   const health = useBridge<{
@@ -50,6 +70,26 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
 
   const queue = snapshot.data?.queue ?? []
   const healthData = health.data
+
+  function runAction(
+    route: string,
+    body: Record<string, unknown>,
+    success: string,
+  ): void {
+    setActionBusy(true)
+    setAction(null)
+    void call(route, body)
+      .then(() => {
+        setAction({ ok: true, text: success })
+        snapshot.reload()
+      })
+      .catch((failure: unknown) => {
+        setAction({ ok: false, text: `${success}失败：${failure instanceof Error ? failure.message : String(failure)}` })
+      })
+      .finally(() => { setActionBusy(false) })
+  }
+
+
 
   function doExport(format: 'markdown' | 'json', domain?: string): void {
     setExporting(true)
@@ -145,6 +185,15 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
       ? createElement(Empty, { title: '待处理队列已清空' },
         createElement('div', null, '没有需要你拍板的条目。'))
       : createElement('div', null,
+        /**
+         * 动作结果条：成功与失败都**必须**可见。
+         * `role="status"` 而非 alert——它是操作反馈，不是打断。
+         */
+        action === null ? null : createElement('div', {
+          className: `dmo-toast ${action.ok ? 'dmo-toast-ok' : 'dmo-toast-err'}`,
+          role: 'status',
+          style: { marginBottom: 8 },
+        }, action.text),
         createElement('div', { className: 'dmo-lane-head' }, '待你处理', createElement('span', { className: 'dmo-lane-count' }, `${queue.length} 条`)),
         queue.slice(0, 8).map(item => createElement('div', { key: item.id, className: 'dmo-card' },
           createElement('div', { className: 'dmo-card-title' }, truncate(item.title, 46)),
@@ -163,17 +212,12 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
              */
             item.kind === 'retire'
               ? createElement(Button, {
-                small: true, variant: 'danger',
-                onClick: () => {
-                  void call('archive', { path: item.path, reason: '到期退役' })
-                    .then(() => { snapshot.reload() })
-                },
+                small: true, variant: 'danger', disabled: actionBusy,
+                onClick: () => { runAction('archive', { path: item.path, reason: '到期退役' }, '归档') },
               }, '归档')
               : createElement(Button, {
-                small: true, variant: 'primary',
-                onClick: () => {
-                  void call('confirm', { path: item.path }).then(() => { snapshot.reload() })
-                },
+                small: true, variant: 'primary', disabled: actionBusy,
+                onClick: () => { runAction('confirm', { path: item.path }, '确认') },
               }, '确认'),
             item.kind === 'retire'
               ? null
@@ -184,10 +228,8 @@ export function OverviewPane({ onOpenMemory }: { onOpenMemory: (path: string) =>
               }, '驳回…'),
             createElement(Button, { small: true, onClick: () => { onOpenMemory(item.path) } }, '看详情'),
             createElement(Button, {
-              small: true,
-              onClick: () => {
-                void call('keep', { path: item.path }).then(() => { snapshot.reload() })
-              },
+              small: true, disabled: actionBusy,
+              onClick: () => { runAction('keep', { path: item.path }, '再留 90 天成功') },
             }, '再留 90 天'))))),
 
     /**

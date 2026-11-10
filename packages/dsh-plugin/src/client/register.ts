@@ -8,6 +8,7 @@
 import { createElement, type ReactNode } from 'react'
 
 import type { ClientContext } from './index.ts'
+import { gotoPane, type LayoutService } from './pane-nav.ts'
 import { MemoryOpsPage, PanelIcon, PANEL_ID } from './panel.ts'
 import { SessionMemoryView } from './session-view.ts'
 import { CapturePane, CAPTURE_KIND } from './capture-tab.ts'
@@ -48,13 +49,39 @@ export function registerMemoryPanel(ctx: ClientContext): () => void {
 
 /** 表面 2：会话记忆 tab（conversation.view）。 */
 export function registerSessionView(ctx: ClientContext): () => void {
-  return safe('conversation.view', () => ctx.slots.inject('conversation.view', () => ctx.slots.register({
+  /**
+   * 会话 tab 与侧栏面板是两棵独立的 React 树，分区状态互不可见，
+   * 跳转必须借宿主的 `layout.selectPanel` 把主面板拉起来。
+   *
+   * 早先这里**只注入 `{ ctx }`**，而组件读的 `props.onGotoMisses` 从来没人传
+   * → 按钮执行 `undefined?.()`，表现为「点击后没反应」。
+   *
+   * 现在两条路都铺好：优先用 `ctx.inject(['layout'])` 拿**已就绪**的服务实例
+   * （`ctx.get` 在服务未就绪时会给 undefined，仓库里踩过这个坑）；
+   * 拿不到就退回 `ctx.get`，再失败则由组件提示，不再静默。
+   */
+  let layoutService: LayoutService | undefined
+  const disposeWait = ctx.inject?.(['layout'], (child: ClientContext) => {
+    const service = child.get?.('layout') as LayoutService | undefined
+    if (service !== undefined && typeof service.selectPanel === 'function') layoutService = service
+    return () => { layoutService = undefined }
+  })
+
+  const disposeView = safe('conversation.view', () => ctx.slots.inject('conversation.view', () => ctx.slots.register({
     name: 'conversation.view',
     id: PANEL_ID,
     order: 40,
     label: () => '记忆',
-    inject: (): { ctx: ClientContext } => ({ ctx }),
+    inject: (): { ctx: ClientContext; onGotoMisses: () => void } => ({
+      ctx,
+      onGotoMisses: () => { gotoPane(ctx, 'misses', layoutService) },
+    }),
   }, SessionMemoryView as unknown as (props: Record<string, unknown>) => ReactNode)))
+
+  return () => {
+    disposeView()
+    disposeWait?.()
+  }
 }
 
 /** 表面 3：右侧栏快速捕获。 */

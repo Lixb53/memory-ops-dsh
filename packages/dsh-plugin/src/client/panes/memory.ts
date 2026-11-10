@@ -16,26 +16,29 @@ import { createElement, useState, type ReactNode } from 'react'
 
 import { call, type DetailView, type SearchView, type SnapshotView } from '../api.ts'
 import { useBridge } from '../data.ts'
+import { scopeBody } from '../session-context.ts'
 import {
   Badge, Button, Chip, Empty, ErrorState, RejectBox, SelectionBar, Skeleton, Stepper,
   count, orEmpty, statusLabel, statusTone, truncate,
 } from '../ui.ts'
 
 /** 记忆分区。 */
-export function MemoryPane({ project, onOpenMemory, detailPath }: {
+export function MemoryPane({ project, cwd, onOpenMemory, detailPath }: {
   project: string | undefined
+  cwd: string | undefined
   onOpenMemory: (path: string) => void
   detailPath: string | undefined
 }): ReactNode {
   if (detailPath !== undefined) {
     return createElement(MemoryDetail, { path: detailPath, onBack: () => { onOpenMemory('') } })
   }
-  return createElement(MemoryList, { project, onOpenMemory })
+  return createElement(MemoryList, { project, cwd, onOpenMemory })
 }
 
 /** 列表。 */
-function MemoryList({ project, onOpenMemory }: {
+function MemoryList({ project, cwd, onOpenMemory }: {
   project: string | undefined
+  cwd: string | undefined
   onOpenMemory: (path: string) => void
 }): ReactNode {
   /**
@@ -49,7 +52,13 @@ function MemoryList({ project, onOpenMemory }: {
    * 后者必须是全库，否则没有任何一页能看到全貌。
    */
   const [scope, setScope] = useState<'all' | 'project'>('all')
-  const effectiveProject = scope === 'project' ? project : undefined
+  /**
+   * 「仅本项目」把 cwd 交给 core 解析，而不是用末段目录名。
+   *
+   * 早先这里的选项文案直接拼 `project`（如 `V2.1.25-dev`），
+   * 用户选了它得到空列表，会以为库坏了。
+   */
+  const scopeParams = scope === 'project' ? scopeBody(cwd, project) : {}
   const [query, setQuery] = useState('')
   /** 已提交的检索词（回车或点检索才提交，避免每敲一个字都记一条 miss）。 */
   const [submitted, setSubmitted] = useState('')
@@ -79,8 +88,8 @@ function MemoryList({ project, onOpenMemory }: {
 
   const { phase, data, error, reload } = useBridge<SnapshotView>(
     'snapshot',
-    effectiveProject === undefined ? {} : { project: effectiveProject },
-    [effectiveProject],
+    scopeParams,
+    [scope, cwd, project],
   )
   /**
    * 检索走路由才有账可记。
@@ -90,8 +99,8 @@ function MemoryList({ project, onOpenMemory }: {
    */
   const search = useBridge<SearchView>(
     'search',
-    { query: submitted, project: effectiveProject, record: submitted.trim() !== '' },
-    [submitted, effectiveProject],
+    { query: submitted, ...scopeParams, record: submitted.trim() !== '' },
+    [submitted, scope, cwd, project],
   )
 
   if (phase === 'loading') return createElement(Skeleton, { rows: 5, height: 44 })
@@ -200,8 +209,15 @@ function MemoryList({ project, onOpenMemory }: {
         },
       },
       createElement('option', { value: 'all' }, '全部记忆'),
+      /**
+       * 选项文案用**解析后**的项目名，不是 cwd 末段。
+       *
+       * `V2.1.25-dev` 这种分支目录不该出现在「项目」这个位置上。
+       */
       createElement('option', { value: 'project' },
-        project === undefined ? '仅本项目（未识别到项目）' : `仅本项目 · ${project}`)),
+        data.projectScoped && data.project !== null
+          ? `仅本项目 · ${data.project}`
+          : '仅本项目（未识别到项目）')),
       createElement('select', {
         className: 'dmo-select',
         value: domainFilter,

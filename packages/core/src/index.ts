@@ -9,6 +9,7 @@
 export * from './schema.ts'
 export * from './parse.ts'
 export * from './store.ts'
+export * from './project.ts'
 export * from './search.ts'
 export * from './privacy.ts'
 export * from './actions.ts'

@@ -72,10 +72,26 @@ export function apply(ctx: PluginContext, config: PluginConfig = {}): () => void
   // 总览会明确标注「未能读取」，而不是悄悄算成 0。
   /** 读不到 skill 时的具体原因——静默返回 0 会让人以为「本来就没有 skill」。 */
   let skillsError = ''
+  /**
+   * skill description 读取器 —— **异步**。
+   *
+   * ## 这里曾经把 Promise 当数组用（真事故）
+   *
+   * 宿主 `skills.list(options)` 返回 `Promise<SkillSummary[]>`，而早先这里
+   * 同步调用它、直接把返回值当数组 `filter`：
+   *
+   *     TypeError: all.filter is not a function
+   *
+   * 被 `catch` 吞掉后 `skillsError` 写进「skills.list() 抛错」，
+   * 于是总览的常驻前缀**永远只显示框架 171**，而不是 361。
+   * 数字看起来「有值」，所以没人怀疑它是错的——错误被渲染成了合理。
+   *
+   * 现在 `listSkills` 返回 Promise，由 bridge 等待；失败也照样解释原因。
+   */
   const env: BridgeEnv = {
-    listSkills: () => {
+    listSkills: async () => {
       const skills = ctx.get?.('skills') as {
-        list?: (options?: unknown) => { name: string; description: string; path?: string }[]
+        list?: (options?: unknown) => unknown
       } | undefined
       if (skills === undefined) {
         skillsError = '宿主没有提供 skills 服务（ctx.get("skills") 返回 undefined）'
@@ -88,7 +104,8 @@ export function apply(ctx: PluginContext, config: PluginConfig = {}): () => void
       try {
         // 先不加过滤取全量：`modelInvocableOnly` 会把未声明该标记的 skill 全部滤掉，
         // 而本地 skill 通常不写这个标记——那样「常驻前缀」就永远只剩框架开销 171。
-        const all = skills.list() as { name: string; description: string; path?: string }[]
+        const listed = await Promise.resolve(skills.list() as unknown)
+        const all = Array.isArray(listed) ? listed as { name: string; description: string; path?: string }[] : []
         const filtered = all.filter(row => typeof row?.description === 'string' && row.description.trim() !== '')
         if (filtered.length === 0) {
           skillsError = all.length === 0
@@ -110,8 +127,15 @@ export function apply(ctx: PluginContext, config: PluginConfig = {}): () => void
     },
     skillsError: () => skillsError,
   }
-  // 启动时探测一次，让 UI 能区分「没有 skill」与「读不到 skill」
-  env.listSkills?.()
+
+  /**
+   * 启动时探测一次：让 UI 能区分「没有 skill」与「读不到 skill」。
+   *
+   * 因为现在是异步，挂掉时要显式记日志——静默的探测等于没探测。
+   */
+  void Promise.resolve(env.listSkills?.()).catch((error: unknown) => {
+    skillsError = `启动探测 skills 失败：${error instanceof Error ? error.message : String(error)}`
+  })
 
   // ---- HTTP 桥 ----
   ctx.inject(['webServer'], (serverCtx) => {

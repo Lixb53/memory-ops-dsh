@@ -9,9 +9,10 @@
 import {
   CONFIDENCE_STATES, INBOX_KINDS, INBOX_STATES, STATE_CONFIDENCE, MISS_VERIFY_DAYS,
   FILE_LINE_LIMIT, FILE_TOKEN_SOFT_LIMIT, RESIDENT_TOKEN_BUDGET, REINFORCE_MIN_SESSIONS,
-  canTransition, estimateTokens, expiryOf, needsDecision, orEmpty, truncate,
+  canHumanTransition, canTransition, estimateTokens, expiryOf, needsDecision, orEmpty, truncate,
   type InboxKind, type InboxState, type ConfidenceState,
 } from './schema.ts'
+import { projectAliasesOf, resolveProject, type ProjectResolution } from './project.ts'
 import { searchEntries, searchCost, type SearchHit } from './search.ts'
 import { inspectText, auditRecord } from './privacy.ts'
 import { parseSections } from './parse.ts'
@@ -137,15 +138,38 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
    */
   readExternal?: AnchorReader
 }) {
-  /** 读全量并附派生字段。 */
-  async function snapshot({ project, domain }: { project?: string | null; domain?: string | null } = {}) {
+  /**
+   * 读全量并附派生字段。
+   *
+   * `cwd` 是**可选**的诊断输入：给了它，返回里会带 `resolution`，
+   * 说明「这个 cwd 被解析成了哪个项目、凭什么」。这不是必须的——
+   * 显式传 `project` 的老调用方行为完全不变。
+   */
+  async function snapshot({ project, domain, cwd }: {
+    project?: string | null; domain?: string | null; cwd?: string | null
+  } = {}) {
     return guard(async () => {
       const entries = await store.scan()
       const events = await store.readEvents()
       const misses = await store.readMisses()
 
+      /**
+       * 只给了 cwd 没给 project 时，先把 cwd 解析成项目。
+       *
+       * 为什么不在客户端解析：别名来自 `work/<project>/index.md`，
+       * 那是库里的数据，客户端看不到；放到 core 才能保证
+       * 「UI 看到的项目」与「agent 检索用的项目」是同一个判定。
+       */
+      let resolution: ProjectResolution | null = null
+      let effectiveProject = project
+      if ((project === undefined || project === null || project === '') && typeof cwd === 'string' && cwd.trim() !== '') {
+        resolution = resolveProject(cwd, projectAliasesOf(entries))
+        effectiveProject = resolution.project
+      }
+      const projectFilter = effectiveProject
+
       const filtered = entries.filter((entry) => {
-        if (project !== undefined && project !== null && project !== '' && entry.project !== project) return false
+        if (projectFilter !== undefined && projectFilter !== null && projectFilter !== '' && entry.project !== projectFilter) return false
         if (domain !== undefined && domain !== null && domain !== '' && entry.domain !== domain) return false
         return true
       })
@@ -154,7 +178,7 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
       // 早先用全量 entries 算 stats，导致「本项目」分区在该项目 0 条记忆时
       // 仍显示常驻前缀 286——一个自相矛盾的画面（0 条 + 286 tokens）。
       // 项目视图要回答的是「这个项目占多少」，不是「整个库占多少」。
-      const scoped = project !== undefined && project !== null && project !== ''
+      const scoped = projectFilter !== undefined && projectFilter !== null && projectFilter !== ''
         || domain !== undefined && domain !== null && domain !== ''
       const stats = store.summarize(scoped ? filtered : entries, events, misses, { nowMs: now() })
       // 引用次数给列表用：设计稿每张卡片都显示「N 次引用」
@@ -188,9 +212,16 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
 
       return {
         root: store.root,
-        projectScoped: project !== undefined && project !== null && project !== '',
-        project: project ?? null,
+        projectScoped: projectFilter !== undefined && projectFilter !== null && projectFilter !== '',
+        project: projectFilter ?? null,
         domain: domain ?? null,
+        /**
+         * 解析诊断：`null` 表示调用方没给 cwd（不是解析失败）。
+         * 给了 cwd 就必须能回答「凭什么」，否则界面只能猜。
+         */
+        resolution,
+        /** 库里有记忆的项目全集，供「你可能想要哪个」提示。 */
+        knownProjects: projectAliasesOf(entries).map(item => item.name),
         entries: filtered.map(entry => projectEntry(entry, now(), citeCounts)),
         stats,
         queue,
@@ -663,7 +694,15 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
     }
     return guard(async () => {
       const current = await store.readEntry(path)
-      if (!canTransition(current.status, status)) {
+      /**
+       * 这里必须用**人**的迁移表，不是自动爬升的那张。
+       *
+       * 这一条调用就是 UI 上「确认」按钮的实现。早先用自动表校验，
+       * 而队列里最常见的就是 hypothesis——于是每次点确认都报
+       * 「非法状态迁移：hypothesis → confirmed」，且总览入口连这句都不显示。
+       * 详见 schema.ts `HUMAN_STATE_TRANSITIONS` 的注释。
+       */
+      if (!canHumanTransition(current.status, status)) {
         throw new Error(`非法状态迁移：${current.status} → ${status}`)
       }
       const patch: Record<string, unknown> = {
@@ -962,25 +1001,95 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
     })
   }
 
-  /** 会话记忆：本次注入 / 引用 / 未命中 + 为什么注入。 */
-  async function sessionMemory({ query, project, sessionId }: {
-    query?: string; project?: string | null; sessionId?: string
+  /**
+   * 会话记忆：本次注入 / 引用 / 未命中 + **为什么注入**。
+   *
+   * ## 两个真实缺陷
+   *
+   * ① **没有按会话过滤**。原来取的是「全库最近 200 条事件里的 recall」，
+   *    于是任意别的会话搜一次，这个 tab 的数字就会变。它叫「会话记忆 tab」，
+   *    却回答的是「整个库最近发生了什么」。
+   *
+   * ② **「为什么注入」永远为空**。它只在传入 `query` 时才有内容，
+   *    而会话 tab 传的是 `{ sessionId, project }`，从来不传 query。
+   *    所以那一栏恒定显示「本会话还没有检索记录」——可界面上明明写着
+   *    「本次注入 3」。自相矛盾的两个数字摆在同一个面板里。
+   *
+   * 现在改成从**事件流派生的原因**：这个会话实际发生过哪些 recall，
+   * 命中了哪条，那次检索的词是什么。这才是「为什么注入」的证据链——
+   * 而不是拿一个界面上并不存在的 query 去反推。
+   */
+  async function sessionMemory({ query, project, sessionId, cwd }: {
+    query?: string; project?: string | null; sessionId?: string; cwd?: string | null
   } = {}) {
     return guard(async () => {
       const entries = await store.scan()
-      const events = await store.readEvents()
+
+      /**
+       * 只给了 cwd 时先解析成项目（与 snapshot 同一套判定）。
+       * 解析不出来就退回「不按项目过滤」，而不是过滤成 0 条——
+       * 那正是这次要修的假空态形态。
+       */
+      let resolution: ProjectResolution | null = null
+      let projectFilter = project
+      if ((project === undefined || project === null || project === '') && typeof cwd === 'string' && cwd.trim() !== '') {
+        resolution = resolveProject(cwd, projectAliasesOf(entries))
+        projectFilter = resolution.project
+      }
+
+      const allEvents = await store.readEvents()
+      /** 会话内的全部事件；没给 sessionId 时才退化成「全库最近 200 条」。 */
+      const events = sessionId === undefined || sessionId === ''
+        ? allEvents.slice(-200)
+        : allEvents.filter(event => event.session === sessionId)
       const recent = events.slice(-200)
-      const injected = recent.filter(event => event.kind === 'recall').slice(-10)
-      const cited = recent.filter(event => event.kind === 'cite').slice(-10)
-      const missesRecent = recent.filter(event => event.kind === 'miss').slice(-10)
+
+      const injectedEvents = recent.filter(event => event.kind === 'recall')
+      const citedEvents = recent.filter(event => event.kind === 'cite')
+      const missesRecent = recent.filter(event => event.kind === 'miss')
+
+      const byId = new Map(entries.map(entry => [entry.id, entry]))
       const reasons: {
         id: string; title: string; why: string
         anchor: Record<string, string> | null
         anchorState: string
         tokens: number
+        at: string
       }[] = []
-      if (typeof query === 'string' && query.trim() !== '') {
-        const result = searchEntries(entries, query, { project })
+
+      /**
+       * 原因来自 recall 事件本身。
+       *
+       * 倒序取最近 5 次检索里的命中条目：越新的越靠前，
+       * 因为用户此刻关心的是「刚刚这一轮注入了什么」。
+       */
+      for (const event of [...recent].reverse()) {
+        if (event.kind !== 'recall') continue
+        const terms = String(event.query ?? '').split(/\s+/).filter(Boolean)
+        for (const id of event.ids ?? []) {
+          if (reasons.some(reason => reason.id === id)) continue
+          const entry = byId.get(id)
+          if (entry === undefined) continue
+          reasons.push({
+            id,
+            title: entry.title,
+            why: terms.length === 0 ? '检索命中（无关键词记录）' : `关键词命中：${terms.join(' ')}`,
+            anchor: entry.anchor,
+            /** 锚点状态：让「为什么注入」能说清是命中了内容还是命中了失效锚点。 */
+            anchorState: entry.status === 'stale'
+              ? 'stale'
+              : entry.anchor === null ? 'none' : 'fresh',
+            tokens: entry.tokens,
+            at: event.at,
+          })
+          if (reasons.length >= 5) break
+        }
+        if (reasons.length >= 5) break
+      }
+
+      /** 显式 query 仍然可用（agent 诊断路径），此时在库内做一次纯检索。 */
+      if (reasons.length === 0 && typeof query === 'string' && query.trim() !== '') {
+        const result = searchEntries(entries, query, { project: projectFilter })
         for (const hit of result.hits.slice(0, 5)) {
           const matched = entries.find(entry => entry.id === hit.id)
           reasons.push({
@@ -988,22 +1097,27 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
             title: hit.title,
             why: `关键词命中：${result.terms.join(' ')}`,
             anchor: matched?.anchor ?? null,
-            /** 锚点状态：让「为什么注入」能说清是命中了内容还是命中了失效锚点。 */
             anchorState: matched?.status === 'stale'
               ? 'stale'
               : matched?.anchor === null || matched?.anchor === undefined ? 'none' : 'fresh',
             tokens: hit.tokens,
+            at: '',
           })
         }
       }
+
       return {
         sessionId: sessionId ?? null,
-        injected: injected.reduce((sum, event) => sum + (event.ids ?? []).length, 0),
-        cited: cited.reduce((sum, event) => sum + (event.ids ?? []).length, 0),
+        project: projectFilter ?? null,
+        resolution,
+        injected: injectedEvents.reduce((sum, event) => sum + (event.ids ?? []).length, 0),
+        recalled: injectedEvents.length,
+        cited: citedEvents.reduce((sum, event) => sum + (event.ids ?? []).length, 0),
         missed: missesRecent.length,
         reasons,
-        recentInjected: injected,
-        recentMisses: missesRecent,
+        recentInjected: injectedEvents.slice(-10),
+        recentCites: citedEvents.slice(-10),
+        recentMisses: missesRecent.slice(-10),
       }
     })
   }

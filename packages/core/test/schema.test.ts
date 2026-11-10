@@ -14,8 +14,8 @@ import { after, before, describe, it } from 'node:test'
 import { createStore } from '../src/store.ts'
 
 import {
-  INBOX_COLUMNS, INBOX_KINDS, INBOX_STATES, canTransition, estimateTokens,
-  expiryOf, needsDecision, orEmpty, truncate,
+  INBOX_COLUMNS, INBOX_KINDS, INBOX_STATES, canHumanTransition, canTransition,
+  estimateTokens, expiryOf, needsDecision, orEmpty, truncate,
 } from '../src/schema.ts'
 import {
   INBOX_HEADER, escapeCell, parseFrontmatter, parseInbox, parseInboxRow,
@@ -62,8 +62,31 @@ describe('schema 契约', () => {
 })
 
 describe('状态机迁移', () => {
-  it('hypothesis 不能直接跳到 confirmed', () => {
+  /**
+   * 自动爬升必须逐级：hypothesis 不能自己跳到 confirmed。
+   * 这张表回答「系统能不能升它」，所以严格是对的。
+   */
+  it('自动爬升不能跳级（hypothesis 不能直接 confirmed）', () => {
     assert.equal(canTransition('hypothesis', 'confirmed'), false)
+    assert.equal(canTransition('observed', 'confirmed'), false)
+  })
+
+  /**
+   * 但**人**可以。
+   *
+   * 早先 UI 用自动表校验 setStatus，于是待处理队列里最常见的
+   * hypothesis 条目一点「确认」就报「非法状态迁移」——
+   * 而且总览入口连这句错误都不显示，用户看到的是「点了没反应」。
+   */
+  it('人可以直接确认 hypothesis / observed / stale', () => {
+    for (const from of ['hypothesis', 'observed', 'reinforced', 'stale']) {
+      assert.equal(canHumanTransition(from, 'confirmed'), true, `人确认 ${from} → confirmed`)
+    }
+  })
+
+  it('人不许把已确认的降回 hypothesis（那是伪造历史）', () => {
+    assert.equal(canHumanTransition('confirmed', 'hypothesis'), false)
+    assert.equal(canHumanTransition('confirmed', 'observed'), false)
   })
 
   it('爬升通道：hypothesis → observed → reinforced → confirmed', () => {

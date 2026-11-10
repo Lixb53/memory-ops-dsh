@@ -98,21 +98,54 @@ export function useSessionCwd(
   return typeof cwd === 'string' && cwd !== '' ? cwd : undefined
 }
 
-/** 从 cwd 推出项目名：`…/sz-web` → `sz-web`。 */
+/**
+ * 从 cwd 推出项目名 —— **只在没有服务端解析时兜底**。
+ *
+ * ## 这条推理曾经是错的（真事故）
+ *
+ * 取 cwd 末段当项目名，对 `…/zhongxing/V2.1.25-dev` 得到 `V2.1.25-dev`，
+ * 对 `…/submodule/sz-web-dzh-gslx` 得到 `sz-web-dzh-gslx`。
+ * 而库里项目叫 `sz-web`。两者永远不相等 → snapshot 过滤成 0 条
+ * → 界面显示「当前项目还没有相关记忆」。数据一条没少，只是名字猜错了。
+ *
+ * 现在**cwd 原样送到 core**，由 `resolveProject` 按
+ * `work/<project>/index.md` 的 项目名 + aliases 判定（那里才有库内数据）。
+ * 这个函数只保留给「拿不到解析结果」的降级路径，且不再参与过滤决策之外的用途。
+ */
 export function projectFromCwd(cwd: string | undefined): string | undefined {
   if (cwd === undefined) return undefined
   const parts = cwd.replace(/\/+$/, '').split('/')
   const name = parts[parts.length - 1]
-  return typeof name === 'string' && name !== '' ? name : undefined
+  if (typeof name !== 'string' || name === '') return undefined
+  /** 越像分支/临时目录，越不该被当成项目名——宁可返回 undefined 让 core 去判。 */
+  if (/^v?\d+(\.\d+)*(-|$)/i.test(name)) return undefined
+  return name
 }
 
-/** 一次性拿到「当前会话 + 项目」。 */
+/** 一次性拿到「当前会话 + cwd + 兜底项目名」。 */
 export function useSessionProject(ctx: ClientContextLike | undefined): {
   sessionId: string | undefined
   cwd: string | undefined
+  /** 兜底项目名（见 `projectFromCwd`）；UI 与请求应优先用 cwd。 */
   project: string | undefined
 } {
   const sessionId = useCurrentSessionId(ctx)
   const cwd = useSessionCwd(ctx, sessionId)
   return { sessionId, cwd, project: projectFromCwd(cwd) }
+}
+
+/**
+ * 桥请求里的「项目范围」参数。
+ *
+ * 优先送 cwd：只有 core 能读 `work/<project>/index.md` 的别名表，
+ * 客户端手里的末段目录名（`V2.1.25-dev` / `sz-web-dzh-gslx`）根本对不上库里的项目名。
+ * 拿不到 cwd 时才退回兜底项目名，最后才是空对象（= 不过滤）。
+ */
+export function scopeBody(
+  cwd: string | undefined,
+  project: string | undefined,
+): Record<string, unknown> {
+  if (cwd !== undefined && cwd.trim() !== '') return { cwd }
+  if (project !== undefined && project !== '') return { project }
+  return {}
 }

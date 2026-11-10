@@ -102,12 +102,32 @@ export interface StatsView {
   counts: { pending: number; confirmed: number; rejected: number; stale: number; archived: number }
 }
 
+/**
+ * cwd → 项目的解析结果。
+ *
+ * 它为 `null` 表示调用方没给 cwd（不是解析失败）。
+ * 给了 cwd 却没认出来时，`project` 为 null 且 `reason` 非空 ——
+ * 界面必须能说出「凭什么」和「为什么没认出来」，否则只能显示假空态。
+ */
+export interface ProjectResolutionView {
+  project: string | null
+  matchedAlias: string | null
+  matchedBy: 'name' | 'alias' | 'prefix' | null
+  cwd: string | null
+  knownProjects: string[]
+  reason: string
+}
+
 export interface SnapshotView {
   root: string
   /** 统计口径：all=全库，scoped=仅当前 project/domain。 */
   statsScope: 'all' | 'scoped'
   /** 当前项目自己的 layer: l0 索引文件。 */
   projectIndex: { path: string; title: string; tokens: number }[]
+  /** 项目解析诊断；只给 cwd 时才有，显式传 project 时为 null。 */
+  resolution: ProjectResolutionView | null
+  /** 库里有记忆的项目全集（未解析出来时用于提示）。 */
+  knownProjects: string[]
   projectScoped: boolean
   project: string | null
   domain: string | null
@@ -303,7 +323,12 @@ export interface DetailView {
 
 export interface SessionMemoryView {
   sessionId: string | null
+  /** 解析后的项目（只给 cwd 时由 core 判定）。 */
+  project: string | null
+  resolution: ProjectResolutionView | null
   injected: number
+  /** 本会话发生过的 recall 次数（`injected` 是命中条目数，两者不同）。 */
+  recalled: number
   cited: number
   missed: number
   reasons: {
@@ -314,7 +339,11 @@ export interface SessionMemoryView {
     /** 锚点当前状态：fresh / stale / none（用于显示 hash 对比与失效提示）。 */
     anchorState: string
     tokens: number
+    /** 这条原因来自哪次检索（ISO 时间；无事件时为 ''）。 */
+    at: string
   }[]
+  recentInjected: { at: string; session?: string; ids?: string[]; query?: string }[]
+  recentCites: { at: string; session?: string; ids?: string[]; query?: string }[]
   recentMisses: { at: string; query?: string }[]
 }
 

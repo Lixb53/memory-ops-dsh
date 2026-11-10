@@ -42,10 +42,53 @@ export const STATE_CONFIDENCE: Readonly<Record<ConfidenceState, number>> = {
   archived: 0,
 }
 
-/** 合法状态迁移（唯一合法路径，见 product.md §11.4）。 */
+/**
+ * **自动**爬升的合法迁移（见 product.md §11.4 的状态迁移图）。
+ *
+ * 这套表回答的是「系统能不能自己把一条记忆升上去」，所以它必须严格：
+ * hypothesis 只能先到 observed，observed 只能先到 reinforced，
+ * 只有 reinforced 才允许到 confirmed。自动逻辑永远不许跳级。
+ *
+ * ⚠️ 它**不是**「人能否确认」的唯一依据——那是下面 `HUMAN_STATE_TRANSITIONS`。
+ * 两者混用过一次，后果见那份注释。
+ */
 export const STATE_TRANSITIONS: Readonly<Record<ConfidenceState, readonly ConfidenceState[]>> = {
   hypothesis: ['observed', 'rejected', 'stale', 'archived'],
   observed: ['reinforced', 'rejected', 'stale', 'archived'],
+  reinforced: ['confirmed', 'rejected', 'stale', 'archived'],
+  confirmed: ['rejected', 'stale', 'archived'],
+  rejected: ['hypothesis', 'observed', 'reinforced', 'confirmed'],
+  stale: ['confirmed', 'rejected', 'archived'],
+  archived: ['confirmed', 'stale'],
+}
+
+/**
+ * **人**拍板的合法迁移。
+ *
+ * ## 为什么必须与自动表分开（真事故）
+ *
+ * 早先 `setStatus` 用自动表校验，而界面在 hypothesis / observed / stale 上都
+ * 提供了「确认」按钮（待处理队列里 hypothesis 正是最常见的一类）。
+ * 于是每点一次都返回 `非法状态迁移：hypothesis → confirmed`。
+ *
+ * 更糟的是它出现在**两个入口**上，且总览那个入口连错误都没显示——
+ * 用户看到的是「点了没反应」，于是合理地怀疑「记忆库坏了」。
+ *
+ * ## 为什么人可以直接确认 hypothesis
+ *
+ * observed / reinforced 这两个中间态是**自动证据累积**的产物
+ * （跨会话重复 ≥2 / ≥3）。它们的意义是「没人看的时候，系统凭什么相信它」。
+ * 一旦人亲自看了并说「这条是对的」，再要求它先被机器自动升两级才允许确认，
+ * 就是把人的判断力排在计数器后面——那正是 README 里反对的「单向漏斗」：
+ * 系统设计了一套机制，用户却用不上。
+ *
+ * 所以人对**任何未归档、未驳回**的条目都可以直接确认；
+ * 反过来，人**不能**把 confirmed 降级成 hypothesis（那是伪造历史），
+ * 也不能跳过 rejected 的 30 天静默（撤销驳回走 `undoReject` 单独的表）。
+ */
+export const HUMAN_STATE_TRANSITIONS: Readonly<Record<ConfidenceState, readonly ConfidenceState[]>> = {
+  hypothesis: ['confirmed', 'rejected', 'stale', 'archived', 'observed'],
+  observed: ['confirmed', 'rejected', 'stale', 'archived', 'reinforced'],
   reinforced: ['confirmed', 'rejected', 'stale', 'archived'],
   confirmed: ['rejected', 'stale', 'archived'],
   rejected: ['hypothesis', 'observed', 'reinforced', 'confirmed'],
@@ -189,9 +232,27 @@ export function needsDecision(
   return entry.status === 'stale'
 }
 
-/** 校验一次状态迁移是否合法。 */
+/** 校验一次**自动**状态迁移是否合法。 */
 export function canTransition(from: string, to: string): boolean {
   if (from === to) return true
   const allowed = STATE_TRANSITIONS[from as ConfidenceState]
   return allowed !== undefined && allowed.includes(to as ConfidenceState)
+}
+
+/**
+ * 校验一次**人拍板**的状态迁移是否合法。
+ *
+ * 与 `canTransition` 的差别只有一处，但那一处是用户能不能用的问题：
+ * 人可以直接确认 hypothesis / observed，不必先等机器把它爬上来。
+ */
+export function canHumanTransition(from: string, to: string): boolean {
+  if (from === to) return true
+  const allowed = HUMAN_STATE_TRANSITIONS[from as ConfidenceState]
+  if (allowed !== undefined && allowed.includes(to as ConfidenceState)) return true
+  /**
+   * 兜底：非枚举状态（老数据里的 `active`）先按自动表放行。
+   * 修补作业会把它们纠正成合法值，但在这个窗口期里不该让用户点不动按钮。
+   */
+  if (allowed === undefined) return canTransition(from, to)
+  return STATE_TRANSITIONS[from as ConfidenceState]?.includes(to as ConfidenceState) ?? false
 }

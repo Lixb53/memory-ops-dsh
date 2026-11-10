@@ -30,7 +30,7 @@ export interface BridgeEnv {
    * 实际注入 `<available_skills>` 的那一份（含 description 截断规则），
    * 自己扫 SKILL.md 会算出与真实付费量不一致的数字。
    */
-  listSkills?: () => ResidentSkill[]
+  listSkills?: () => ResidentSkill[] | Promise<ResidentSkill[]>
   /**
    * 为什么没读到 skill。
    *
@@ -46,8 +46,13 @@ export const ROUTES: Readonly<Record<string, RouteSpec>> = {
   snapshot: { method: 'POST', run: (a, b) => a.snapshot(b as never) },
   overview: {
     method: 'POST',
-    run: (a, _b, env) => a.overview({
-      skillDescriptions: env.listSkills?.() ?? [],
+    /**
+     * 必须 `await`：宿主的 `skills.list()` 是异步的。
+     * 早先同步当数组用，抛 `all.filter is not a function` 被吞成
+     * 「读不到 skill」——于是常驻前缀恒等于框架 171，而不是真实 361。
+     */
+    run: async (a, _b, env) => a.overview({
+      skillDescriptions: (await env.listSkills?.()) ?? [],
       skillsError: env.skillsError?.() ?? '',
     }),
   },
