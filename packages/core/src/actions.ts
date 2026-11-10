@@ -10,9 +10,14 @@ import {
   CONFIDENCE_STATES, INBOX_KINDS, INBOX_STATES, STATE_CONFIDENCE, MISS_VERIFY_DAYS,
   FILE_LINE_LIMIT, FILE_TOKEN_SOFT_LIMIT, RESIDENT_TOKEN_BUDGET, REINFORCE_MIN_SESSIONS,
   canHumanTransition, canTransition, estimateTokens, expiryOf, needsDecision, orEmpty, truncate,
+  isStateAllowed, statesOfKind,
   type InboxKind, type InboxState, type ConfidenceState,
 } from './schema.ts'
 import { projectAliasesOf, resolveProject, type ProjectResolution } from './project.ts'
+import {
+  isEntryVisible, projectParentsOf, resolveScope, describeScope, projectLineage,
+  type ScopeResolution,
+} from './scope.ts'
 import { searchEntries, searchCost, type SearchHit } from './search.ts'
 import { inspectText, auditRecord } from './privacy.ts'
 import { parseSections } from './parse.ts'
@@ -125,6 +130,91 @@ function citeCountsOf(events: { kind?: string; ids?: string[] }[]): Map<string, 
   return counts
 }
 
+/** 作用域的父链（含自身，由近到远）。 */
+function projectLineageOf(scope: ScopeResolution): string[] {
+  return projectLineage(scope.project, scope.parents)
+}
+
+/**
+ * 被作用域挡掉的项目及条目数。
+ *
+ * 为什么这个数字必须给界面：作用是**不让看**，那界面上「少了 12 条」
+ * 和「数据丢了 12 条」长得一模一样。给一个明确的「已按作用域隐藏 N 条（gslz）」
+ * 才能让人分清「规则生效」与「出故障」——这是本仓库反复踩的那个坑。
+ */
+function excludedSummary(
+  entries: MemoryEntry[],
+  scope: ScopeResolution,
+): { project: string | null; count: number }[] {
+  const byProject = new Map<string | null, number>()
+  for (const entry of entries) {
+    if (isEntryVisible(
+      { project: entry.project, branch: entry.branch },
+      { project: scope.project, branch: scope.branch, parents: scope.parents },
+    )) continue
+    byProject.set(entry.project, (byProject.get(entry.project) ?? 0) + 1)
+  }
+  return [...byProject.entries()]
+    .map(([project, count]) => ({ project, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+/** 一条导航：某个目录下有多少条记忆、多少 token。 */
+export interface NavItem {
+  /** 相对项目的目录路径，如 `V2.1.25-dev/issues`、`_shared`。 */
+  path: string
+  /** 该目录下（不含子目录）的条目数。 */
+  count: number
+  tokens: number
+  /** `branch` = 分支专属；`shared` = 有意全分支共享；`root` = 未落分支。 */
+  kind: 'branch' | 'shared' | 'root'
+}
+
+/**
+ * 从条目聚合出导航。
+ *
+ * 结构完全由数据决定：目录里没有条目就不会出现在导航里，
+ * 也不会像手写表格那样列出早已不存在的目录。
+ *
+ * 层级只到「分支/分类」两层，再深就变成文件清单而非导航了。
+ */
+function navOf(entries: MemoryEntry[]): NavItem[] {
+  const byDir = new Map<string, { count: number; tokens: number }>()
+  for (const entry of entries) {
+    if (entry.project === null) continue
+    const parts = entry.path.split('/')
+    /**
+     * 只取「分支层 + 分类层」，且**分类层必须是目录**。
+     *
+     * 早先直接 `slice(2, 4)`，于是 `dsh/main/x.md` 会把文件名当分类层，
+     * 导航退化成文件清单（每个文件一条）。导航要回答「去哪找」，
+     * 不是「有哪些文件」——后者检索本来就该做。
+     */
+    const branch = parts[2]
+    const category = parts[3]
+    if (branch === undefined) continue
+    const dir = category === undefined || category.toLowerCase().endsWith('.md')
+      ? branch.replace(/\.md$/i, '')
+      : `${branch}/${category}`
+    const key = dir
+    const current = byDir.get(key) ?? { count: 0, tokens: 0 }
+    current.count += 1
+    current.tokens += entry.tokens
+    byDir.set(key, current)
+  }
+  return [...byDir.entries()]
+    .map(([key, value]) => {
+      const head = key.split('/')[0]!
+      const kind: NavItem['kind'] = head === '_shared'
+        ? 'shared'
+        : /^v?\d+(\.\d+)+/i.test(head) || ['main', 'master', 'dev', 'develop', 'trunk', 'release'].includes(head.toLowerCase())
+          ? 'branch'
+          : 'root'
+      return { path: key, count: value.count, tokens: value.tokens, kind }
+    })
+    .sort((a, b) => a.path.localeCompare(b.path))
+}
+
 /** 建能力集合。 */
 export function createActions({ store, now = () => Date.now(), readExternal }: {
   store: Store
@@ -145,8 +235,8 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
    * 说明「这个 cwd 被解析成了哪个项目、凭什么」。这不是必须的——
    * 显式传 `project` 的老调用方行为完全不变。
    */
-  async function snapshot({ project, domain, cwd }: {
-    project?: string | null; domain?: string | null; cwd?: string | null
+  async function snapshot({ project, domain, cwd, branch }: {
+    project?: string | null; domain?: string | null; cwd?: string | null; branch?: string | null
   } = {}) {
     return guard(async () => {
       const entries = await store.scan()
@@ -154,22 +244,73 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
       const misses = await store.readMisses()
 
       /**
-       * 只给了 cwd 没给 project 时，先把 cwd 解析成项目。
+       * 只给了 cwd 没给 project 时，先把 cwd 解析成**作用域**（项目 + 分支）。
        *
-       * 为什么不在客户端解析：别名来自 `work/<project>/index.md`，
-       * 那是库里的数据，客户端看不到；放到 core 才能保证
-       * 「UI 看到的项目」与「agent 检索用的项目」是同一个判定。
+       * 为什么不在客户端解析：别名在 `work/<project>/index.md`、父子关系在
+       * 同处 `parent:` 字段、分支要读 git —— 三样客户端都看不到。
+       * 放到 core 才能保证「UI 看到的范围」与「agent 检索用的范围」是同一个判定。
+       *
+       * 老调用方（显式传 project）行为不变：没有 cwd 就不做作用域过滤。
        */
       let resolution: ProjectResolution | null = null
+      let scope: ScopeResolution | null = null
       let effectiveProject = project
       if ((project === undefined || project === null || project === '') && typeof cwd === 'string' && cwd.trim() !== '') {
-        resolution = resolveProject(cwd, projectAliasesOf(entries))
-        effectiveProject = resolution.project
+        const projects = projectAliasesOf(entries)
+        /**
+         * 项目识别统一走 `resolveScope`（git remote 优先），不再单独调 `resolveProject`。
+         *
+         * 为什么必须只留一条路：早先这里和 `sessionMemory` 各调一次
+         * `resolveProject`，而 `resolveScope` 内部又有自己的判定。
+         * 两套逻辑并存的后果是「同一 cwd，本项目看到 A，会话记忆看到 B」——
+         * 界面上表现为两个页签数字对不上，而两边都「没报错」。
+         */
+        scope = await resolveScope({ cwd, projects, entries })
+        effectiveProject = scope.project
+        resolution = {
+          project: scope.project,
+          matchedAlias: null,
+          matchedBy: scope.project === null ? null : 'remote',
+          cwd: scope.cwd,
+          knownProjects: projects.map(item => item.name),
+          reason: scope.project === null ? scope.detail : '',
+        }
+        // 显式给了 branch 就覆盖自动识别（人比机器可信，且能救 detached HEAD）
+        if (typeof branch === 'string' && branch.trim() !== '') {
+          scope = { ...scope, branch: branch.trim(), branchSource: null, reasons: scope.reasons.filter(r => r !== 'unknown_branch' && r !== 'no_git' && r !== 'detached_head') }
+        }
+      } else if (typeof branch === 'string' && branch.trim() !== '') {
+        /**
+         * 只有 project + branch、没有 cwd：构造一个最小作用域。
+         * 父项目仍从库里读——否则「显式指定子模块却读不到主仓记忆」，
+         * 正好违反规则④。
+         */
+        scope = {
+          project: project ?? null,
+          branch: branch.trim(),
+          branchSource: null,
+          cwd: null,
+          reasons: [],
+          detail: '由调用方显式指定的项目与分支',
+          parents: projectParentsOf(entries),
+        }
       }
+
       const projectFilter = effectiveProject
 
+      /**
+       * 过滤按**可见性**而不是等值：子模块能读主仓（父链），兄弟不可见，
+       * 分支按 `branchMatches` 相容。见 `scope.ts` 的模型说明。
+       */
       const filtered = entries.filter((entry) => {
-        if (projectFilter !== undefined && projectFilter !== null && projectFilter !== '' && entry.project !== projectFilter) return false
+        if (scope !== null) {
+          if (!isEntryVisible(
+            { project: entry.project, branch: entry.branch },
+            { project: scope.project, branch: scope.branch, parents: scope.parents },
+          )) return false
+        } else if (projectFilter !== undefined && projectFilter !== null && projectFilter !== '' && entry.project !== projectFilter) {
+          return false
+        }
         if (domain !== undefined && domain !== null && domain !== '' && entry.domain !== domain) return false
         return true
       })
@@ -220,6 +361,28 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
          * 给了 cwd 就必须能回答「凭什么」，否则界面只能猜。
          */
         resolution,
+        /**
+         * 作用域：当前会话到底看到哪些记忆，以及为什么。
+         *
+         * `inheritedFrom` 列出因父链而额外可见的项目（子模块读主仓），
+         * `excluded` 列出被挡掉的项目及数量——**必须能说清挡住了什么**，
+         * 否则「规则④生效了」与「数据丢了」在界面上长得一样。
+         */
+        scope: scope === null ? null : {
+          project: scope.project,
+          branch: scope.branch,
+          branchSource: scope.branchSource,
+          label: describeScope({ project: scope.project, branch: scope.branch }),
+          /** 父链（含自身），按由近到远。 */
+          lineage: scope.project === null ? [] : projectLineageOf(scope),
+          /** 因继承而可见的祖先项目。 */
+          inheritedFrom: scope.project === null ? [] : projectLineageOf(scope).slice(1),
+          /** 被作用域挡掉的项目及条目数（诊断用，不参与检索）。 */
+          excluded: excludedSummary(entries, scope),
+          /** 失败原因码：有值说明这次判定不可靠，界面必须显式提示。 */
+          reasons: scope.reasons,
+          detail: scope.detail,
+        },
         /** 库里有记忆的项目全集，供「你可能想要哪个」提示。 */
         knownProjects: projectAliasesOf(entries).map(item => item.name),
         entries: filtered.map(entry => projectEntry(entry, now(), citeCounts)),
@@ -234,6 +397,19 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
         projectIndex: filtered
           .filter(entry => entry.layer === 'l0')
           .map(entry => ({ path: entry.path, title: entry.title, tokens: entry.tokens })),
+        /**
+         * 导航：**从真实条目聚合，不读手写表格**。
+         *
+         * ## 为什么删掉 index.md 里的导航表
+         *
+         * 手写的目录表必然过时：`sz-web/index.md` 曾列着 `gslx/`、`dsh/`，
+         * 而实际结构早已变成 `V2.1.25-dev/`、`_shared/`——每个字都是错的。
+         * 过时的导航比没有导航更糟，因为它会被当成事实读。
+         *
+         * 这里直接从 `filtered` 条目聚合出「哪个目录有多少条」，
+         * 结构与磁盘天然一致，零维护。
+         */
+        nav: navOf(filtered),
         generatedAt: new Date(now()).toISOString(),
       }
     })
@@ -522,7 +698,46 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
       if (typeof patch.kind === 'string' && !INBOX_KINDS.includes(patch.kind as InboxKind)) {
         throw new Error(`类型必须是 ${INBOX_KINDS.join(' / ')}`)
       }
+
+      /**
+       * 按**当前行的类型**校验状态是否合法。
+       *
+       * 为什么读一次当前行而不是直接信任 patch：`patch` 里可能只带 `state`，
+       * 这时类型来自库里已有的那行。拿不到类型就没法判断
+       * 「给决策标 todo」该不该拒——先读再判，不靠调用方自觉。
+       *
+       * 拒绝时要说清「这个类型支持哪些状态」，而不是只报「非法」：
+       * 用户看到的应该是「决策没有进行中，只有 open / done / dropped」。
+       */
+      if (typeof patch.state === 'string') {
+        const before = await store.readInbox(domain)
+        const current = before.entries.find(entry => entry.lineIndex === lineIndex)
+        const effectiveKind = typeof patch.kind === 'string' ? patch.kind : current?.kind ?? ''
+        if (effectiveKind !== '' && !isStateAllowed(effectiveKind, patch.state)) {
+          const allowed = statesOfKind(effectiveKind)
+          throw new Error(
+            `「${effectiveKind}」不支持状态 ${patch.state}，可用：${allowed.join(' / ')}`
+            + (allowed.length < INBOX_STATES.length
+              ? '（该类型没有「进行中」这个阶段）'
+              : ''),
+          )
+        }
+      }
+
       const result = await store.updateInboxRow({ domain, lineIndex, patch })
+      /**
+       * 进入 todo 时记一条事件，作为「开始时间」。
+       *
+       * 为什么不加表格列：INBOX 是 5 列固定契约，加列会让所有存量行错位。
+       * 而"什么时候开始的"天然是**事件**而不是状态——状态只说明现在，
+       * 事件才能回答"开了头多久没结"。这正好支撑你要的「看到未完成的」。
+       */
+      if (patch.state === 'todo' && result.row !== null) {
+        await store.appendEvent({
+          session, kind: 'inbox-start',
+          query: String(result.row.content ?? '').slice(0, 60),
+        })
+      }
       await store.appendEvent({ session, kind: 'inbox-update', query: String(result.row?.content ?? '').slice(0, 60) })
       return { updated: result }
     })
@@ -598,12 +813,28 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
   }
 
   /** 检索（同样记账未命中）。 */
-  async function search({ query, project, session = 'plugin', record = true }: {
-    query: string; project?: string | null; session?: string; record?: boolean
+  async function search({ query, project, cwd, branch, session = 'plugin', record = true }: {
+    query: string; project?: string | null; cwd?: string | null; branch?: string | null
+    session?: string; record?: boolean
   }) {
     return guard(async () => {
       const entries = await store.scan()
-      const result = searchEntries(entries, query, { project })
+      /**
+       * 有 cwd 或 branch 时按作用域检索——**agent 的检索必须与界面同口径**。
+       * 否则会出现「界面上看不到 gslz 的记忆，但 agent 搜得到并写进上下文」，
+       * 那等于作用域只挡住了人，没挡住真正会污染推理的那一端。
+       */
+      let scope: ScopeResolution | null = null
+      if ((typeof cwd === 'string' && cwd.trim() !== '') || (typeof branch === 'string' && branch.trim() !== '')) {
+        const projects = projectAliasesOf(entries)
+        const resolved = typeof cwd === 'string' && cwd.trim() !== ''
+          ? await resolveScope({ cwd, projects, entries })
+          : { project: project ?? null, branch: null, branchSource: null, cwd: null, reasons: [], detail: '', parents: projectParentsOf(entries) }
+        scope = typeof branch === 'string' && branch.trim() !== ''
+          ? { ...resolved, branch: branch.trim() }
+          : resolved
+      }
+      const result = searchEntries(entries, query, { project, scope })
       if (record) {
         if (result.matched) {
           await store.recordCite({ ids: result.hits.map(hit => hit.id), kind: 'recall', session, query: result.query })

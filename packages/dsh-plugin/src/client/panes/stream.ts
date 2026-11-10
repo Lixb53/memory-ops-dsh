@@ -8,6 +8,7 @@
 
 import { createElement, useState, type ReactNode } from 'react'
 
+import { statesOfKind } from '../../../../core/src/schema.ts'
 import { call, type InboxView } from '../api.ts'
 import { useBridge } from '../data.ts'
 import {
@@ -125,6 +126,12 @@ export function StreamPane(): ReactNode {
     // 吞吐 3 格
     createElement('div', { className: 'dmo-kpis' },
       createElement(Kpi, { label: '待处理', value: count(throughput.open), note: 'open' }),
+      /**
+       * 「进行中」是一个真实出口：它能回答「哪些事开了头没结」。
+       * 早先这个数字只存在后端（`throughput.todo`），界面上看不到，
+       * 于是用户点了「开始」之后没有任何反馈——状态变了，但没人知道它意味着什么。
+       */
+      createElement(Kpi, { label: '进行中', value: count(throughput.todo), note: 'todo' }),
       createElement(Kpi, { label: '待提升', value: count(throughput.toPromote), note: 'done 无去向' }),
       createElement(Kpi, { label: '已处理', value: count(throughput.done), note: 'done' })),
 
@@ -267,7 +274,7 @@ export function StreamPane(): ReactNode {
               () => call('updateInbox', {
                 domain: 'personal', lineIndex: entry.lineIndex, patch: { state },
               }),
-              state === 'done' ? '已完成' : '已标 todo',
+              state === 'done' ? '已完成' : state === 'todo' ? '已开始' : '已更新',
             )
           },
           onEdit: (content: string) => {
@@ -294,6 +301,16 @@ export function StreamPane(): ReactNode {
 }
 
 /** 单行记录：勾选 + 改状态 + 编辑内容 + 提升 + 删除。 */
+/**
+ * 这个类型能不能「开始」。
+ *
+ * 判据来自 core 的 `KIND_STATES`：决策与想法没有 `todo` 阶段。
+ * 不在 UI 里另写一份类型表——两套判定必然分叉。
+ */
+function canStart(kind: string): boolean {
+  return statesOfKind(kind).includes('todo')
+}
+
 function RowItem({ entry, checked, busy, onToggle, onState, onEdit, onPromote, onDelete }: {
   entry: InboxView['entries'][number]
   checked: boolean
@@ -350,7 +367,13 @@ function RowItem({ entry, checked, busy, onToggle, onState, onEdit, onPromote, o
       editing
         ? null
         : createElement('div', { className: 'dmo-card-actions' },
-          entry.state === 'open'
+          /**
+           * 「开始」只在支持 `todo` 的类型上出现。
+           *
+           * 决策与想法没有"进行中"——它们要么已定/已采纳，要么没有。
+           * 早先所有类型都显示「开始」，点了只是换个标签，不承载任何信息。
+           */
+          entry.state === 'open' && canStart(entry.kind)
             ? createElement(Button, { small: true, disabled: busy, onClick: () => { onState('todo') } }, '开始')
             : null,
           entry.state !== 'done'

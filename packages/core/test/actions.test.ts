@@ -496,3 +496,56 @@ describe('统计与导出', () => {
     assert.match(result.reasons[0]!.why, /关键词命中/)
   })
 })
+
+describe('记录流状态按类型校验（决策没有「进行中」）', () => {
+  /**
+   * 真实困扰：记一条**决策**，界面也给出「开始」，点完变 todo，
+   * 系统没记录任何新事实——纯粹借来的待办模板。
+   *
+   * ⚠ 注意断言方式：`actions.*` 走 `guard`，失败返回 `{ ok: false, error }`
+   * **不抛异常**。头一次用 try/catch 测这个，于是「拒绝成功」被当成了「通过」，
+   * 差点把缺陷写成正确。所以这里必须断言返回值。
+   */
+  it('给决策标 todo 被拒，并说明可用状态', async () => {
+    const { actions } = await freshActions('state-by-kind')
+    const result = await actions.capture({ content: '周五前补完幂等护栏', kind: '决策', domain: 'personal' })
+    assert.equal(result.ok, true)
+    const view = await actions.inbox({ domain: 'personal' })
+    const row = (view as unknown as { entries: { kind: string; lineIndex: number }[] })
+      .entries.find(entry => entry.kind === '决策')
+    assert.ok(row, '没找到刚写入的决策')
+
+    const rejected = await actions.updateInbox({
+      domain: 'personal', lineIndex: row.lineIndex, patch: { state: 'todo' },
+    }) as unknown as { ok: boolean; error?: string }
+    assert.equal(rejected.ok, false, '决策不该允许标 todo')
+    assert.match(String(rejected.error), /不支持.*todo/)
+    assert.match(String(rejected.error), /open \/ done \/ dropped/)
+  })
+
+  it('待办可以正常标 todo', async () => {
+    const { actions } = await freshActions('state-todo-ok')
+    await actions.capture({ content: '给巡检加周报输出', kind: '待办', domain: 'personal' })
+    const view = await actions.inbox({ domain: 'personal' })
+    const row = (view as unknown as { entries: { kind: string; lineIndex: number }[] })
+      .entries.find(entry => entry.kind === '待办')
+    assert.ok(row)
+    const ok = await actions.updateInbox({
+      domain: 'personal', lineIndex: row.lineIndex, patch: { state: 'todo' },
+    }) as unknown as { ok: boolean }
+    assert.equal(ok.ok, true, '待办该允许标 todo')
+  })
+
+  it('标 todo 会记一条开始事件（回答「开了头多久没结」）', async () => {
+    const { actions, store } = await freshActions('state-start-event')
+    await actions.capture({ content: '一件待办', kind: '待办', domain: 'personal' })
+    const view = await actions.inbox({ domain: 'personal' })
+    const row = (view as unknown as { entries: { lineIndex: number }[] }).entries[0]!
+    await actions.updateInbox({ domain: 'personal', lineIndex: row.lineIndex, patch: { state: 'todo' } })
+    const events = await store.readEvents()
+    assert.ok(
+      events.some(event => event.kind === 'inbox-start'),
+      '没有 inbox-start 事件，就无法知道什么时候开始的',
+    )
+  })
+})
