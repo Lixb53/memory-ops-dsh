@@ -5,7 +5,364 @@
 
 ---
 
+## 负三、初始化：从零建起一个能用的库
+
+> **这一节只对「库是空的」的人有用。**
+> 如果你打开总览已经能看到几十篇记忆，说明库早就建好了，跳过本节，直接看 §负一。
+> 判断依据：总览 → 预算账本里 L2「详情层 · 文件数」是不是 0。
+
+### 先搞清楚：哪些要手动，哪些自动
+
+这一步必须先说清，否则很容易白折腾——**大部分东西是自动的**。
+
+| 东西 | 会不会自动建 | 说明 |
+|---|---|---|
+| `~/.memory-ops/` 根目录 | ✅ 自动 | 插件加载时就建好 |
+| `.state/`（事件流、未命中） | ✅ 自动 | 同上 |
+| `personal/`、`work/`、`archive/` | ✅ 自动 | 只是空目录 |
+| `personal/INBOX.md` | ✅ 自动 | **第一次「记一条」时**自动生成，不用手建 |
+| `personal/` 其他档案（身份/原则…） | ❌ 手动 | 不建也能用，只是个人档案区是空的 |
+| `work/<项目>/index.md` | ❌ 手动 | **不建则「本项目」永远认不出项目** |
+| 记忆条目（`work/<项目>/*.md`） | ❌ 手动 | 靠捕获或 agent 写 |
+
+**结论**：真正必须手做的只有一件事——**建项目索引**。其余可选。
+
+> 为什么 INBOX 要等第一次捕获才生成：设计上不让空库预先铺满空文件，
+> 否则「空文件」和「真的没有记录」在界面上长得一样。
+
+---
+
+### 第 1 步 · 确认库在哪、是不是空的
+
+打开 DSH → 左侧栏 **记忆库** → **总览**。
+
+看两处：
+
+1. **预算账本**里的 L2「详情层 · 文件数」：`0` 就是空库。
+2. 跑一次 healthCheck（见 §零），返回里的 `root` 就是库的实际位置：
+
+| 系统 | 默认位置 |
+|---|---|
+| macOS | `/Users/<你的用户名>/.memory-ops` |
+| Windows | `C:\Users\<你的用户名>\.memory-ops` |
+
+> 如果你设过环境变量 `MEMORY_OPS_ROOT`，以它为准——
+> 界面上显示的数字和 `root` 一致，才说明你看的是同一个库。
+
+**这一步不需要你做任何操作，只是确认。** 目录不存在也没关系，下一步会建。
+
+---
+
+### 第 2 步 · 记第一条（这一步会自动建好 INBOX）
+
+左侧栏 **记忆库** → **记录流** 页签 → 顶部那个常驻的输入框，打一句话，回车。
+
+比如：「今天开始用记忆库，先记一条测试」。
+
+成功后你会看到：
+
+- 记录流里出现一行：`| 日期 | 想法 | 今天开始用… | open | — |`
+- 磁盘上自动出现 `personal/INBOX.md`
+
+**为什么先做这一步**：它同时验证了「插件能写」「库路径对」「INBOX 骨架正确」三件事，
+是最省事的第一次冒烟测试。比先手写文件靠谱得多。
+
+> 如果这里报错，先停下排查，别继续往下——后面所有步骤都依赖写链路是通的。
+
+---
+
+### 第 3 步 · 建项目索引（唯一必须手动的一步）
+
+**不建这一步，「本项目」页签永远是空的**，而且会顶着一条降级条说「没认出项目」。
+
+#### 先拿到你的项目名
+
+项目名**必须跟 git remote 的仓库名一致**。这条是硬规则，不是建议。
+
+**macOS**
+
+```bash
+cd /你的/项目/路径
+git remote get-url origin
+# 输出形如 git@github.com:Lixb53/memory-ops-dsh.git
+#                                  ↑ 这一段就是项目名
+```
+
+**Windows（PowerShell）**
+
+```powershell
+cd G:\你的\项目\路径
+git remote get-url origin
+# git@github.com:Lixb53/memory-ops-dsh.git → 项目名 memory-ops-dsh
+```
+
+去掉 `.git` 后缀，最后一段就是项目名。
+
+> **为什么必须一致**：插件识别项目时**先看 git remote**（仓库固有身份，改名也不失效），
+> 命中不了才退回路径匹配。remote 是 `memory-ops-dsh` 而库里项目叫 `demo`，
+> 就永远对不上。我实测过：项目名改成和 remote 一致后，识别立刻成功。
+>
+> 老版本用 `aliases` 登记别名，**该字段已废弃**（2026-11），写了也不生效。
+> 现在只认「项目目录名 == git remote 名」。
+
+#### 建索引文件
+
+在库的 `work/` 下建一个以项目名命名的目录，里面放 `index.md`。
+
+**macOS**
+
+```bash
+# 把 memory-ops-dsh 换成你第 1 步拿到的项目名
+mkdir -p ~/.memory-ops/work/memory-ops-dsh
+cat > ~/.memory-ops/work/memory-ops-dsh/index.md <<'EOF'
+---
+id: work.memory-ops-dsh.index
+title: memory-ops-dsh 索引
+scope: work/memory-ops-dsh
+kind: fact
+layer: l1
+status: active
+pinned: false
+tags: []
+---
+
+# memory-ops-dsh
+
+## 我能查什么
+
+- 架构结论 → `_shared/`
+- 踩过的坑 → 本篇同级目录
+
+## 该读哪个文件
+
+（有具体记忆后在这里写路径表，让 agent 知道去哪找）
+EOF
+```
+
+**Windows（PowerShell）**
+
+> ⚠️ **这里有个必须避开的坑**：PowerShell 5.1 的 `Set-Content -Encoding UTF8`
+> **会写入 BOM**（文件开头多 3 个不可见字节 `EF BB BF`）。
+> BOM 会让 frontmatter 彻底失效——`---` 前面多了字节，解析器认不出，
+> 结果是 `layer` 变成 `—`、标题退化成文件名、整篇被当成无元数据的普通文件。
+> **而且它不报错**，你只会觉得「怎么填了不生效」。
+>
+> 所以下面用 `[System.IO.File]::WriteAllText` + 无 BOM 编码器。
+
+```powershell
+$proj = 'memory-ops-dsh'          # 换成你的项目名
+$dir  = Join-Path $env:USERPROFILE ".memory-ops\work\$proj"
+New-Item -ItemType Directory -Path $dir -Force | Out-Null
+
+$content = @"
+---
+id: work.$proj.index
+title: $proj 索引
+scope: work/$proj
+kind: fact
+layer: l1
+status: active
+pinned: false
+tags: []
+---
+
+# $proj
+
+## 我能查什么
+
+- 架构结论 → ``_shared/``
+- 踩过的坑 → 本篇同级目录
+
+## 该读哪个文件
+
+（有具体记忆后在这里写路径表，让 agent 知道去哪找）
+"@
+
+# 关键：$false = 不写 BOM
+[System.IO.File]::WriteAllText((Join-Path $dir 'index.md'), $content, [System.Text.UTF8Encoding]::new($false))
+```
+
+> **frontmatter 必须写全**。缺 `id` / `scope` 会让这篇在界面里显示异常。
+> `layer: l1` 表示它是索引层——只在被 read 时付费，不是常驻前缀。
+>
+> **验证 BOM 是否写对了**（前 3 个字节应该是 `45,45,45`，即 `---`）：
+> ```powershell
+> $b = [System.IO.File]::ReadAllBytes((Join-Path $dir 'index.md'))
+> $b[0..2] -join ','     # 45,45,45 = 无 BOM ✓   239,187,191 = 有 BOM ✗
+> ```
+> 已经写坏了也不要紧，用上面的 `WriteAllText` 重写一遍即可覆盖。
+
+#### 验证
+
+回到 **本项目** 页签。判定标准：
+
+| 看到 | 意思 |
+|---|---|
+| 没有降级条 + 「本项目还没有记忆」 | ✅ 认知成功，只是还没记东西 |
+| 有琥珀色降级条 | ❌ 项目名和 remote 不一致，看降级条里写的「原因」，照它改 |
+| 有降级条且写「库里还没有任何项目」 | ❌ `index.md` 没建对，检查路径和文件名 |
+
+降级条本身是好设计：**它宁可说「我不确定」，也不假装「这个项目没有记忆」**。
+
+---
+
+### 第 4 步 · 建个人档案（可选，但建议做）
+
+个人档案是「agent 认识你」的地方。不建也能用，只是个人区一直空着。
+
+建议至少建两个文件——**身份**和**原则**：
+
+**macOS**
+
+```bash
+mkdir -p ~/.memory-ops/personal
+cat > ~/.memory-ops/personal/identity.md <<'EOF'
+---
+id: personal.identity
+title: 身份
+scope: personal
+kind: fact
+layer: l2
+status: active
+pinned: false
+tags: []
+---
+
+# 身份
+
+- 我是谁：
+- 我做什么：
+EOF
+
+cat > ~/.memory-ops/personal/principles.md <<'EOF'
+---
+id: personal.principles
+title: 原则
+scope: personal
+kind: fact
+layer: l2
+status: active
+pinned: false
+tags: []
+---
+
+# 原则
+
+- （你定的规矩写这里，agent 会照着它做事）
+EOF
+```
+
+**Windows（PowerShell）**
+
+> 同样要用无 BOM 写法，`Set-Content -Encoding UTF8` 会加 BOM（见第 3 步的说明）。
+
+```powershell
+$p = Join-Path $env:USERPROFILE '.memory-ops\personal'
+New-Item -ItemType Directory -Path $p -Force | Out-Null
+$utf8 = [System.Text.UTF8Encoding]::new($false)   # $false = 不写 BOM
+
+$identity = @"
+---
+id: personal.identity
+title: 身份
+scope: personal
+kind: fact
+layer: l2
+status: active
+pinned: false
+tags: []
+---
+
+# 身份
+
+- 我是谁：
+- 我做什么：
+"@
+[System.IO.File]::WriteAllText((Join-Path $p 'identity.md'), $identity, $utf8)
+
+$principles = @"
+---
+id: personal.principles
+title: 原则
+scope: personal
+kind: fact
+layer: l2
+status: active
+pinned: false
+tags: []
+---
+
+# 原则
+
+- （你定的规矩写这里，agent 会照着它做事）
+"@
+[System.IO.File]::WriteAllText((Join-Path $p 'principles.md'), $principles, $utf8)
+```
+
+> **Windows 编码坑（两条都要避）**：
+> 1. 别用默认编码——中文会变乱码
+> 2. 也别直接用 `-Encoding UTF8`——它会加 BOM，让 frontmatter 失效
+>
+> 用上面的 `[System.Text.UTF8Encoding]::new($false)` 才对。
+> macOS 的 `cat` heredoc 这两个问题都没有。
+
+这两个文件不用一次写全，可以随时改——它们是普通 Markdown，你说得越具体，agent 越懂你。
+
+---
+
+### 第 5 步 · 让 agent 真的用起来（这步才决定它有没有价值）
+
+前面四步只是把库建起来。**库建好不等于 agent 会用**。
+
+在一个真实会话里，问一个**你确实踩过坑**的技术问题。然后看两件事：
+
+1. agent 有没有调 `memory_recall`
+2. 调了之后有没有命中
+
+**第一次几乎必然不命中**——因为库是空的。这不是失败，这正是「未命中」页签存在的意义：
+它记录下「你反复问、但库里没有」的问题，告诉你该补什么。
+
+补的方式：**未命中** 页签 → 找到那条 → 写结论 → 确认落库。
+
+---
+
+### 第 6 步 · 确认初始化成功
+
+回到 **总览**，对照这张表：
+
+| 检查项 | 期望 |
+|---|---|
+| L2 详情层 · 文件数 | ≥ 2（INBOX + 个人档案各 1；项目索引算 L1，不在此列） |
+| L1 索引层 · 文件数 | ≥ 1（你刚建的项目索引） |
+| 待你处理 | 0（新库没有推断积压） |
+| 命中率 / 确认率 | `—`（分母为 0，**不是 0%**） |
+| 域统计 | 能看到 `personal` 和你的项目名 |
+| 本项目页签 | 无降级条 |
+
+> **`—` 与 `0%` 是两件事**：`—` 表示「还没发生过，算不出来」，
+> `0%` 才表示「发生了但全落空」。别把算不出来当成算出来是零。
+
+到这里库就建好了。接下来看 §负一，开始真正用它。
+
+---
+
+### 初始化常见卡点
+
+| 症状 | 原因 | 怎么办 |
+|---|---|---|
+| 总览一片 0，L2 也是 0 | 库是空的，还没捕获过 | 做第 2 步 |
+| 「本项目」有降级条 | 项目目录名 ≠ git remote 名 | 改成一致（第 3 步） |
+| 降级条说「库里还没有任何项目」 | `work/<项目>/index.md` 不存在或路径不对 | 检查是不是建成了 `work/index.md` |
+| 中文全变乱码 | Windows 用了默认编码写文件 | 用 `[System.Text.UTF8Encoding]::new($false)` 重写 |
+| **frontmatter 看着对但不生效**（`layer` 是 `—`、标题变成文件名） | **文件带 BOM** | 用无 BOM 写法重写；查前 3 字节是不是 `45,45,45` |
+| 文件建好了但界面看不到 | 界面缓存 | 刷新页面 |
+| 手改文件后状态不对 | 缺 frontmatter 必填字段 | 照模板补全 `id`/`scope`/`kind`/`layer`/`status` |
+
+---
+
 ## 负一、第一次用，从哪开始（照着做就行）
+
+> **前提：库已经建好了**（见 §负三）。如果你打开总览是空的，先去做初始化。
 
 > 记忆库不是「装好就自动帮你」的工具，它的设计假设是**人负责拍板、agent 负责取用**。
 > 所以「开始使用」= 先把这四件事做一遍，之后它才会开始真的帮你。
@@ -29,7 +386,7 @@
 |---|---|---|
 | `memory_recall` 工具 | 模型自己调 | 按关键词检索，命中记 `cite`，未命中记 `miss` |
 | 项目索引 `work/<项目>/index.md` | 库内 | 告诉 agent「哪类问题该读哪个目录」 |
-| `aliases` | 上面那个文件的 frontmatter | 让「本项目」能从 cwd 认出项目（见 §二） |
+| 项目目录名 | `work/<名>/` 的目录名 | 让「本项目」认出项目——**须等于 git remote 仓库名**（见 §二） |
 
 所以「开始使用」的那一刻，就是**你在一个真实会话里问一个你踩过坑的问题**，
 然后看 agent 有没有调 `memory_recall` 命中它。命中了，这套机制就转起来了。
@@ -329,29 +686,49 @@ curl.exe -s 'http://127.0.0.1:63097/api/dsh-memory-ops/healthCheck?token=abc123'
 | 画面 | 真正的原因 | 该怎么办 |
 |---|---|---|
 | 0 条 + 顶部**没有**降级条 | 这个项目**确实**还没有记忆 | 去「记忆」页签看全库，或给它记一条 |
-| 0 条 + 顶部**有琥珀色降级条** | 没认出当前是哪个项目 | 看降级条写的「原因」，按提示登记 `aliases` |
+| 0 条 + 顶部**有琥珀色降级条** | 没认出当前是哪个项目 | 看降级条写的「原因」，按 §二 核对项目名是否等于 git remote 名 |
 
 **降级条是真话，空列表不是。** 只要它出现，就说明系统**不确定**这个项目是谁——
 此时它退回「全部记忆」，而不是假装「这个项目没有」。
 
 ### 「本项目」判定项目的方式
 
-不是拿目录末段当项目名（那是旧实现，见下面的事故），而是：
+**已经换了三代实现**，当前是第三代。了解顺序能少走弯路：
 
-1. 取当前会话的 **cwd**（如 macOS `/Users/…/work/zhongxing/V2.1.25-dev`，
-   Windows `G:\zhongxing\V2.1.25-dev`；判别名时两种分隔符都当分隔符看）
-2. 在 `work/<项目>/index.md` 的 frontmatter 里读 **项目名 + `aliases`**
-3. cwd 里任一段**等于**别名 → 精确命中；**以「别名 + `-`」开头** → 前缀命中
-
-所以 `V2.1.25-dev`、`submodule/sz-web-dzh-gslx` 这些目录都能被认成 **sz-web**，
-前提是它们被登记在 `~/.memory-ops/work/sz-web/index.md` 里：
-
-```yaml
-aliases: [V2.1.25-dev, V2.1.24-dev, sz-web-dzh-gsjq, sz-web-dzh-gslx, sz-web-dzh-gslz, gslx]
+```
+① git remote（最优先）——仓库固有身份，改名也不失效
+   ↓ 没命中（不是 git 仓库 / 仓库名与项目名不同）
+② 路径匹配：cwd 里任一段 == 项目名 → 精确命中
+   ↓
+③ 前缀匹配：某段以「项目名 + - _ .」开头 → 前缀命中
+   ↓ 都失败
+④ 报降级条，退回「全部记忆」
 ```
 
-> **新项目的初始化动作**：`work/<项目>/` 下建一个 `index.md`，
-> 把分支目录、子仓库目录名写进 `aliases`。不登记就只能靠猜，而猜错就显示 0 条。
+关键点：
+
+1. 项目名**就是** `work/<项目名>/` 那个目录名，没有第二个名字
+2. 第 ① 步要求**项目目录名 == git remote 的仓库名**（去掉 `.git`）
+3. 目录名前导的点会被忽略：`.dsh` 能匹到项目 `dsh`
+4. 同分时**更具体的赢**：项目名精确命中 > 前缀命中
+
+> **`aliases` 已废弃（2026-11）**。老版本靠在 `work/<项目>/index.md` 里写
+> `aliases: [分支名, 子模块名]` 来登记「哪些目录属于我」。
+> 现在**字段保留解析但完全不读**——写了也不生效，不报错。
+>
+> 为什么废弃：它在承担两个已经独立的职责。分支归属改由目录结构派生，
+> 仓库身份改由 `git remote` 判定（比目录名可靠，改名也不失效）。
+> 于是它只剩「给未建项目的子模块目录起别名」这一个用途，
+> 而那本该**给子模块单独建一个项目目录**来解决——这也更符合「子模块记忆独立」。
+
+**所以新项目的初始化动作是**：
+
+```
+work/<项目名>/index.md 建起来，项目名取 git remote 的仓库名
+```
+
+如果子模块要有自己的记忆，就再建 `work/<子模块名>/index.md`，
+不要把它塞进主项目的别名表——那样它永远会被解析成主项目。
 
 ### 你的记忆分布
 
@@ -367,6 +744,8 @@ aliases: [V2.1.25-dev, V2.1.24-dev, sz-web-dzh-gsjq, sz-web-dzh-gslx, sz-web-dzh
 > ①「记忆」页签曾也按项目过滤，于是它和「本项目」显示同一份东西——已修，默认全库；
 > ② 更早还把「本项目 0 条」解释成「设计如此」，而真实原因是 cwd 末段（`V2.1.25-dev`）
 > 永远匹配不到库里的 `sz-web`。**这就是你截图里那一幕的成因。**
+>
+> 注意上面这两个数字是**这个库**的实际情况。你的库刚初始化时是 0，属于正常。
 
 > 「本项目」底部的空态里有三个按钮：**记一条 / 看未命中 / 重新读取**。
 > 「记一条」会跳到记录流，不是跳去新建档案。
@@ -671,9 +1050,14 @@ Get-ChildItem packages\dsh-plugin\lib | Select-Object Name,Length,LastWriteTime
 
 **先看有没有琥珀色降级条**，两种情况完全不同：
 
-- 有降级条 → 没认出项目。按 §二 把当前目录登记进 `work/<项目>/index.md` 的 `aliases`。
-  （`V2.1.25-dev` 这类分支目录**必须登记**，它的名字里根本不含 `sz-web`。）
-- 没有降级条 → 这个项目确实还没沉淀，去「记忆」页签看全库。
+- **有降级条** → 没认出项目。按顺序查：
+  1. `work/` 下有没有这个项目的 `index.md`？没有就先建（§负三 第 3 步）
+  2. **项目目录名是否等于 `git remote get-url origin` 里的仓库名**（去掉 `.git`）。
+     这是最常见的失败原因：remote 叫 `memory-ops-dsh`、目录却叫 `demo`，永远对不上
+  3. 目录名和 remote 都对，但 cwd 是分支目录（`V2.1.25-dev` 这类）——
+     这种情况**不要**再想别名表，`aliases` 已废弃。改用：给该分支所在仓库
+     建一个与 remote 同名的项目目录；若它确实是独立子模块，就单独建项目
+- **没有降级条** → 这个项目确实还没沉淀，去「记忆」页签看全库。
 
 ### 会话「记忆」tab 是空的，但面板里明明有 35 篇
 
@@ -764,6 +1148,8 @@ Write-Host "已备份到 $dst"
 
 ```
 第一次装        → §负二：选路线 A（git）或 B（本地），先配代理
+第一次装        → §负二：选路线 A（git）或 B（本地），先配代理
+初始化空库      → §负三：记一条 → 建 work/<项目>/index.md（项目名=git remote 名）
 第一次用        → §负一：确认库 → 清队列 → 在真实会话里命中一次
 想记东西        → 右侧栏「快速捕获」 或 /remember
 想找东西        → 记忆页签 → 搜索框 → 回车
@@ -772,8 +1158,8 @@ Write-Host "已备份到 $dst"
 看成本          → 总览 → 常驻前缀（每请求）/ 索引层（按需）
 看健康          → 总览 → 维护作业 → 复盘
 改元数据        → 总览 → 维护作业 → 修补
-「本项目」空的  → 先看有没有降级条，有就登记 aliases（§二）
-新项目要能认    → work/<项目>/index.md 里加 aliases: [分支名, 子目录名]
+「本项目」空的  → 先看有没有降级条，有就查项目名是否=git remote 名（§二）
+新项目要能认    → work/<git remote 名>/index.md（aliases 已废弃，别写）
 排查不生效      → §零 的 healthCheck（端口用当前 GUI 的）→ §八 清单
 ```
 
