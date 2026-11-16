@@ -6,6 +6,12 @@
  * 为什么要自建脚本而不是 tsdown：本仓不依赖 dsh 的私有构建链，
  * 只用 esbuild 做「把 workspace 内的 TS 打进单文件」这一件事，
  * 让产物可被宿主直接 require，也让打包行为可读、可复现。
+ *
+ * **产物必须与在哪运行无关**：lib/ 已入库，CI 有一道「入库产物 == 源码构建结果」
+ * 的校验。esbuild 会把每个模块的来源路径写进产物注释，而那个路径是相对 cwd 算的——
+ * 从仓库根跑得到 `packages/core/src/x.ts`，从包目录跑得到 `../core/src/x.ts`。
+ * 同一份源码、两种 cwd、两套字节，校验必然红。所以这里固定 absWorkingDir，
+ * 让路径基准恒为包目录（也正是已入库产物的形态）。
  */
 
 import { createRequire } from 'node:module'
@@ -21,6 +27,14 @@ const { build } = requireFromPackage('esbuild')
 import fsp from 'node:fs/promises'
 
 const outDir = path.join(packageDir, 'lib')
+
+/**
+ * 所有 esbuild 调用共用的路径基准。
+ *
+ * 见文件头注释：注释里的模块路径相对它算。固定成包目录，产物才与 cwd 无关，
+ * 否则 CI（仓库根）与开发者（包目录）构建出的字节不同，「产物一致」校验失效。
+ */
+const ABS_WORKING_DIR = packageDir
 
 /** 宿主在浏览器里提供的平台模块（模块表 seed），不能打进产物。 */
 const CLIENT_EXTERNALS = ['react', 'react-dom', 'react/jsx-runtime']
@@ -65,6 +79,7 @@ async function buildHost() {
     sourcemap: false,
     minify: false,
     legalComments: 'inline',
+    absWorkingDir: ABS_WORKING_DIR,
     plugins: [resolveCoreSource()],
     // core 是 workspace 包，宿主进程解析不到它，必须打进产物；
     // node 内置模块由 esbuild 自动外置，无需手动列。
@@ -93,6 +108,7 @@ async function buildClientWrapped() {
     minify: false,
     external: CLIENT_EXTERNALS,
     legalComments: 'inline',
+    absWorkingDir: ABS_WORKING_DIR,
     plugins: [resolveCoreSource()],
   })
   const body = result.outputFiles[0].text
@@ -166,6 +182,7 @@ async function buildClientLogic() {
     sourcemap: false,
     minify: false,
     legalComments: 'inline',
+    absWorkingDir: ABS_WORKING_DIR,
     // remember.ts 引了 React（组件用），但测试只调 registerRemember 与纯函数。
     // 本仓不装 react（客户端产物从宿主模块表取），所以这里把 react 解析到一个
     // 空 stub：模块能加载，组件永远不会被调用，测试断言的是注册行为。
