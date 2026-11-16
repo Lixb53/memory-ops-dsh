@@ -12,10 +12,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { fileURLToPath } from 'node:url'
 import { after, describe, it } from 'node:test'
 
 const run = promisify(execFile)
-const SCRIPT = new URL('../scripts/scope-audit.ts', import.meta.url).pathname
+// 必须用 fileURLToPath：Windows 上 URL.pathname 是 `/G:/...` 这种带前导斜杠的形式，
+// 直接交给 execFile 会「找不到文件」，表现为 stdout 为空 → JSON.parse 抛错，
+// 于是所有用例都以「测试框架出错」而非「断言失败」的形式挂掉。
+const SCRIPT = fileURLToPath(new URL('../scripts/scope-audit.ts', import.meta.url))
 
 /** 造一个库，返回根目录。 */
 async function makeLib(files: Record<string, string>): Promise<string> {

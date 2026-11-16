@@ -1,0 +1,20 @@
+# 构建产物必须在所有平台上逐字节一致。
+#
+# 这些文件由 scripts/build-plugin.mjs 生成，CI 会比对「入库产物 == 重新构建的产物」。
+# 若让 git 按 core.autocrlf 在 checkout 时改成 CRLF，Windows 上构建出的 LF 版本
+# 就会和入库版本永远不等，CI 天天误报；更糟的是产物里若混入 CRLF，行号映射也会变。
+#
+# -text 表示「不做任何换行转换」，按原样存取。
+packages/dsh-plugin/lib/** -text
+
+# 正常文本文件统一用 LF 入库，避免 Windows 提交把整个仓库改成 CRLF。
+* text=auto eol=lf
+
+# 这些是二进制，git 不该尝试按文本处理。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.tgz binary

@@ -22,7 +22,14 @@
     "noEmit": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    // @memory-ops/core 不进 manifest：宿主从 git 装这个包时解析不到 workspace 包，
+    // 而 lib/index.js 里 core 已由 esbuild 内联。仓库内开发仍要从源码取类型，
+    // 所以在这里显式映射到 ../core/src，和构建脚本的别名保持同一份真相。
+    "paths": {
+      "@memory-ops/core": ["../core/src/index.ts"],
+      "@memory-ops/core/*": ["../core/src/*.ts"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

@@ -25,6 +25,34 @@ const outDir = path.join(packageDir, 'lib')
 /** 宿主在浏览器里提供的平台模块（模块表 seed），不能打进产物。 */
 const CLIENT_EXTERNALS = ['react', 'react-dom', 'react/jsx-runtime']
 
+/**
+ * 把 `@memory-ops/core/*` 解析到 `packages/core/src/*.ts`。
+ *
+ * 为什么不能靠 node_modules：插件包刻意不声明这个依赖（发布出去时宿主解析不到
+ * workspace 包，而 core 反正会被内联进 lib/index.js）。没有声明就没有 pnpm 的
+ * workspace 链接，esbuild 默认解析必然失败，所以在这里按路径别名解析。
+ * 与 tsconfig.json 的 paths 指向同一份源码，避免「构建能过、类型检查指到别处」。
+ */
+const coreSrcDir = path.join(here, '..', 'packages', 'core', 'src')
+const CORE_SUBPATHS = new Set([
+  'actions', 'parse', 'privacy', 'project', 'schema', 'scope', 'search', 'store', 'index',
+])
+
+function resolveCoreSource() {
+  return {
+    name: 'resolve-memory-ops-core',
+    setup(buildApi) {
+      buildApi.onResolve({ filter: /^@memory-ops\/core(\/.*)?$/ }, (args) => {
+        const subpath = args.path.slice('@memory-ops/core'.length).replace(/^\//, '') || 'index'
+        if (!CORE_SUBPATHS.has(subpath)) {
+          return { errors: [{ text: `未知的 core 子路径：${args.path}（未在 CORE_SUBPATHS 登记）` }] }
+        }
+        return { path: path.join(coreSrcDir, `${subpath}.ts`) }
+      })
+    },
+  }
+}
+
 /** 打包 host 半体：node 平台，只外置 node 内置模块。 */
 async function buildHost() {
   await build({
@@ -37,6 +65,7 @@ async function buildHost() {
     sourcemap: false,
     minify: false,
     legalComments: 'inline',
+    plugins: [resolveCoreSource()],
     // core 是 workspace 包，宿主进程解析不到它，必须打进产物；
     // node 内置模块由 esbuild 自动外置，无需手动列。
     banner: {
@@ -64,6 +93,7 @@ async function buildClientWrapped() {
     minify: false,
     external: CLIENT_EXTERNALS,
     legalComments: 'inline',
+    plugins: [resolveCoreSource()],
   })
   const body = result.outputFiles[0].text
   const wrapped = `/**
@@ -139,7 +169,7 @@ async function buildClientLogic() {
     // remember.ts 引了 React（组件用），但测试只调 registerRemember 与纯函数。
     // 本仓不装 react（客户端产物从宿主模块表取），所以这里把 react 解析到一个
     // 空 stub：模块能加载，组件永远不会被调用，测试断言的是注册行为。
-    plugins: [reactStubPlugin()],
+    plugins: [reactStubPlugin(), resolveCoreSource()],
     banner: {
       js: '/**\n * @memory-ops/dsh-plugin — 可测逻辑（React 已外置）。\n * 由 scripts/build-plugin.mjs 生成，请勿手改；仅供测试与复用。\n */',
     },

@@ -42,3 +42,17 @@ jobs:
 
       - name: 校验构建产物可加载
         run: node -e "import('./packages/dsh-plugin/lib/index.js').then(m => { if (typeof m.apply !== 'function') throw new Error('host 半体缺少 apply'); console.log('host ok'); })"
+
+      # lib/ 已入库（宿主经 git 安装时会直接读它，不会在仓库根跑构建），
+      # 所以必须守住「入库的产物 == 当前源码构建出来的产物」这条不变式。
+      # 少了这一步，改了 src 却忘了提交产物，推上去的插件就是旧的，
+      # 而且 git 安装不会报错——只会静默跑旧代码。
+      - name: 校验入库产物与源码一致
+        run: |
+          if [ -n "$(git status --porcelain packages/dsh-plugin/lib)" ]; then
+            echo "::error::packages/dsh-plugin/lib 与源码不一致：改了 src 就要提交重新构建的产物。"
+            git status --porcelain packages/dsh-plugin/lib
+            git diff -- packages/dsh-plugin/lib | head -100
+            exit 1
+          fi
+          echo "入库产物与源码构建结果一致"

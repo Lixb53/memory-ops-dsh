@@ -1,5 +1,4 @@
 node_modules/
-lib/
 dist/
 *.log
 .DS_Store
@@ -7,3 +6,15 @@ dist/
 *.tsbuildinfo
 coverage/
 .turbo/
+
+# 构建产物默认不入库……
+lib/
+# ……但 DSH 插件的产物必须例外，且例外要写在 lib/ 之后才覆盖它。
+# 宿主经 git 安装这个包时只解出 packages/dsh-plugin/ 一个目录，不会在仓库根跑
+# pnpm install / build；而 package.json 的 main 指向 lib/index.js。
+# 产物不入库 = 装上就是「找不到模块」。CI 每次都会重新构建并校验可加载，
+# 所以入库的产物有校验兜底，不会被手改内容长期骗过去。
+!packages/dsh-plugin/lib/
+!packages/dsh-plugin/lib/index.js
+!packages/dsh-plugin/lib/client.js
+!packages/dsh-plugin/lib/client-logic.mjs

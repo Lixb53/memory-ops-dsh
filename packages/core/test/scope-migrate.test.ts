@@ -13,10 +13,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { fileURLToPath } from 'node:url'
 import { after, before, describe, it } from 'node:test'
 
 const run = promisify(execFile)
-const SCRIPT = new URL('../scripts/scope-migrate.ts', import.meta.url).pathname
+// 同 scope-audit.test.ts：Windows 上 URL.pathname 带前导斜杠（`/G:/...`），
+// 传给 execFile 会找不到脚本，表现为「测试框架级错误」而不是断言失败。
+const SCRIPT = fileURLToPath(new URL('../scripts/scope-migrate.ts', import.meta.url))
 const NODE_ARGS = ['--experimental-strip-types']
 
 /** 造一个最小库：主仓 1 条通用 + 1 条 gslx 专属。 */

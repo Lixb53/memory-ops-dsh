@@ -23,7 +23,13 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const CLIENT_DIR = path.join(here, '..', 'src', 'client')
 const SRC_DIR = path.join(here, '..', 'src')
 
-/** 递归收集 .ts 源码。 */
+/**
+ * 递归收集 .ts 源码。
+ *
+ * 路径统一成正斜杠：断言里写的是 `panes/project.ts` 这种与操作系统无关的形式，
+ * 而 Windows 的 path.join 产出反斜杠，`endsWith('panes/project.ts')` 永远为 false
+ * ——表现为「找不到 panes/project.ts」，像是文件真的不见了。
+ */
 async function collect(dir) {
   const out = []
   for (const entry of await fsp.readdir(dir, { withFileTypes: true })) {
@@ -32,7 +38,7 @@ async function collect(dir) {
       out.push(...await collect(full))
       continue
     }
-    if (entry.name.endsWith('.ts')) out.push(full)
+    if (entry.name.endsWith('.ts')) out.push(full.split(path.sep).join('/'))
   }
   return out
 }
