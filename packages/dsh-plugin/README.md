@@ -54,6 +54,32 @@
 
 ```bash
 pnpm build   # → lib/index.js（host, ESM）+ lib/client.js（浏览器 factory 形态）
+             #   + lib/client-logic.mjs（无 React 的纯逻辑，供测试 import）
 ```
 
 产物是单文件，`@memory-ops/core` 已内联——宿主进程解析不到 workspace 包。
+
+### 为什么 core 不写成依赖
+
+`package.json` 里**故意没有** `@memory-ops/core`。原因不是洁癖：
+
+外部装这个包（`github:…#path:packages/dsh-plugin`）时，pnpm 只解出本目录，
+既装不到 workspace 包，也不认 `workspace:` 协议。而 core 反正会被 esbuild
+打进 `lib/index.js`（产物里 `@memory-ops/core` 出现 **0** 次），依赖声明纯属多余，
+却足以让每一次外部安装都失败。
+
+代价是仓库内开发时没有 pnpm 的 junction 链接，所以两处必须显式指向源码：
+
+| 位置 | 做法 |
+|---|---|
+| `scripts/build-plugin.mjs` | esbuild 插件按 `@memory-ops/core/*` 别名解析到 `packages/core/src/*.ts` |
+| `tsconfig.json` | `paths` 映射到同一份源码 |
+
+两边指同一份真相，避免「构建能过、类型检查指到别处」。
+
+### 产物必须入库
+
+宿主经 git 安装只解出本目录，不会在仓库根跑构建，而 `main` 指向 `lib/index.js`。
+`.gitignore` 里 `lib/` 默认忽略、但本目录的三个产物是例外。
+CI 会构建后比对 `git status`，不一致即失败——改了源码必须一起提交产物。
+

@@ -107,17 +107,63 @@ hypothesis ──重复≥2──> observed ──重复≥3且无反驳──> 
 
 ```bash
 pnpm install
-pnpm build          # 构建插件产物
-pnpm test           # 84 项测试
+pnpm build          # 构建插件产物（产物已入库，见下）
+pnpm test           # core 231 + 插件 89 项测试
 pnpm typecheck
 ```
 
+> 需要 **Node ≥ 22.19**。`--experimental-strip-types` 在 Node 26 已移除、
+> 在 Node 18 不存在，两个极端都会让 core 的测试跑不起来。
+
 ### 安装到 DSH
 
-```bash
-# 用宿主自带的插件管理器安装本目录
-# 或在 DSH 里：插件 → 添加 → 本地目录 → packages/dsh-plugin
+有两条路，都可用。
+
+**A · 从 GitHub 直接安装（推荐，换机器最省事）**
+
+在 DSH 侧栏 **Plugins → Add plugin**，粘贴：
+
 ```
+github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin
+```
+
+想要可复现的定版，就钉到某个 commit：
+
+```
+github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin&<40位commit>
+```
+
+`#path:` 必须在 `&` 之前。也可以直接用 git URL 形式：
+
+```
+git+https://github.com/Lixb53/memory-ops-dsh.git#path:packages/dsh-plugin&<40位commit>
+```
+
+**B · 从本地目录安装（改代码时用；装的是软链）**
+
+```bash
+pnpm install && pnpm build
+```
+然后 **Plugins → Add plugin** 填绝对路径 `G:\memory-ops-dsh\packages\dsh-plugin`。
+DSH 会记成 `link:` 依赖，源码改了要重新 `pnpm build`。
+
+> **网络前提**：这台机器直连 GitHub 会超时，必须让 git 和 pnpm 走代理。
+> 在启动 DSH 的那个终端里先设：
+> ```powershell
+> $env:HTTPS_PROXY='http://127.0.0.1:7897'
+> ```
+> 只配系统代理不够——git 不读 Windows 的 Internet 设置。
+
+#### 为什么产物要入库
+
+宿主经 git 安装时只解出 `packages/dsh-plugin/` 一个目录，**不会**在仓库根跑
+`pnpm install` / `pnpm build`，而 `main` 指向 `lib/index.js`。所以：
+
+- `lib/index.js` / `lib/client.js` / `lib/client-logic.mjs` 必须提交（`.gitignore` 里有例外）；
+- `@memory-ops/core` 不能声明成依赖（外部解析不到 workspace 包），
+  它由 esbuild 内联；构建脚本按路径别名解析，tsconfig 的 `paths` 指向同一份源码；
+- CI 会在构建后比对 `git status`，**改了源码却没提交产物会直接失败**，
+  防止入库产物静默过期。
 
 安装后你会得到 **4 个表面**：
 
