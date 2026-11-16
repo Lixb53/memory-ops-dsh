@@ -21,7 +21,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { spawnSync } from 'node:child_process'
 
@@ -216,7 +216,14 @@ function checkSuspiciousCreateElement(sf, file) {
 async function checkFrontmatterRoundTrip() {
   let mod
   try {
-    mod = await import(path.join(root, 'packages', 'core', 'src', 'parse.ts'))
+    /**
+     * 必须转成 file:// URL：ESM 的默认 loader 只认带 scheme 的说明符。
+     * 传裸绝对路径在 POSIX 上侥幸能用（`/home/...` 恰好被接受），
+     * 在 Windows 上则把盘符当协议解析（`G:\...` → protocol 'g:'),
+     * 抛 ERR_UNSUPPORTED_ESM_URL_SCHEME 落进下面的 catch——
+     * 于是这条检查在 Windows 上从没真正跑过，覆盖率恒为 0。
+     */
+    mod = await import(pathToFileURL(path.join(root, 'packages', 'core', 'src', 'parse.ts')).href)
   } catch (error) {
     // **不许静默跳过**：一个「跑不起来就跳过」的检查等于没有检查。
     // 这条曾经写成 `catch { return }`，结果它在本机从未真正执行过——
