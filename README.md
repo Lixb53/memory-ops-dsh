@@ -105,6 +105,8 @@ hypothesis ──重复≥2──> observed ──重复≥3且无反驳──> 
 
 ## 快速开始
 
+**macOS**
+
 ```bash
 pnpm install
 pnpm build          # 构建插件产物（产物已入库，见下）
@@ -112,22 +114,53 @@ pnpm test           # core 231 + 插件 89 项测试
 pnpm typecheck
 ```
 
+**Windows（PowerShell）**
+
+```powershell
+pnpm install
+pnpm build
+pnpm test
+pnpm typecheck
+```
+
 > 需要 **Node ≥ 22.19**。`--experimental-strip-types` 在 Node 26 已移除、
 > 在 Node 18 不存在，两个极端都会让 core 的测试跑不起来。
+> 用 `node -v` 确认；多版本可以用 fnm / nvm 切。
 
 ### 安装到 DSH
 
-有两条路，都可用。
+界面操作两个系统完全一样（都是同一个 Web GUI）；**不同的只是设代理和写路径**。
 
-**A · 从 GitHub 直接安装（推荐，换机器最省事）**
+#### A · 从 GitHub 直接安装（推荐，换机器最省事）
 
-在 DSH 侧栏 **Plugins → Add plugin**，粘贴：
+**第 1 步：设代理。** DSH 拉的是 `codeload.github.com`，直连会报
+`os error 10054` / `远程主机强迫关闭了一个现有的连接`。
+必须在**启动 DSH 的那个终端**里设，端口改成你自己代理软件里的。
+
+*macOS（zsh / bash）*
+
+```bash
+export HTTPS_PROXY='http://127.0.0.1:7897'
+export HTTP_PROXY='http://127.0.0.1:7897'
+```
+
+*Windows（PowerShell）*
+
+```powershell
+$env:HTTPS_PROXY = 'http://127.0.0.1:7897'
+$env:HTTP_PROXY  = 'http://127.0.0.1:7897'
+```
+
+> 两个系统共同的坑：**只配「系统代理」不够**，git 不读系统设置，只读环境变量。
+> 浏览器能开 GitHub 会误导你以为网络没问题。
+
+**第 2 步：在 DSH 侧栏 Plugins → Add plugin 粘贴**
 
 ```
 github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin
 ```
 
-想要可复现的定版，就钉到某个 commit：
+要可复现的定版，就钉到某个 commit：
 
 ```
 github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin&<40位commit>
@@ -139,20 +172,33 @@ github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin&<40位commit>
 git+https://github.com/Lixb53/memory-ops-dsh.git#path:packages/dsh-plugin&<40位commit>
 ```
 
-**B · 从本地目录安装（改代码时用；装的是软链）**
+#### B · 从本地目录安装（改代码时用；装的是软链）
+
+*macOS*
 
 ```bash
+cd ~/Desktop/dsh/memory-ops-dsh
 pnpm install && pnpm build
 ```
-然后 **Plugins → Add plugin** 填绝对路径 `G:\memory-ops-dsh\packages\dsh-plugin`。
-DSH 会记成 `link:` 依赖，源码改了要重新 `pnpm build`。
 
-> **网络前提**：这台机器直连 GitHub 会超时，必须让 git 和 pnpm 走代理。
-> 在启动 DSH 的那个终端里先设：
-> ```powershell
-> $env:HTTPS_PROXY='http://127.0.0.1:7897'
-> ```
-> 只配系统代理不够——git 不读 Windows 的 Internet 设置。
+*Windows*
+
+```powershell
+cd G:\memory-ops-dsh
+pnpm install; pnpm build
+```
+
+然后 **Plugins → Add plugin** 填**绝对路径**（`~` 在 macOS 上可能不展开，写完整路径）：
+
+| 系统 | 该填的内容 |
+|---|---|
+| macOS | `/Users/<你的用户名>/Desktop/dsh/memory-ops-dsh/packages/dsh-plugin` |
+| Windows | `G:\memory-ops-dsh\packages\dsh-plugin` |
+
+DSH 会记成 `link:` 依赖，源码改了要重新 `pnpm build` **并刷新页面**。
+
+> **完整版安装说明**（含确认、更新、卸载、各系统路径对照）
+> 见 [`docs/manual.md`](docs/manual.md) §负二。
 
 #### 为什么产物要入库
 

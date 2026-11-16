@@ -3,7 +3,7 @@
  * 由 scripts/build-plugin.mjs 生成，请勿手改；仅供测试与复用。
  */
 
-// packages/dsh-plugin/src/client/remember-logic.ts
+// src/client/remember-logic.ts
 var COMMAND_NAME = "remember";
 var KINDS = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
 var STORES = /* @__PURE__ */ new Map();
@@ -57,7 +57,7 @@ var useState = (initial) => [typeof initial === "function" ? initial() : initial
 var useEffect = noop;
 var useRef = (value) => ({ current: value });
 
-// packages/dsh-plugin/src/client/api.ts
+// src/client/api.ts
 var PREFIX = "/api/dsh-memory-ops";
 var BridgeError = class extends Error {
   constructor(message, route) {
@@ -97,7 +97,7 @@ async function call(route, body = {}) {
   return payload;
 }
 
-// packages/dsh-plugin/src/client/ui.ts
+// src/client/ui.ts
 var h = createElement;
 var EMPTY = "\u2014";
 function orEmpty(value) {
@@ -121,7 +121,7 @@ function Button({ children, onClick, variant = "plain", disabled = false, title,
   }, children);
 }
 
-// packages/dsh-plugin/src/client/remember.ts
+// src/client/remember.ts
 var HANDLED = "handled";
 function registerRemember(ctx) {
   const disposers = [];
@@ -399,7 +399,7 @@ function RememberOverlay(props) {
   );
 }
 
-// packages/dsh-plugin/src/client/pane-nav.ts
+// src/client/pane-nav.ts
 var PANEL_ID = "memory-ops";
 var state = { pane: null };
 var listeners = /* @__PURE__ */ new Set();

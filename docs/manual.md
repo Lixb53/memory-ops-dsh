@@ -57,25 +57,241 @@
 
 ---
 
+## 负二、怎么装（只装一次）
+
+装完才有下面所有的界面。**两条路线都对，按你的场景选。**
+
+本文所有命令都分 **macOS** 与 **Windows** 两栏。**别跨系统抄命令**——
+路径分隔符、shell 语法、代理变量写法都不一样，抄错会得到看起来像「插件坏了」、
+其实只是命令不对的症状。
+
+---
+
+### 路线 A：从 GitHub 直接装（推荐）
+
+适合「换台机器 / 只想用、不改代码」。
+
+#### A-1 · 先让代理生效（这台机器不配代理必失败）
+
+DSH 安装时拉的是 `codeload.github.com`。直连会报：
+
+```
+os error 10054  或  远程主机强迫关闭了一个现有的连接
+```
+
+**必须在启动 DSH 的那个终端里**设好代理变量，再从同一个终端启动。端口改成你自己代理软件里的。
+
+**macOS（zsh / bash）**
+
+```bash
+# 临时的：只对当前这个终端窗口生效
+export HTTPS_PROXY='http://127.0.0.1:7897'
+export HTTP_PROXY='http://127.0.0.1:7897'
+
+# 想长期生效，写进 shell 配置（选你用的那个）
+echo "export HTTPS_PROXY='http://127.0.0.1:7897'" >> ~/.zshrc
+echo "export HTTP_PROXY='http://127.0.0.1:7897'"  >> ~/.zshrc
+source ~/.zshrc
+```
+
+**Windows（PowerShell）**
+
+```powershell
+# 临时的：只对当前这个 PowerShell 窗口生效
+$env:HTTPS_PROXY = 'http://127.0.0.1:7897'
+$env:HTTP_PROXY  = 'http://127.0.0.1:7897'
+
+# 想长期生效，写进用户环境变量（新开的窗口才生效）
+[Environment]::SetEnvironmentVariable('HTTPS_PROXY', 'http://127.0.0.1:7897', 'User')
+[Environment]::SetEnvironmentVariable('HTTP_PROXY',  'http://127.0.0.1:7897', 'User')
+```
+
+> **两个系统的同一个坑**：只配「系统代理」都**不够**，git 不读系统设置，只读环境变量。
+> 浏览器能打开 GitHub 会让人误以为网络没问题，实际上 git 和 pnpm 仍在直连。
+>
+> **Windows 额外注意**：`$env:` 只在当前窗口有效；用 `SetEnvironmentVariable` 写的值，
+> 已经在运行的 DSH 和终端都读不到，必须**重开**。macOS 同理，改完 `~/.zshrc` 要 `source` 或开新窗口。
+
+#### A-2 · 在 DSH 里粘贴安装规格
+
+**两个系统操作完全一样**（界面是同一个 Web GUI）：
+
+1. 打开 DSH，左侧栏点 **Plugins**
+2. 点 **Add plugin**
+3. 粘贴下面这行，回车
+
+```
+github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin
+```
+
+要钉死版本（推荐，避免上游改动突然影响你）：
+
+```
+github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin&<40位commit>
+```
+
+**三个容易踩的格式坑：**
+
+| 写法 | 结果 |
+|---|---|
+| `github:用户/仓库#path:子目录&commit` | ✅ 正确 |
+| `github:用户/仓库#commit&path:子目录` | ❌ `path:` 必须在 `&` **之前** |
+| `用户/仓库#path:子目录` | ❌ 少了 `github:` 前缀，会被当成 npm 包名 |
+
+git URL 形式等价，一样通用：
+
+```
+git+https://github.com/Lixb53/memory-ops-dsh.git#path:packages/dsh-plugin&<40位commit>
+```
+
+> 安装过程会下载约 **6.7 MB** 的仓库 tarball（整仓打包，只取子目录）。
+> 代理慢的时候这一步会卡十几秒，属正常。
+
+---
+
+### 路线 B：从本地目录装（改代码时用）
+
+适合「要改这个插件本身」。**改完必须重新构建，否则主入口 `lib/index.js` 不存在。**
+
+**macOS**
+
+```bash
+cd ~/Desktop/dsh/memory-ops-dsh      # 换成你自己的仓库位置
+pnpm install
+pnpm build
+```
+
+**Windows**
+
+```powershell
+cd G:\memory-ops-dsh                 # 换成你自己的仓库位置
+pnpm install
+pnpm build
+```
+
+然后 **Plugins → Add plugin** 填**绝对路径**（两个系统都必须是绝对路径，
+相对路径不行——宿主的当前目录不是你的终端目录）：
+
+| 系统 | 该填的内容 |
+|---|---|
+| macOS | `/Users/<你的用户名>/Desktop/dsh/memory-ops-dsh/packages/dsh-plugin` |
+| Windows | `G:\memory-ops-dsh\packages\dsh-plugin` |
+
+> macOS 上填 `~` 开头的路径**可能不被展开**，请写完整路径。
+> Windows 上反斜杠 `\` 和正斜杠 `/` 都能用。
+
+这条路装的是 **软链**（DSH 记成 `link:`），所以改了 `src` 之后：
+
+**macOS**
+
+```bash
+cd ~/Desktop/dsh/memory-ops-dsh
+pnpm build
+```
+
+**Windows**
+
+```powershell
+cd G:\memory-ops-dsh
+pnpm build
+```
+
+然后**刷新页面**（两个系统都一样）。浏览器半体是页面加载时注入的，
+不刷新看不到改动——这一步经常被漏掉，表现为「代码明明改了界面没变」。
+
+---
+
+### 装完怎么确认成功
+
+三个系统一致，按顺序看：
+
+1. **插件列表里有「记忆库」**，且没有报错。
+2. **左侧栏出现「记忆库」面板**（在「上下文洞察」下面），点开有 5 个页签。
+3. **桥活着** —— 跑 §零 的 healthCheck，返回 `ok:true` 且 `routes:34`。
+
+任一条不对，跳到 §八。
+
+### 怎么更新 / 卸载
+
+- **更新**
+  - git 装的：Plugins 里该条目显示 Update，按 commit 更新。
+    也可以 Remove 之后用新的 commit 重装。
+  - 本地装的：`pnpm build` + 刷新页面。
+- **卸载**：Plugins 里点 Remove，按提示确认。
+  **你的记忆不会丢**——数据在 `~/.memory-ops/`（Windows 是 `C:\Users\<你>\.memory-ops\`），
+  与插件是分开的。
+
+### 各系统的路径对照
+
+同一个东西在两个系统上落在不同位置，文档后面凡写 `~/` 都按这张表换算：
+
+| 东西 | macOS | Windows |
+|---|---|---|
+| 真相源（你的记忆） | `~/.memory-ops/` | `C:\Users\<用户名>\.memory-ops\` |
+| DSH 数据根 | `~/.dsh/` | 取决于安装方式，可能是 `F:\dsh-home\` |
+| 插件装到哪 | `~/.dsh/profiles/desktop/node_modules/@memory-ops/dsh-plugin` | `<DSH数据根>\profiles\desktop\node_modules\@memory-ops\dsh-plugin` |
+
+> **Windows 注意**：DSH 的数据根**不一定**是 `C:\Users\<你>\.dsh`。
+> 这个仓库的机器上就是 `F:\dsh-home`（装 DSH 时改过位置）。
+> 不确定的话，看 DSH 里 `Settings` 显示的位置，或查环境变量 `DSH_PROFILE_DIR`。
+
+---
+
 ## 零、先确认它活着
 
 在你开始点之前，先花 10 秒确认插件真的在跑。有两种确认方式：
 
 **方式一：看桥（最可靠）**
 
-```bash
-# 端口换成你当前 GUI 的地址（终端里 dsh web 启动时会打印，形如 http://127.0.0.1:63097）
-curl -s http://127.0.0.1:63097/api/dsh-memory-ops/healthCheck
+端口和 token 都在**浏览器地址栏**里：
+
 ```
+http://127.0.0.1:63097/?token=abc123…
+                           ↑ 端口        ↑ token
+```
+
+> ⚠️ **必须带 token。** DSH 的 `/api/*` 一律鉴权，不带 token 一定返回 `401 unauthorized`。
+> 这一点早先的文档写错了——只给 URL 不给 token，照着敲只会得到 401，
+> 然后被误判成「插件坏了」。这是个纯粹的文档缺陷，不是插件问题。
+
+**macOS**
+
+```bash
+# 把 PORT 和 TOKEN 换成你地址栏里的
+curl -s 'http://127.0.0.1:63097/api/dsh-memory-ops/healthCheck?token=abc123'
+```
+
+**Windows（PowerShell）**
+
+```powershell
+# 老版 PowerShell 里 curl 是 Invoke-WebRequest 的别名，不认 -s，必须用 curl.exe
+curl.exe -s 'http://127.0.0.1:63097/api/dsh-memory-ops/healthCheck?token=abc123'
+
+# 或者用它原生写法
+(Invoke-WebRequest -Uri 'http://127.0.0.1:63097/api/dsh-memory-ops/healthCheck?token=abc123' -UseBasicParsing).Content
+```
+
+**更省事的办法：直接在浏览器里打开这个地址。** 你本来就是从带 token 的地址进的 GUI，
+把 `/` 后面接上 `api/dsh-memory-ops/healthCheck?token=…` 即可，不必折腾命令行。
 
 > ⚠️ 早先这里写死 `54000`，那是 desktop 版的端口；`dsh web` 的端口是每次启动随机分配的。
 > 端口不对会得到 `connection refused`，看起来像「插件没装」，其实只是敲错了地方。
-> 取当前端口的办法：看 GUI 地址栏（`http://127.0.0.1:<端口>/?token=…`）。
+>
+> ⚠️ Windows 上直接敲 `curl` 常常没输出或报参数错（`找不到与参数名称"-s"匹配的参数`），
+> 因为它是 `Invoke-WebRequest` 的别名。必须写 `curl.exe`。
 
-期望看到：
+期望看到（`root` 因系统而异）：
+
+**macOS**
 
 ```json
-{"ok":true,"root":"/Users/zeze/.memory-ops","routes":34}
+{"ok":true,"root":"/Users/<你的用户名>/.memory-ops","routes":34}
+```
+
+**Windows**
+
+```json
+{"ok":true,"root":"C:\\Users\\<你的用户名>\\.memory-ops","routes":34}
 ```
 
 - `ok:true` → 插件已加载，桥在监听
@@ -122,7 +338,8 @@ curl -s http://127.0.0.1:63097/api/dsh-memory-ops/healthCheck
 
 不是拿目录末段当项目名（那是旧实现，见下面的事故），而是：
 
-1. 取当前会话的 **cwd**（例如 `/Users/…/work/zhongxing/V2.1.25-dev`）
+1. 取当前会话的 **cwd**（如 macOS `/Users/…/work/zhongxing/V2.1.25-dev`，
+   Windows `G:\zhongxing\V2.1.25-dev`；判别名时两种分隔符都当分隔符看）
 2. 在 `work/<项目>/index.md` 的 frontmatter 里读 **项目名 + `aliases`**
 3. cwd 里任一段**等于**别名 → 精确命中；**以「别名 + `-`」开头** → 前缀命中
 
@@ -392,17 +609,59 @@ UI 的确认按钮走的是 `setStatus`，而它当时用自动表校验。
 
 ### 左侧栏没有「记忆库」
 
-按顺序查：
+按顺序查（命令分系统给，别跨系统抄）：
 
-1. **桥活着吗**：跑 §零 的 curl。`ok:true` 说明 host 半体正常，问题在浏览器端。
-2. **插件装了吗**：`ls ~/.dsh/profiles/desktop/node_modules/@memory-ops`
-   应该有 `dsh-plugin` 指向仓库目录的软链。
-3. **产物是新的吗**：`ls -la packages/dsh-plugin/lib/`
-   改了源码**必须**重新构建，`client.js` 的时间戳应该晚于你的改动：
-   ```bash
-   cd /Users/zeze/Desktop/dsh/memory-ops-dsh && pnpm run build
-   ```
-4. **重启 GUI**：浏览器半体是页面加载时注入的，**构建完必须刷新页面**（或重启 GUI）。
+**第 1 步 · 桥活着吗**
+
+跑 §零 的 healthCheck。`ok:true` 说明 host 半体正常，问题在浏览器端。
+
+**第 2 步 · 插件装了吗**
+
+确认 profile 的 `node_modules` 里有这个包。注意 **Windows 上 DSH 数据根不一定是 `C:\Users\<你>\.dsh`**，
+如果装 DSH 时改过位置（例如本仓库所在的机器是 `F:\dsh-home`），要换成实际那个。
+
+*macOS*
+
+```bash
+ls -l ~/.dsh/profiles/desktop/node_modules/@memory-ops/
+```
+
+*Windows（PowerShell）*
+
+```powershell
+# 先确认你的 DSH 数据根，下面按 F:\dsh-home 举例
+echo $env:DSH_PROFILE_DIR
+Get-ChildItem "$env:DSH_PROFILE_DIR\node_modules\@memory-ops" | Format-Table Name,LinkType,Target
+```
+
+看到 `dsh-plugin` 即可。本地路线它是指向仓库的软链；git 路线是真实目录。
+
+**第 3 步 · 产物是新的吗**
+
+改了源码**必须**重新构建，`client.js` 的时间戳应该晚于你的改动。
+
+*macOS*
+
+```bash
+cd ~/Desktop/dsh/memory-ops-dsh && pnpm build
+ls -l packages/dsh-plugin/lib/
+```
+
+*Windows*
+
+```powershell
+cd G:\memory-ops-dsh; pnpm build
+Get-ChildItem packages\dsh-plugin\lib | Select-Object Name,Length,LastWriteTime
+```
+
+**第 4 步 · 刷新页面**
+
+浏览器半体是页面加载时注入的，**构建完必须刷新页面**（或重启 GUI）。
+这一步最常被漏掉：代码改了、构建也跑了，界面却不变。
+
+> 如果你是**路线 A（git 装）**，第 3 步不适用——产物在仓库里已经构建好了，
+> 改不了源码。这种情况下「界面没变」通常是 DSH 版本不匹配（`engines.dsh` 不满足），
+> 去 Plugins 页看该条目有没有报错。
 
 ### 加了新路由但 curl 404 / 报 unauthorized
 
@@ -458,6 +717,8 @@ UI 的确认按钮走的是 `setStatus`，而它当时用自动表校验。
 
 ### 数据在哪 / 怎么备份
 
+**macOS**
+
 ```
 ~/.memory-ops/
 ├── personal/     个人域 7 篇 + INBOX.md
@@ -466,11 +727,35 @@ UI 的确认按钮走的是 `setStatus`，而它当时用自动表校验。
 └── .state/       events.jsonl（只追加）+ misses.json
 ```
 
+**Windows**
+
+```
+C:\Users\<你的用户名>\.memory-ops\
+├── personal\     个人域 7 篇 + INBOX.md
+├── work\sz-web\  工作域 35 篇
+├── archive\      归档
+└── .state\       events.jsonl（只追加）+ misses.json
+```
+
+> 如果你设过环境变量 `MEMORY_OPS_ROOT`，实际位置以它为准——
+> 上面两条 healthCheck 返回的 `root` 字段就是真相。
+
 全是 Markdown，可以直接 `git` 管、也可以直接手改。
-**备份就是复制这个目录**：
+**备份就是复制这个目录**。
+
+*macOS*
 
 ```bash
 cp -R ~/.memory-ops ~/.memory-ops.bak-$(date +%Y%m%d)
+```
+
+*Windows（PowerShell）*
+
+```powershell
+$src = Join-Path $env:USERPROFILE '.memory-ops'
+$dst = "$src.bak-$(Get-Date -Format yyyyMMdd)"
+Copy-Item $src $dst -Recurse
+Write-Host "已备份到 $dst"
 ```
 
 ---
@@ -478,6 +763,7 @@ cp -R ~/.memory-ops ~/.memory-ops.bak-$(date +%Y%m%d)
 ## 九、一页速查
 
 ```
+第一次装        → §负二：选路线 A（git）或 B（本地），先配代理
 第一次用        → §负一：确认库 → 清队列 → 在真实会话里命中一次
 想记东西        → 右侧栏「快速捕获」 或 /remember
 想找东西        → 记忆页签 → 搜索框 → 回车
@@ -488,5 +774,18 @@ cp -R ~/.memory-ops ~/.memory-ops.bak-$(date +%Y%m%d)
 改元数据        → 总览 → 维护作业 → 修补
 「本项目」空的  → 先看有没有降级条，有就登记 aliases（§二）
 新项目要能认    → work/<项目>/index.md 里加 aliases: [分支名, 子目录名]
-排查不生效      → §零 的 curl（端口用当前 GUI 的）→ §八 清单
+排查不生效      → §零 的 healthCheck（端口用当前 GUI 的）→ §八 清单
 ```
+
+### 系统差异速查（跨系统抄命令前先看这张）
+
+| 事项 | macOS | Windows |
+|---|---|---|
+| 设代理（临时） | `export HTTPS_PROXY=…` | `$env:HTTPS_PROXY = '…'` |
+| 设代理（永久） | 写 `~/.zshrc` 再 `source` | `[Environment]::SetEnvironmentVariable(…, 'User')` 后重开窗口 |
+| 路径分隔符 | `/` | `\`（`/` 多数情况也行） |
+| 家目录 | `~` | `$env:USERPROFILE` 或 `C:\Users\<你>` |
+| 发 HTTP 请求 | `curl -s <url>` | `curl.exe -s <url>` 或 `Invoke-WebRequest` |
+| 看文件时间戳 | `ls -l <目录>` | `Get-ChildItem <目录> \| Select LastWriteTime` |
+| 递归复制 | `cp -R <源> <目标>` | `Copy-Item <源> <目标> -Recurse` |
+| 列软链指向 | `ls -l` | `Get-ChildItem \| Format-Table LinkType,Target` |

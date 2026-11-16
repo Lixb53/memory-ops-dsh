@@ -38,10 +38,14 @@
 | 包 | 状态 |
 |---|---|
 | `packages/core` | ✅ 已实现，231 项测试 |
-| `packages/dsh-plugin` | ✅ 已实现并安装运行，89 项测试 |
+| `packages/dsh-plugin` | ✅ 已实现，89 项测试；支持从 GitHub 直装（见 [`manual.md`](./manual.md) §负二） |
 | `packages/memory-web` | ❌ **未实现**（没有代码） |
 
 仓库：https://github.com/Lixb53/memory-ops-dsh
+
+> 「已实现」指代码与测试齐备，**不代表你机器上已经装好**。
+> 装没装、界面有没有，按 [`manual.md`](./manual.md) §负二 确认——
+> 这两件事必须分开说，否则又把「代码在」误读成「装上了」。
 
 ### 4 个表面（全部已挂载）
 

@@ -17,7 +17,7 @@ var __export = (target, all) => {
     __defProp(target, name2, { get: all[name2], enumerable: true });
 };
 
-// packages/core/src/project.ts
+// ../core/src/project.ts
 var project_exports = {};
 __export(project_exports, {
   cwdSegments: () => cwdSegments,
@@ -94,12 +94,12 @@ function resolveProject(cwd, projects) {
   };
 }
 var init_project = __esm({
-  "packages/core/src/project.ts"() {
+  "../core/src/project.ts"() {
     "use strict";
   }
 });
 
-// packages/core/src/schema.ts
+// ../core/src/schema.ts
 var INBOX_COLUMNS = ["\u65E5\u671F", "\u7C7B\u578B", "\u5185\u5BB9", "\u72B6\u6001", "\u53BB\u5411"];
 var INBOX_KINDS = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
 var INBOX_STATES = ["open", "todo", "done", "dropped"];
@@ -237,10 +237,10 @@ function canHumanTransition(from, to) {
   return STATE_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
-// packages/core/src/actions.ts
+// ../core/src/actions.ts
 init_project();
 
-// packages/core/src/scope.ts
+// ../core/src/scope.ts
 function norm(value) {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -508,7 +508,7 @@ async function resolveScope({
   };
 }
 
-// packages/core/src/search.ts
+// ../core/src/search.ts
 function normalize(text) {
   return String(text ?? "").toLowerCase();
 }
@@ -590,7 +590,7 @@ function searchCost(hits) {
   return hits.reduce((sum, hit) => sum + estimateTokens(hit.snippet) + 8, 0);
 }
 
-// packages/core/src/privacy.ts
+// ../core/src/privacy.ts
 var PATTERNS = [
   { label: "OpenAI/DeepSeek \u98CE\u683C\u5BC6\u94A5", re: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
   { label: "GitHub token", re: /\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g },
@@ -641,7 +641,7 @@ function auditRecord(text, findings) {
   };
 }
 
-// packages/core/src/parse.ts
+// ../core/src/parse.ts
 var FRONTMATTER_FENCE = "---";
 var INBOX_HEADER = `| ${INBOX_COLUMNS.join(" | ")} |
 |${INBOX_COLUMNS.map(() => "---").join("|")}|`;
@@ -826,7 +826,7 @@ function parseSections(body) {
   return sections;
 }
 
-// packages/core/src/maintenance.ts
+// ../core/src/maintenance.ts
 import crypto from "node:crypto";
 function hashOf(text) {
   return crypto.createHash("sha256").update(String(text ?? ""), "utf8").digest("hex").slice(0, 12);
@@ -1151,7 +1151,7 @@ function planRepairs(entries, today) {
   return { fixes, healthy: entries.length - fixes.length, total: entries.length };
 }
 
-// packages/core/src/actions.ts
+// ../core/src/actions.ts
 var SKILL_CATALOG_FRAME_TOKENS = 171;
 async function guard(run) {
   try {
@@ -2326,7 +2326,7 @@ ${text}
   };
 }
 
-// packages/core/src/store.ts
+// ../core/src/store.ts
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
@@ -3019,11 +3019,11 @@ ${body.replace(/^\n+/, "")}`);
   };
 }
 
-// packages/dsh-plugin/src/index.ts
+// src/index.ts
 import fsp2 from "node:fs/promises";
 import path2 from "node:path";
 
-// packages/dsh-plugin/src/bridge.ts
+// src/bridge.ts
 var ROUTES = {
   // —— 读 ——
   snapshot: { method: "POST", run: (a, b) => a.snapshot(b) },
@@ -3155,7 +3155,7 @@ function createBridge({ actions, prefix, env = {} }) {
   return { attach, handlerFor, routes: ROUTES };
 }
 
-// packages/dsh-plugin/src/tools.ts
+// src/tools.ts
 function registerTools({ actions }) {
   function attach(ctx) {
     const disposers = [];
@@ -3381,7 +3381,7 @@ ${content}
   return { attach };
 }
 
-// packages/dsh-plugin/src/index.ts
+// src/index.ts
 var name = "dsh-memory-ops";
 var BRIDGE_PREFIX = "/api/dsh-memory-ops";
 function apply(ctx, config = {}) {

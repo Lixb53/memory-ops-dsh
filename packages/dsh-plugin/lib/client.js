@@ -30,7 +30,7 @@ var __copyProps = (to, from, except, desc) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// packages/dsh-plugin/src/client/index.ts
+// src/client/index.ts
 var index_exports = {};
 __export(index_exports, {
   PANEL_ID: () => PANEL_ID,
@@ -39,10 +39,10 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 
-// packages/dsh-plugin/src/client/register.ts
+// src/client/register.ts
 var import_react15 = require("react");
 
-// packages/dsh-plugin/src/client/pane-nav.ts
+// src/client/pane-nav.ts
 var import_react = require("react");
 var PANEL_ID = "memory-ops";
 var state = { pane: null };
@@ -107,10 +107,10 @@ function gotoPane(ctx, pane, direct) {
   }
 }
 
-// packages/dsh-plugin/src/client/panel.ts
+// src/client/panel.ts
 var import_react11 = require("react");
 
-// packages/dsh-plugin/src/client/ui.ts
+// src/client/ui.ts
 var import_react2 = require("react");
 var h = import_react2.createElement;
 var EMPTY = "\u2014";
@@ -388,7 +388,7 @@ function Quote({ children }) {
   return h("p", { className: "dmo-quote" }, children);
 }
 
-// packages/dsh-plugin/src/client/session-context.ts
+// src/client/session-context.ts
 var import_react3 = require("react");
 function isObservable(value) {
   if (typeof value !== "object" || value === null) return false;
@@ -464,10 +464,10 @@ function scopeBody(cwd, project) {
   return {};
 }
 
-// packages/dsh-plugin/src/client/panes/project.ts
+// src/client/panes/project.ts
 var import_react5 = require("react");
 
-// packages/dsh-plugin/src/client/api.ts
+// src/client/api.ts
 var PREFIX = "/api/dsh-memory-ops";
 var BridgeError = class extends Error {
   constructor(message, route) {
@@ -507,7 +507,7 @@ async function call(route, body = {}) {
   return payload;
 }
 
-// packages/dsh-plugin/src/client/data.ts
+// src/client/data.ts
 var import_react4 = require("react");
 function useBridge(route, body, deps = []) {
   const [phase, setPhase] = (0, import_react4.useState)("loading");
@@ -538,7 +538,7 @@ function useBridge(route, body, deps = []) {
   return { phase, data, error, reload };
 }
 
-// packages/dsh-plugin/src/client/panes/project.ts
+// src/client/panes/project.ts
 function ProjectPane({ project, cwd, onOpenMemory, onGoto }) {
   const { phase, data, error, reload } = useBridge(
     "snapshot",
@@ -874,10 +874,10 @@ function QueueCard({ item, onOpenMemory, onChanged }) {
   );
 }
 
-// packages/dsh-plugin/src/client/panes/stream.ts
+// src/client/panes/stream.ts
 var import_react6 = require("react");
 
-// packages/core/src/schema.ts
+// ../core/src/schema.ts
 var INBOX_STATES = ["open", "todo", "done", "dropped"];
 var KIND_STATES = {
   \u5F85\u529E: ["open", "todo", "done", "dropped"],
@@ -891,7 +891,7 @@ function statesOfKind(kind) {
   return KIND_STATES[value] ?? INBOX_STATES;
 }
 
-// packages/dsh-plugin/src/client/panes/stream.ts
+// src/client/panes/stream.ts
 function StreamPane() {
   const [stateFilter, setStateFilter] = (0, import_react6.useState)("");
   const [kindFilter, setKindFilter] = (0, import_react6.useState)("");
@@ -1291,7 +1291,7 @@ function RowItem({ entry, checked, busy, onToggle, onState, onEdit, onPromote, o
   );
 }
 
-// packages/dsh-plugin/src/client/panes/memory.ts
+// src/client/panes/memory.ts
 var import_react7 = require("react");
 function MemoryPane({ project, cwd, onOpenMemory, detailPath }) {
   if (detailPath !== void 0) {
@@ -1756,7 +1756,7 @@ function MemoryDetail({ path, onBack }) {
   );
 }
 
-// packages/dsh-plugin/src/client/panes/misses.ts
+// src/client/panes/misses.ts
 var import_react8 = require("react");
 var LANES = [
   { id: "observing", label: "\u89C2\u5BDF\u4E2D", tone: "idle" },
@@ -2050,10 +2050,10 @@ function MissesPane() {
   );
 }
 
-// packages/dsh-plugin/src/client/panes/overview.ts
+// src/client/panes/overview.ts
 var import_react10 = require("react");
 
-// packages/dsh-plugin/src/client/panes/maintenance.ts
+// src/client/panes/maintenance.ts
 var import_react9 = require("react");
 function MaintenancePanel({ onOpenMemory }) {
   const [open, setOpen] = (0, import_react9.useState)(null);
@@ -2503,7 +2503,7 @@ function RepairSection({ data, phase, error, busy, run, onRetry, onOpenMemory })
   );
 }
 
-// packages/dsh-plugin/src/client/panes/overview.ts
+// src/client/panes/overview.ts
 function OverviewPane({ onOpenMemory }) {
   const [exporting, setExporting] = (0, import_react10.useState)(false);
   const [showResident, setShowResident] = (0, import_react10.useState)(false);
@@ -3040,7 +3040,7 @@ function DomainCard({ domain, onOpenMemory }) {
   );
 }
 
-// packages/dsh-plugin/src/client/panel.ts
+// src/client/panel.ts
 var PANES = [
   { id: "project", label: "\u672C\u9879\u76EE" },
   { id: "stream", label: "\u8BB0\u5F55\u6D41" },
@@ -3116,7 +3116,7 @@ function MemoryOpsPage(props) {
   );
 }
 
-// packages/dsh-plugin/src/client/session-view.ts
+// src/client/session-view.ts
 var import_react12 = require("react");
 function SessionMemoryView(props) {
   const onGotoMisses = typeof props.onGotoMisses === "function" ? props.onGotoMisses : void 0;
@@ -3289,7 +3289,7 @@ function SessionMemoryView(props) {
   );
 }
 
-// packages/dsh-plugin/src/client/capture-tab.ts
+// src/client/capture-tab.ts
 var import_react13 = require("react");
 var CAPTURE_KIND = "memory-ops";
 var KINDS = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
@@ -3509,10 +3509,10 @@ function CapturePane() {
   );
 }
 
-// packages/dsh-plugin/src/client/remember.ts
+// src/client/remember.ts
 var import_react14 = require("react");
 
-// packages/dsh-plugin/src/client/remember-logic.ts
+// src/client/remember-logic.ts
 var COMMAND_NAME = "remember";
 var KINDS2 = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
 var STORES = /* @__PURE__ */ new Map();
@@ -3559,7 +3559,7 @@ function parseRememberLine(line) {
   return { matched: true, content: (match[1] ?? "").trim() };
 }
 
-// packages/dsh-plugin/src/client/remember.ts
+// src/client/remember.ts
 var HANDLED = "handled";
 function registerRemember(ctx) {
   const disposers = [];
@@ -3837,7 +3837,7 @@ function RememberOverlay(props) {
   );
 }
 
-// packages/dsh-plugin/src/client/register.ts
+// src/client/register.ts
 function safe(label, run) {
   try {
     const result = run();
@@ -3927,7 +3927,7 @@ function registerRememberCommand(ctx) {
   return safe("inputTriggers + overlay", () => registerRemember(ctx));
 }
 
-// packages/dsh-plugin/src/client/styles.ts
+// src/client/styles.ts
 var STYLE_ID = "dsh-memory-ops-style";
 var CSS = `
 .dmo-root { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); }
@@ -4281,7 +4281,7 @@ function installStyles() {
   };
 }
 
-// packages/dsh-plugin/src/client/index.ts
+// src/client/index.ts
 var inject = ["slots"];
 function apply(ctx) {
   const disposers = [];
