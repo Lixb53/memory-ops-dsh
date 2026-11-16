@@ -91,6 +91,22 @@ describe('INBOX 写入', () => {
     assert.equal(INBOX_STATES.includes('open'), true)
     assert.equal(INBOX_KINDS.includes('想法'), true)
   })
+
+  it('首次捕获时，第一条记录紧贴分隔行（表头与数据之间不留空行）', async () => {
+    // 不预铺 INBOX，让 appendInbox 自己建：这是空库第一次写入的真实路径
+    const dir = path.join(root, 'inbox-fresh-skeleton')
+    const store = createStore({ root: dir })
+    await store.ensureLayout()
+    await store.appendInbox({ kind: '想法', content: '第一条' })
+    const raw = await fsp.readFile(path.join(dir, 'personal', 'INBOX.md'), 'utf8')
+    const body = raw.slice(raw.indexOf('# INBOX'))
+    const lines = body.split('\n')
+    const separatorAt = lines.findIndex(line => /^\|[-: ]+\|/.test(line.trim()))
+    assert.notEqual(separatorAt, -1, '分隔行必须存在')
+    // 分隔行的下一行就是数据行：中间不允许出现空行，否则表格被截断
+    assert.equal(lines[separatorAt + 1]!.trim().startsWith('| 2026'), true)
+    assert.equal(lines[separatorAt + 1]!.includes('第一条'), true)
+  })
 })
 
 describe('条目读写', () => {

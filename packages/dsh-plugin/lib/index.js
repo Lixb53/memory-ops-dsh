@@ -2773,8 +2773,7 @@ tags: []
 
 # INBOX
 
-${INBOX_HEADER}
-`;
+${INBOX_HEADER}`;
       }
       const parsed = parseInbox(source, INBOX_KINDS, INBOX_STATES);
       const row = serializeInboxRow({
@@ -2793,6 +2792,7 @@ ${INBOX_HEADER}
         lines.splice(insertAt + 1, 0, row);
       } else {
         if (!lines.some((line) => line.trim().startsWith("|"))) lines.push("", INBOX_HEADER);
+        while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
         lines.push(row);
       }
       const meta = parsed.frontmatter;

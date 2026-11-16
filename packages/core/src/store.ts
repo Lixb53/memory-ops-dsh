@@ -742,7 +742,7 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
         source = await fsp.readFile(absolute, 'utf8')
       } catch {
         const date = new Date(now()).toISOString().slice(0, 10)
-        source = `---\nid: ${relPath.replace(/\.md$/, '').replace(/\//g, '.')}\ntitle: INBOX\nscope: ${domain ?? 'personal'}\nkind: fact\nlayer: l2\nstatus: active\npinned: false\nupdated: ${date}\ntags: []\n---\n\n# INBOX\n\n${INBOX_HEADER}\n`
+        source = `---\nid: ${relPath.replace(/\.md$/, '').replace(/\//g, '.')}\ntitle: INBOX\nscope: ${domain ?? 'personal'}\nkind: fact\nlayer: l2\nstatus: active\npinned: false\nupdated: ${date}\ntags: []\n---\n\n# INBOX\n\n${INBOX_HEADER}`
       }
       const parsed = parseInbox(source, INBOX_KINDS, INBOX_STATES)
       const row = serializeInboxRow({
@@ -757,7 +757,13 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
       if (insertAt >= 0) {
         lines.splice(insertAt + 1, 0, row)
       } else {
+        /**
+         * 没有旧数据行：新行必须紧贴分隔行。
+         * 不能直接 push——正文模板与 INBOX_HEADER 的尾部换行会让 body 结尾留下空行，
+         * 一旦它卡在分隔行与第一条之间，Markdown 就把表格截断成两段（谁读都不成表）。
+         */
         if (!lines.some(line => line.trim().startsWith('|'))) lines.push('', INBOX_HEADER)
+        while (lines.length > 0 && lines[lines.length - 1]!.trim() === '') lines.pop()
         lines.push(row)
       }
       const meta = parsed.frontmatter as Record<string, unknown>
