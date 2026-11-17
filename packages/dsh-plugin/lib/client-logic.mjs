@@ -56,6 +56,7 @@ var createElement = noop;
 var useState = (initial) => [typeof initial === "function" ? initial() : initial, noop];
 var useEffect = noop;
 var useRef = (value) => ({ current: value });
+var createPortal = (children) => children;
 
 // src/client/api.ts
 var PREFIX = "/api/dsh-memory-ops";
@@ -126,8 +127,8 @@ var HANDLED = "handled";
 function registerRemember(ctx) {
   const disposers = [];
   try {
-    disposers.push(ctx.slots.inject("shell.overlay", () => ctx.slots.register({
-      name: "shell.overlay",
+    disposers.push(ctx.slots.inject("conversation.input.overlay", () => ctx.slots.register({
+      name: "conversation.input.overlay",
       id: "memory-ops-remember",
       order: 20,
       // 浮层是 session 作用域：宿主把 sessionId 传给 inject，
@@ -264,7 +265,8 @@ function RememberOverlay(props) {
   }
   if (!state2.open) {
     if (state2.toast === null) return null;
-    return createElement(
+    if (typeof document === "undefined") return null;
+    return createPortal(createElement(
       "div",
       {
         className: `dmo-remember-toast ${state2.toast.ok ? "dmo-toast-ok" : "dmo-toast-err"}`,
@@ -286,117 +288,118 @@ function RememberOverlay(props) {
           setRememberToast(sessionId, null);
         }
       }, "\xD7")
-    );
+    ), document.body);
   }
-  return createElement(
+  if (typeof document === "undefined") return null;
+  const foot = createElement(
+    "div",
+    { className: "dmo-remember-foot" },
+    createElement(
+      "span",
+      { className: "dmo-row-sub", style: { marginTop: 0 } },
+      "\u5B58\u5165\u540E\u53EF\u5728\u6D6E\u5C42\u91CC 30 \u79D2\u5185\u64A4\u9500"
+    ),
+    createElement(
+      "div",
+      { className: "dmo-row", style: { flex: "0 0 auto" } },
+      createElement(Button, { onClick: close }, "\u53D6\u6D88"),
+      createElement(Button, {
+        variant: "primary",
+        disabled: busy || text.trim() === "",
+        onClick: submit
+      }, busy ? "\u5B58\u5165\u4E2D\u2026" : "\u5B58\u4E00\u6761")
+    )
+  );
+  const blockedBlock = blocked === null ? null : createElement(
+    "div",
+    { className: "dmo-toast dmo-toast-err", role: "alert" },
+    createElement("div", null, blocked.reason),
+    createElement("div", { className: "dmo-label", style: { marginTop: 6 } }, "\u8131\u654F\u540E\u53EF\u7528\uFF1A"),
+    createElement("div", { style: { wordBreak: "break-all" } }, truncate(blocked.masked, 120)),
+    createElement(
+      "div",
+      { style: { marginTop: 6 } },
+      createElement(Button, {
+        small: true,
+        onClick: () => {
+          setText(blocked.masked);
+          setBlocked(null);
+        }
+      }, "\u586B\u5165\u8131\u654F\u6587\u672C")
+    )
+  );
+  const body = createElement(
+    "div",
+    { className: "dmo-remember-body" },
+    createElement(
+      "div",
+      { className: "dmo-row" },
+      createElement("select", {
+        className: "dmo-select",
+        value: kind,
+        "aria-label": "\u8BB0\u5F55\u7C7B\u578B",
+        onChange: (event) => {
+          setKind(event.target.value);
+        }
+      }, KINDS.map((item) => createElement("option", { key: item, value: item }, item)))
+    ),
+    createElement("textarea", {
+      ref: inputRef,
+      className: "dmo-textarea dmo-remember-input",
+      value: text,
+      placeholder: "\u4E00\u53E5\u8BDD\u8D76\u7D27\u5B58\u4E86\uFF08\u2318/Ctrl + Enter \u63D0\u4EA4\uFF0CEsc \u53D6\u6D88\uFF09",
+      "aria-label": "\u6355\u83B7\u5185\u5BB9",
+      onChange: (event) => {
+        setText(event.target.value);
+      }
+    }),
+    blockedBlock,
+    error === null ? null : createElement("div", { className: "dmo-toast dmo-toast-err", role: "alert" }, error),
+    foot
+  );
+  const card = createElement(
     "div",
     {
-      className: "dmo-remember-backdrop",
-      // 点遮罩关闭；卡片内的点击不冒泡上来
-      onClick: close,
-      role: "presentation"
+      className: "dmo-remember-card",
+      role: "dialog",
+      "aria-modal": "false",
+      "aria-label": "\u5B58\u8FDB\u8BB0\u5FC6\u5E93",
+      onClick: (event) => {
+        event.stopPropagation();
+      },
+      onKeyDown: (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          close();
+          return;
+        }
+        if (event.key === "Enter" && (event.metaKey === true || event.ctrlKey === true)) {
+          event.preventDefault();
+          submit();
+        }
+      }
     },
     createElement(
       "div",
-      {
-        className: "dmo-remember-card",
-        role: "dialog",
-        "aria-modal": "false",
-        "aria-label": "\u5B58\u8FDB\u8BB0\u5FC6\u5E93",
-        onClick: (event) => {
-          event.stopPropagation();
-        },
-        onKeyDown: (event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            close();
-            return;
-          }
-          if (event.key === "Enter" && (event.metaKey === true || event.ctrlKey === true)) {
-            event.preventDefault();
-            submit();
-          }
-        }
-      },
-      createElement(
-        "div",
-        { className: "dmo-remember-head" },
-        createElement("span", { className: "dmo-remember-title" }, "\u5B58\u8FDB\u8BB0\u5FC6\u5E93"),
-        createElement("button", {
-          type: "button",
-          className: "dmo-remember-close",
-          "aria-label": "\u5173\u95ED",
-          onClick: close
-        }, "\xD7")
-      ),
-      createElement(
-        "div",
-        { className: "dmo-remember-body" },
-        createElement(
-          "div",
-          { className: "dmo-row" },
-          createElement("select", {
-            className: "dmo-select",
-            value: kind,
-            "aria-label": "\u8BB0\u5F55\u7C7B\u578B",
-            onChange: (event) => {
-              setKind(event.target.value);
-            }
-          }, KINDS.map((item) => createElement("option", { key: item, value: item }, item)))
-        ),
-        createElement("textarea", {
-          ref: inputRef,
-          className: "dmo-textarea dmo-remember-input",
-          value: text,
-          placeholder: "\u4E00\u53E5\u8BDD\u8D76\u7D27\u5B58\u4E86\uFF08\u2318/Ctrl + Enter \u63D0\u4EA4\uFF0CEsc \u53D6\u6D88\uFF09",
-          "aria-label": "\u6355\u83B7\u5185\u5BB9",
-          onChange: (event) => {
-            setText(event.target.value);
-          }
-        }),
-        // 隐私闸门：解释「为什么拒」并给脱敏后可用的文本
-        blocked === null ? null : createElement(
-          "div",
-          { className: "dmo-toast dmo-toast-err", role: "alert" },
-          createElement("div", null, blocked.reason),
-          createElement("div", { className: "dmo-label", style: { marginTop: 6 } }, "\u8131\u654F\u540E\u53EF\u7528\uFF1A"),
-          createElement("div", { style: { wordBreak: "break-all" } }, truncate(blocked.masked, 120)),
-          createElement(
-            "div",
-            { style: { marginTop: 6 } },
-            createElement(Button, {
-              small: true,
-              onClick: () => {
-                setText(blocked.masked);
-                setBlocked(null);
-              }
-            }, "\u586B\u5165\u8131\u654F\u6587\u672C")
-          )
-        ),
-        error === null ? null : createElement("div", { className: "dmo-toast dmo-toast-err", role: "alert" }, error),
-        createElement(
-          "div",
-          { className: "dmo-remember-foot" },
-          createElement(
-            "span",
-            { className: "dmo-row-sub", style: { marginTop: 0 } },
-            "\u5B58\u5165\u540E\u53EF\u5728\u6D6E\u5C42\u91CC 30 \u79D2\u5185\u64A4\u9500"
-          ),
-          createElement(
-            "div",
-            { className: "dmo-row", style: { flex: "0 0 auto" } },
-            createElement(Button, { onClick: close }, "\u53D6\u6D88"),
-            createElement(Button, {
-              variant: "primary",
-              disabled: busy || text.trim() === "",
-              onClick: submit
-            }, busy ? "\u5B58\u5165\u4E2D\u2026" : "\u5B58\u4E00\u6761")
-          )
-        )
-      )
-    )
+      { className: "dmo-remember-head" },
+      createElement("span", { className: "dmo-remember-title" }, "\u5B58\u8FDB\u8BB0\u5FC6\u5E93"),
+      createElement("button", {
+        type: "button",
+        className: "dmo-remember-close",
+        "aria-label": "\u5173\u95ED",
+        onClick: close
+      }, "\xD7")
+    ),
+    body
   );
+  const backdrop = createElement("div", {
+    className: "dmo-remember-backdrop",
+    // 点遮罩关闭；卡片内的点击不冒泡上来
+    onClick: close,
+    role: "presentation"
+  }, card);
+  return createPortal(backdrop, document.body);
 }
 
 // src/client/pane-nav.ts

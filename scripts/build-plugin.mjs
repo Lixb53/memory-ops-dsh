@@ -156,7 +156,10 @@ function reactStubPlugin() {
           'export const useRef = (value) => ({ current: value });',
           'export const useMemo = (fn) => fn();',
           'export const useCallback = (fn) => fn;',
-          'export default { createElement, useState, useEffect, useRef };',
+          // react-dom 的 createPortal：仅 client-logic 这份可测产物需要它存在，
+          // 组件永远不会被渲染，所以原样返回 children 即可。
+          'export const createPortal = (children) => children;',
+          'export default { createElement, useState, useEffect, useRef, createPortal };',
         ].join('\n'),
         loader: 'js',
       }))

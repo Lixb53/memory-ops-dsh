@@ -8,21 +8,23 @@
  * 实现照 dsh-context 的 `/context`（三处一致）：
  *   1. `onPick` / `matchEnter` 返回 `'handled'`：输入框清空、提交权交给本插件
  *   2. 同时把 per-session store 置为 open
- *   3. `shell.overlay` 槽位里的对话框订阅该 store，铺满整个应用框架
+ *   3. `conversation.input.overlay` 槽位里的对话框订阅该 store，**portal 到 body 再绘制**
  *
- * **为什么不用 `conversation.input.overlay`**（曾经的写法，是 bug）：
- * 那个槽位的宿主容器是输入框卡片顶部的一条**零高度条带**。
- * 宿主源码的原话是：the overlay anchor is a zero-height strip on the
- * composer card's top edge；其 CSS 为 height: 0 / position: absolute / inset: 0 0 auto。
- * 它服务的是「贴在输入框上方的小卡片」，那种卡片自己向上浮动
- * （宿主 PopupSelectView 用 position: absolute; bottom: calc(100% + 4px)）。
- * 把 position: fixed、inset: 0 的全屏遮罩塞进这个高 0 且被卡片裁剪的盒子，
- * 就会在零高度区域里布局——实测表现为「弹窗跑到最下方、被遮住一半」。
+ * **为什么要 portal 到 body**（2026-11-17 实测确认）：
+ * 那个槽位在 `ComposerSeat` 内部，而宿主给它写了 `will-change: transform`
+ * （`ConversationRoot.module.css`，为了稳定合成层）。按 CSS 规范，
+ * `will-change: transform` 会让该元素成为后代 `position: fixed` 的**包含块**，
+ * 于是 `fixed; inset: 0` 的遮罩不再铺满视口，而是被限制在这个贴在窗口底部、
+ * 高约 128px 的输入框座位里——表现为「弹窗跑到最下方且被遮住一半」。
  *
- * 全屏对话框要用 `shell.overlay`：宿主 AppFrame 的 overlayLayer
- * 是 position: absolute / inset: 0（铺满框架）、pointer-events: none
- * 且子元素恢复 auto 的浮层，正是为这种场景准备的。
- * 宿主自己的阻塞式确认框（agent-team 的 TeamDisableConfirmation）也挂这里。
+ * 这个 CSS 本身是对的，宿主也预见了后果。它在那条规则里写明：
+ *   every fixed overlay inside the composer (tooltips, menus, panels)
+ *   must portal to the document body.
+ *
+ * 平台差异：`will-change` 是否真的触发层提升取决于 Chromium 的合成路径
+ * （macOS 走 CoreAnimation，Windows 走 D3D/ANGLE），所以同一份 CSS 在
+ * Mac 上碰巧正常、在 Windows 上暴露。portal 让两平台行为一致，
+ * 不再依赖合成器心情。
  *
  * 三种进入方式都落到同一个弹窗：
  *   - 菜单选 `/remember`
@@ -34,6 +36,7 @@
  */
 
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import type { ClientContext } from './index.ts'
 import { call, type CaptureResult, type InboxView } from './api.ts'
@@ -94,13 +97,10 @@ const HANDLED = 'handled' as unknown as PickOutcomeLike
 export function registerRemember(ctx: ClientContext): () => void {
   const disposers: (() => void)[] = []
 
-  // ---- 浮层：对话框 + 保存提示 ----
-  //
-  // 用 `shell.overlay`（铺满框架的浮层），不用 `conversation.input.overlay`
-  // （零高度条带，会把全屏对话框挤进输入框上方的小盒子）。见文件头说明。
+  // ---- 浮层：对话框 + 保存提示，都渲染在输入框卡片内 ----
   try {
-    disposers.push(ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-      name: 'shell.overlay',
+    disposers.push(ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register({
+      name: 'conversation.input.overlay',
       id: 'memory-ops-remember',
       order: 20,
       // 浮层是 session 作用域：宿主把 sessionId 传给 inject，
@@ -275,7 +275,9 @@ function RememberOverlay(props: Record<string, unknown>): ReactNode {
   // ---- 关闭态：只显示短暂提示 ----
   if (!state.open) {
     if (state.toast === null) return null
-    return createElement('div', {
+    if (typeof document === 'undefined') return null
+    // toast 也是 fixed，同样要脱离 composerSeat 的包含块
+    return createPortal(createElement('div', {
       className: `dmo-remember-toast ${state.toast.ok ? 'dmo-toast-ok' : 'dmo-toast-err'}`,
       role: 'status',
       'aria-live': 'polite',
@@ -294,17 +296,64 @@ function RememberOverlay(props: Record<string, unknown>): ReactNode {
       className: 'dmo-remember-dismiss',
       'aria-label': '关闭提示',
       onClick: () => { setRememberToast(sessionId, null) },
-    }, '×'))
+    }, '×')), document.body)
   }
 
   // ---- 打开态：对话框 ----
-  return createElement('div', {
-    className: 'dmo-remember-backdrop',
-    // 点遮罩关闭；卡片内的点击不冒泡上来
-    onClick: close,
-    role: 'presentation',
-  },
-  createElement('div', {
+  //
+  // 必须 portal 到 document.body：槽位所在的 ComposerSeat 有 `will-change: transform`，
+  // 会让它成为 fixed 的包含块，遮罩就铺不满视口（详见文件头说明）。
+  // 关闭态（toast）同理。
+  if (typeof document === 'undefined') return null
+
+  const foot = createElement('div', { className: 'dmo-remember-foot' },
+    createElement('span', { className: 'dmo-row-sub', style: { marginTop: 0 } },
+      '存入后可在浮层里 30 秒内撤销'),
+    createElement('div', { className: 'dmo-row', style: { flex: '0 0 auto' } },
+      createElement(Button, { onClick: close }, '取消'),
+      createElement(Button, {
+        variant: 'primary',
+        disabled: busy || text.trim() === '',
+        onClick: submit,
+      }, busy ? '存入中…' : '存一条')))
+
+  // 隐私闸门：解释「为什么拒」并给脱敏后可用的文本
+  const blockedBlock = blocked === null
+    ? null
+    : createElement('div', { className: 'dmo-toast dmo-toast-err', role: 'alert' },
+      createElement('div', null, blocked.reason),
+      createElement('div', { className: 'dmo-label', style: { marginTop: 6 } }, '脱敏后可用：'),
+      createElement('div', { style: { wordBreak: 'break-all' } }, truncate(blocked.masked, 120)),
+      createElement('div', { style: { marginTop: 6 } },
+        createElement(Button, {
+          small: true,
+          onClick: () => {
+            setText(blocked.masked)
+            setBlocked(null)
+          },
+        }, '填入脱敏文本')))
+
+  const body = createElement('div', { className: 'dmo-remember-body' },
+    createElement('div', { className: 'dmo-row' },
+      createElement('select', {
+        className: 'dmo-select',
+        value: kind,
+        'aria-label': '记录类型',
+        onChange: (event: { target: { value: string } }) => { setKind(event.target.value) },
+      }, KINDS.map(item => createElement('option', { key: item, value: item }, item)))),
+    createElement('textarea', {
+      ref: inputRef,
+      className: 'dmo-textarea dmo-remember-input',
+      value: text,
+      placeholder: '一句话赶紧存了（⌘/Ctrl + Enter 提交，Esc 取消）',
+      'aria-label': '捕获内容',
+      onChange: (event: { target: { value: string } }) => { setText(event.target.value) },
+    }),
+    blockedBlock,
+    error === null ? null : createElement('div', { className: 'dmo-toast dmo-toast-err', role: 'alert' }, error),
+    foot)
+
+  const card = createElement('div', {
     className: 'dmo-remember-card',
     role: 'dialog',
     'aria-modal': 'false',
@@ -331,49 +380,14 @@ function RememberOverlay(props: Record<string, unknown>): ReactNode {
       'aria-label': '关闭',
       onClick: close,
     }, '×')),
+  body)
 
-  createElement('div', { className: 'dmo-remember-body' },
-    createElement('div', { className: 'dmo-row' },
-      createElement('select', {
-        className: 'dmo-select',
-        value: kind,
-        'aria-label': '记录类型',
-        onChange: (event: { target: { value: string } }) => { setKind(event.target.value) },
-      }, KINDS.map(item => createElement('option', { key: item, value: item }, item)))),
+  const backdrop = createElement('div', {
+    className: 'dmo-remember-backdrop',
+    // 点遮罩关闭；卡片内的点击不冒泡上来
+    onClick: close,
+    role: 'presentation',
+  }, card)
 
-    createElement('textarea', {
-      ref: inputRef,
-      className: 'dmo-textarea dmo-remember-input',
-      value: text,
-      placeholder: '一句话赶紧存了（⌘/Ctrl + Enter 提交，Esc 取消）',
-      'aria-label': '捕获内容',
-      onChange: (event: { target: { value: string } }) => { setText(event.target.value) },
-    }),
-
-    // 隐私闸门：解释「为什么拒」并给脱敏后可用的文本
-    blocked === null ? null : createElement('div', { className: 'dmo-toast dmo-toast-err', role: 'alert' },
-      createElement('div', null, blocked.reason),
-      createElement('div', { className: 'dmo-label', style: { marginTop: 6 } }, '脱敏后可用：'),
-      createElement('div', { style: { wordBreak: 'break-all' } }, truncate(blocked.masked, 120)),
-      createElement('div', { style: { marginTop: 6 } },
-        createElement(Button, {
-          small: true,
-          onClick: () => {
-            setText(blocked.masked)
-            setBlocked(null)
-          },
-        }, '填入脱敏文本'))),
-
-    error === null ? null : createElement('div', { className: 'dmo-toast dmo-toast-err', role: 'alert' }, error),
-
-    createElement('div', { className: 'dmo-remember-foot' },
-      createElement('span', { className: 'dmo-row-sub', style: { marginTop: 0 } },
-        '存入后可在浮层里 30 秒内撤销'),
-      createElement('div', { className: 'dmo-row', style: { flex: '0 0 auto' } },
-        createElement(Button, { onClick: close }, '取消'),
-        createElement(Button, {
-          variant: 'primary',
-          disabled: busy || text.trim() === '',
-          onClick: submit,
-        }, busy ? '存入中…' : '存一条'))))))
+  return createPortal(backdrop, document.body)
 }

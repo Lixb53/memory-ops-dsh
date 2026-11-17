@@ -14,9 +14,15 @@
  */
 
 import assert from 'node:assert/strict'
+import fsp from 'node:fs/promises'
+import path from 'node:path'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import { registerRemember } from '../lib/client-logic.mjs'
+
+/** 客户端源码目录，用于静态断言「必须 portal」这类结构性事实。 */
+const CLIENT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'client')
 
 describe('registerRemember 接线', () => {
   /** 造一个假客户端 ctx，记录注册行为。 */
@@ -75,24 +81,33 @@ describe('registerRemember 接线', () => {
     assert.equal(sources[0].name, 'remember')
   })
 
-  it('弹窗注册到 shell.overlay（铺满框架的浮层）', () => {
+  it('注册了输入框浮层槽位', () => {
     const { ctx, slots } = makeCtx()
     registerRemember(ctx)
-    assert.equal(slots.includes('shell.overlay'), true)
+    assert.equal(slots.includes('conversation.input.overlay'), true)
   })
 
-  it('不再使用 conversation.input.overlay 承载全屏对话框', () => {
+  it('对话框 portal 到 document.body（不能就地渲染在槽位里）', async () => {
     /**
-     * 回归：那个槽位的宿主容器是 `height: 0; position: absolute` 的零高度条带
-     * （输入框卡片顶部），只适合向上浮动的小卡片。全屏对话框放进去会被挤在
-     * 输入框上方、并被卡片裁剪——实测表现为「弹窗跑到最下方且被遮挡」。
+     * 回归：`conversation.input.overlay` 位于 ComposerSeat 内部，宿主给它写了
+     * `will-change: transform`（ConversationRoot.module.css，为稳定合成层）。
+     * 该属性让 ComposerSeat 成为后代 `position: fixed` 的**包含块**，
+     * 于是 `fixed; inset: 0` 的遮罩不再铺满视口，而是被压在贴底的输入框座位里
+     * ——实测表现「弹窗跑到最下方且被遮住一半」，Windows 上必现、Mac 上碰巧不现。
+     *
+     * 宿主那条规则里点名了正确做法：
+     *   every fixed overlay inside the composer must portal to the document body.
      */
-    const { ctx, slots } = makeCtx()
-    registerRemember(ctx)
+    const text = await fsp.readFile(path.join(CLIENT_DIR, 'remember.ts'), 'utf8')
+    // 遮罩与提示都必须 portal 到 document.body：就地渲染就会被 ComposerSeat
+    // 的 will-change 包含块压扁。这里只数「目标写成 document.body」的调用，
+    // 不解析嵌套括号，避免正则被组件内部的括号绊倒。
+    const portalTargets = text.match(/,\s*document\.body\s*\)/g) ?? []
     assert.equal(
-      slots.includes('conversation.input.overlay'), false,
-      '全屏对话框不能挂在零高度的输入框锚点上，必须用 shell.overlay',
+      portalTargets.length >= 2, true,
+      `遮罩与 toast 都要 portal 到 body，实际找到 ${portalTargets.length} 处`,
     )
+    assert.match(text, /createPortal\(backdrop,\s*document\.body\)/, '对话框遮罩必须 portal 到 body')
   })
 
   it('onPick 返回字符串 "handled"（不能是对象）', () => {
