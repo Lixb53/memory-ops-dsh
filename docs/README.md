@@ -3,7 +3,7 @@
 > 想不起这个项目是干什么的时候，只看这一页。
 > 最后核对 **2026-11-06（v3.4 缺口补齐后）**，数字均来自实际代码与真实数据。
 
-> **不知道怎么用？先看 [`manual.md`](./manual.md)** —— 那份文档只回答「界面上该点哪里」。
+> **不知道怎么用？** v4 重新规划后的界面与四态见 [`design/information-architecture.md`](../design/information-architecture.md)，可运行原型在 [`prototype/`](../prototype/)。
 
 ## 一句话
 
@@ -38,13 +38,13 @@
 | 包 | 状态 |
 |---|---|
 | `packages/core` | ✅ 已实现，252 项测试 |
-| `packages/dsh-plugin` | ✅ 已实现，90 项测试；支持从 GitHub 直装（见 [`manual.md`](./manual.md) §负二） |
+| `packages/dsh-plugin` | ✅ 已实现，90 项测试；支持从 GitHub 直装（安装步骤见本文件下方「快速开始」与仓库 README） |
 | `packages/memory-web` | ❌ **未实现**（没有代码） |
 
 仓库：https://github.com/Lixb53/memory-ops-dsh
 
 > 「已实现」指代码与测试齐备，**不代表你机器上已经装好**。
-> 装没装、界面有没有，按 [`manual.md`](./manual.md) §负二 确认——
+> 装没装、界面有没有，按下述「4 个表面」清单确认——
 > 这两件事必须分开说，否则又把「代码在」误读成「装上了」。
 
 ### 4 个表面（全部已挂载）
@@ -92,20 +92,12 @@
 
 **两套界面，但只有一套有代码**：
 
-- **DSH 插件端**：4 表面 + 5 分区 ✅ **已实现**
-- **Web 管理端**：4 视图 ❌ **仅设计稿**（`docs/design/web-v2.html` / `web-v3.html`）
+- **DSH 插件端**：v4 任务导向界面（今天 / 记一条 / 待办 / 记忆 / 库健康）——规划见 [`design/`](../design/)，原型见 [`prototype/`](../prototype/)
+- **Web 管理端**：❌ **未实现**（v4 规划见 [`design/`](../design/)）
 
-设计稿分两代，**不要混用**：
-
-| 文件 | 内容 | 定位 |
-|---|---|---|
-| `design/web-v2.html` | Web 端 4 视图 + 五态切换 | 设计稿，**无对应实现** |
-| `design/plugin-v2.html` | 插件端 4 表面 + 5 分区 | 结构参考，配色与组件未落地 |
-| `design/web-v3.html` | Web 端 v3（证据链 / 锚点 / 预算账本） | 设计提案，**无对应实现** |
-| `design/plugin-v3.html` | 插件端 v3 | 设计提案，部分已落地 |
-
-> 设计稿通过 `docs/design/qa.mjs` 三档渲染检查（0 error / 0 warn），
-> 那只证明 **HTML 本身没坏**，不证明产品实现了。旧文档把两者混为一谈。
+> 旧设计稿（v2 / v3 静态 HTML）已随 2026-11-17 的 v4 规划一并退役。
+> 现行视觉契约：[`design/direction-card.md`](../design/direction-card.md)；
+> 界面结构与四态：[`design/information-architecture.md`](../design/information-architecture.md)。
 
 ## 进度
 
@@ -134,7 +126,7 @@
 
 1. ~~工作域要从 skill 目录搬到 `~/.memory-ops/work/sz-web/`~~ —— **已执行（2026-11-10）**。
    实际搬的是数据、不碰 SKILL.md，所以并未发生缓存作废。
-   结论见 [`scope-migration-record.md`](./scope-migration-record.md)。
+   （迁移结论原记录在 `scope-migration-record.md`，该文件已随 v4 清理退役。）
 2. ~~`personal-memory` skill 什么时候建~~ —— **已撤销，不建**。
    插件读写本就不依赖 skill（取 skills 只为统计成本），
    而指路职责 `memory_recall` 的常驻 tool description 已经承担；
@@ -148,7 +140,7 @@
 **建 `packages/memory-web`。**
 
 插件端已经没有「有路由没入口」的能力了，剩下的唯一结构性缺口是 Web 管理端——
-设计稿在 `docs/design/web-v3.html`，但没有一行实现。
+v4 已把插件端重新规划为任务导向入口（见 [`design/`](../design/)），Web 端仍未实现。
 
 做它之前值得先看 `product.md` §十七：四项维护作业现在是**按需触发**的纯函数 + 路由，
 Web 端只要复用 core 的 `actions` 就能拿到同样的能力，不需要重写任何口径。
@@ -172,7 +164,7 @@ memory-ops/                     仓库根（pnpm monorepo）
 
 docs/（文档唯一真相源，2026-11-06 起启用）：
 ├── product.md                  完整设计说明（§二 真实状态 / §十五 对账记录）
-├── manual.md                   **使用手册**（入口在哪、每步点什么、故障排查）
+├── design/ + prototype/         v4 规划与可运行原型（2026-11-17 起）
 ├── README.md                   本文件（一页总结）
 └── design/
     ├── README.md                     设计稿目录说明

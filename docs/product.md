@@ -93,6 +93,10 @@
 
 ### 2.4 设计稿的真实地位
 
+> ⚠️ **2026-11-17 更新**：本节描述的 `docs/design/`（v2 / v3 静态 HTML）
+> 已随 v4 规划整体退役（见仓库根 `design/`），文件不再存在。
+> 下文保留为历史记录；现行视觉契约见 `design/direction-card.md`。
+
 `docs/design/` 下的 `web-v2.html` / `web-v3.html` / `plugin-v2.html` / `plugin-v3.html` 是**静态 HTML 设计稿**，
 与当前代码**不同源**：
 
