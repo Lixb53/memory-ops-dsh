@@ -157,14 +157,23 @@ const CSS = `
 .dmo-lane-head { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; margin-bottom: 4px; }
 .dmo-lane-count { font-size: 10.5px; color: var(--dsw-alias-label-secondary); font-weight: 400; }
 
-/* —— /remember 弹窗（浮在输入框卡片内）—— */
+/* —— /remember 弹窗（挂在 shell.overlay，铺满应用框架）——
+ *
+ * 宿主 overlayLayer 已是 position: absolute / inset: 0、pointer-events: none，
+ * 子元素恢复 pointer-events: auto。所以这里只需铺满并居中，
+ * 不用 position: fixed——它坐在框架浮层里，比 fixed 更贴合宿主布局
+ * （框架有 sidebar/rightbar 时，fixed 会盖到侧栏上）。
+ */
 .dmo-remember-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  pointer-events: auto;
   background: var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, 0.45));
 }
 .dmo-remember-card {
@@ -202,13 +211,15 @@ const CSS = `
 .dmo-remember-input { min-height: 96px; }
 .dmo-remember-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
 
-/* 保存提示：浮层关闭后短暂出现，带撤销 */
+/* 保存提示：浮层关闭后短暂出现，带撤销。
+ * 同样挂在 shell.overlay 里，所以用 absolute 相对框架定位（不用 fixed）。 */
 .dmo-remember-toast {
-  position: fixed;
+  position: absolute;
   left: 50%;
   bottom: 96px;
   transform: translateX(-50%);
   z-index: 190;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 8px;

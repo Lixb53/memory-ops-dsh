@@ -75,10 +75,24 @@ describe('registerRemember 接线', () => {
     assert.equal(sources[0].name, 'remember')
   })
 
-  it('注册了输入框浮层槽位', () => {
+  it('弹窗注册到 shell.overlay（铺满框架的浮层）', () => {
     const { ctx, slots } = makeCtx()
     registerRemember(ctx)
-    assert.equal(slots.includes('conversation.input.overlay'), true)
+    assert.equal(slots.includes('shell.overlay'), true)
+  })
+
+  it('不再使用 conversation.input.overlay 承载全屏对话框', () => {
+    /**
+     * 回归：那个槽位的宿主容器是 `height: 0; position: absolute` 的零高度条带
+     * （输入框卡片顶部），只适合向上浮动的小卡片。全屏对话框放进去会被挤在
+     * 输入框上方、并被卡片裁剪——实测表现为「弹窗跑到最下方且被遮挡」。
+     */
+    const { ctx, slots } = makeCtx()
+    registerRemember(ctx)
+    assert.equal(
+      slots.includes('conversation.input.overlay'), false,
+      '全屏对话框不能挂在零高度的输入框锚点上，必须用 shell.overlay',
+    )
   })
 
   it('onPick 返回字符串 "handled"（不能是对象）', () => {

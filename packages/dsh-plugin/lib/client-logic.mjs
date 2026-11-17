@@ -126,8 +126,8 @@ var HANDLED = "handled";
 function registerRemember(ctx) {
   const disposers = [];
   try {
-    disposers.push(ctx.slots.inject("conversation.input.overlay", () => ctx.slots.register({
-      name: "conversation.input.overlay",
+    disposers.push(ctx.slots.inject("shell.overlay", () => ctx.slots.register({
+      name: "shell.overlay",
       id: "memory-ops-remember",
       order: 20,
       // 浮层是 session 作用域：宿主把 sessionId 传给 inject，

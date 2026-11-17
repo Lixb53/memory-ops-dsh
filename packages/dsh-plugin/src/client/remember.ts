@@ -8,7 +8,21 @@
  * 实现照 dsh-context 的 `/context`（三处一致）：
  *   1. `onPick` / `matchEnter` 返回 `'handled'`：输入框清空、提交权交给本插件
  *   2. 同时把 per-session store 置为 open
- *   3. `conversation.input.overlay` 槽位里的对话框订阅该 store，渲染在输入框卡片内
+ *   3. `shell.overlay` 槽位里的对话框订阅该 store，铺满整个应用框架
+ *
+ * **为什么不用 `conversation.input.overlay`**（曾经的写法，是 bug）：
+ * 那个槽位的宿主容器是输入框卡片顶部的一条**零高度条带**。
+ * 宿主源码的原话是：the overlay anchor is a zero-height strip on the
+ * composer card's top edge；其 CSS 为 height: 0 / position: absolute / inset: 0 0 auto。
+ * 它服务的是「贴在输入框上方的小卡片」，那种卡片自己向上浮动
+ * （宿主 PopupSelectView 用 position: absolute; bottom: calc(100% + 4px)）。
+ * 把 position: fixed、inset: 0 的全屏遮罩塞进这个高 0 且被卡片裁剪的盒子，
+ * 就会在零高度区域里布局——实测表现为「弹窗跑到最下方、被遮住一半」。
+ *
+ * 全屏对话框要用 `shell.overlay`：宿主 AppFrame 的 overlayLayer
+ * 是 position: absolute / inset: 0（铺满框架）、pointer-events: none
+ * 且子元素恢复 auto 的浮层，正是为这种场景准备的。
+ * 宿主自己的阻塞式确认框（agent-team 的 TeamDisableConfirmation）也挂这里。
  *
  * 三种进入方式都落到同一个弹窗：
  *   - 菜单选 `/remember`
@@ -80,10 +94,13 @@ const HANDLED = 'handled' as unknown as PickOutcomeLike
 export function registerRemember(ctx: ClientContext): () => void {
   const disposers: (() => void)[] = []
 
-  // ---- 浮层：对话框 + 保存提示，都渲染在输入框卡片内 ----
+  // ---- 浮层：对话框 + 保存提示 ----
+  //
+  // 用 `shell.overlay`（铺满框架的浮层），不用 `conversation.input.overlay`
+  // （零高度条带，会把全屏对话框挤进输入框上方的小盒子）。见文件头说明。
   try {
-    disposers.push(ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register({
-      name: 'conversation.input.overlay',
+    disposers.push(ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+      name: 'shell.overlay',
       id: 'memory-ops-remember',
       order: 20,
       // 浮层是 session 作用域：宿主把 sessionId 传给 inject，

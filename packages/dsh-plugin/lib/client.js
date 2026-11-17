@@ -3564,8 +3564,8 @@ var HANDLED = "handled";
 function registerRemember(ctx) {
   const disposers = [];
   try {
-    disposers.push(ctx.slots.inject("conversation.input.overlay", () => ctx.slots.register({
-      name: "conversation.input.overlay",
+    disposers.push(ctx.slots.inject("shell.overlay", () => ctx.slots.register({
+      name: "shell.overlay",
       id: "memory-ops-remember",
       order: 20,
       // 浮层是 session 作用域：宿主把 sessionId 传给 inject，
@@ -4076,14 +4076,23 @@ var CSS = `
 .dmo-lane-head { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; margin-bottom: 4px; }
 .dmo-lane-count { font-size: 10.5px; color: var(--dsw-alias-label-secondary); font-weight: 400; }
 
-/* \u2014\u2014 /remember \u5F39\u7A97\uFF08\u6D6E\u5728\u8F93\u5165\u6846\u5361\u7247\u5185\uFF09\u2014\u2014 */
+/* \u2014\u2014 /remember \u5F39\u7A97\uFF08\u6302\u5728 shell.overlay\uFF0C\u94FA\u6EE1\u5E94\u7528\u6846\u67B6\uFF09\u2014\u2014
+ *
+ * \u5BBF\u4E3B overlayLayer \u5DF2\u662F position: absolute / inset: 0\u3001pointer-events: none\uFF0C
+ * \u5B50\u5143\u7D20\u6062\u590D pointer-events: auto\u3002\u6240\u4EE5\u8FD9\u91CC\u53EA\u9700\u94FA\u6EE1\u5E76\u5C45\u4E2D\uFF0C
+ * \u4E0D\u7528 position: fixed\u2014\u2014\u5B83\u5750\u5728\u6846\u67B6\u6D6E\u5C42\u91CC\uFF0C\u6BD4 fixed \u66F4\u8D34\u5408\u5BBF\u4E3B\u5E03\u5C40
+ * \uFF08\u6846\u67B6\u6709 sidebar/rightbar \u65F6\uFF0Cfixed \u4F1A\u76D6\u5230\u4FA7\u680F\u4E0A\uFF09\u3002
+ */
 .dmo-remember-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  pointer-events: auto;
   background: var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, 0.45));
 }
 .dmo-remember-card {
@@ -4121,13 +4130,15 @@ var CSS = `
 .dmo-remember-input { min-height: 96px; }
 .dmo-remember-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
 
-/* \u4FDD\u5B58\u63D0\u793A\uFF1A\u6D6E\u5C42\u5173\u95ED\u540E\u77ED\u6682\u51FA\u73B0\uFF0C\u5E26\u64A4\u9500 */
+/* \u4FDD\u5B58\u63D0\u793A\uFF1A\u6D6E\u5C42\u5173\u95ED\u540E\u77ED\u6682\u51FA\u73B0\uFF0C\u5E26\u64A4\u9500\u3002
+ * \u540C\u6837\u6302\u5728 shell.overlay \u91CC\uFF0C\u6240\u4EE5\u7528 absolute \u76F8\u5BF9\u6846\u67B6\u5B9A\u4F4D\uFF08\u4E0D\u7528 fixed\uFF09\u3002 */
 .dmo-remember-toast {
-  position: fixed;
+  position: absolute;
   left: 50%;
   bottom: 96px;
   transform: translateX(-50%);
   z-index: 190;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 8px;
