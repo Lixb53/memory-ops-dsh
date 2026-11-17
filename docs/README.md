@@ -127,14 +127,21 @@
 | **v3.6 四个「看起来正常」的缺陷** | **已修**（`product.md` §十八）：项目别名解析 / 人拍板状态表 / 会话注入原因 / async skills |
 | **v3.7 跨表面跳转** | **已修**（`product.md` §十九）：会话 tab「去未命中工作台」点了没反应 —— 接线断了 + 两棵 React 树 |
 
-## 卡在哪
+## 曾经卡在哪（已清空）
 
-两个决策都需要改常驻前缀 → 会作废一次缓存（实测单次 20–57 万 tokens）：
+此前挂着两个「需要拍板」的决策，都要求改常驻前缀、会作废一次缓存。
+现在两个都收了，**不再有阻塞项**：
 
-1. 工作域要不要从 skill 目录搬到 `~/.memory-ops/work/sz-web/`
-2. `personal-memory` skill 什么时候建
+1. ~~工作域要从 skill 目录搬到 `~/.memory-ops/work/sz-web/`~~ —— **已执行（2026-11-10）**。
+   实际搬的是数据、不碰 SKILL.md，所以并未发生缓存作废。
+   结论见 [`scope-migration-record.md`](./scope-migration-record.md)。
+2. ~~`personal-memory` skill 什么时候建~~ —— **已撤销，不建**。
+   插件读写本就不依赖 skill（取 skills 只为统计成本），
+   而指路职责 `memory_recall` 的常驻 tool description 已经承担；
+   手写路径表还会过期。判断依据见 [`product.md`](./product.md) §九。
 
-建议：**攒到下次配置变更时一次性做完**，符合「配置一次改完」。
+> 若将来需要让 agent 在用户没提「记忆」时也主动来查，
+> 应由插件从 `navOf()` 实时结果自动生成 `SKILL.md`，而不是手写。
 
 ## 下一步最值得做的
 
