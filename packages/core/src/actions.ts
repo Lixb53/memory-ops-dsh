@@ -6,46 +6,78 @@
  * 所以能力只有一份，两端口只是传输方式不同。
  */
 
+/*
+ * 领域拆分后，本文件只剩：
+ *   1. ActionFailure / guard 等共享类型与工具
+ *   2. export / sessionMemory / health / 5 项维护作业
+ *   3. createActions 组合根（把领域模块拼成原来那一个对象）
+ *
+ * read 侧的 snapshot / overview / search / detail 已移到 actions/read.ts，
+ * 辅助函数移到 actions/helpers.ts 与 actions/context.ts。
+ * 这里只 import 维护作业与组合根仍需要的符号。
+ */
 import {
-  CONFIDENCE_STATES, INBOX_KINDS, INBOX_STATES, STATE_CONFIDENCE, MISS_VERIFY_DAYS,
-  FILE_LINE_LIMIT, FILE_TOKEN_SOFT_LIMIT, RESIDENT_TOKEN_BUDGET, REINFORCE_MIN_SESSIONS,
-  canHumanTransition, canTransition, estimateTokens, expiryOf, needsDecision, orEmpty, truncate,
-  isStateAllowed, statesOfKind,
-  type InboxKind, type InboxState, type ConfidenceState,
+  STATE_CONFIDENCE,
+  FILE_LINE_LIMIT, FILE_TOKEN_SOFT_LIMIT, REINFORCE_MIN_SESSIONS,
+  canTransition, estimateTokens, expiryOf, orEmpty,
 } from './schema.ts'
 import { projectAliasesOf, resolveProject, type ProjectResolution } from './project.ts'
-import {
-  isEntryVisible, projectParentsOf, resolveScope, describeScope, projectLineage,
-  type ScopeResolution,
-} from './scope.ts'
-import { searchEntries, searchCost, type SearchHit } from './search.ts'
-import { inspectText, auditRecord } from './privacy.ts'
-import { parseSections } from './parse.ts'
+import { searchEntries, type SearchHit } from './search.ts'
+import { auditRecord } from './privacy.ts'
 import {
   compactBody, needsCompact, planPromotions, planRepairs, verifyAnchors, weeklyReview,
   type AnchorReader,
 } from './maintenance.ts'
-import type { MemoryEntry, Store } from './store.ts'
+import type { Store } from './store.ts'
+import { classifyError, type ActionFailureKind } from './actions/errors.ts'
 
-/** 一个常驻 skill 的 description（每请求付费的那部分）。 */
-export interface ResidentSkill {
-  name: string
-  path: string
-  description: string
-  descriptionTokens: number
-}
+/**
+ * 领域模块。
+ *
+ * 这三个领域原先是本文件里的 34 个闭包函数，现在各自成文件。
+ * 对外签名完全不变——`createActions` 仍返回同一个对象，
+ * 所以 bridge.ts 的 34 条路由、client 的调用点一行都不用改。
+ *
+ * 拆分依据（拆前实测的依赖分析）：
+ *   - 跨领域调用只有 store.writeBody 一处，且 maintenance 直接走 store；
+ *   - 领域之间没有循环依赖。
+ * memory 先建（无依赖），inbox / misses 各自独立。
+ */
+import { createReadActions } from './actions/read.ts'
+import { createMemoryActions } from './actions/memory.ts'
+import { createInboxActions } from './actions/inbox.ts'
+import { createMissActions } from './actions/misses.ts'
+
+/* ResidentSkill 也在 actions.ts re-export，保持 bridge.ts 的 import 不变 */
+export type { ResidentSkill } from './actions/read.ts'
+
+/* 这三个类型移到了 inbox.ts，但在 actions.ts re-export，
+ * 保证 `import { CaptureOutcome } from './actions.ts'` 的既有调用方零改动。 */
+export type { CaptureSuccess, CaptureOutcome, CaptureBatchOutcome } from './actions/inbox.ts'
 
 /**
  * `<available_skills>` 目录的固定框架文字（实测 171 tokens）。
- * 这部分与 skill 数量无关，是宿主注入的固定开销；
- * 记在这里是为了让「常驻前缀」的口径可复算，而不是凭印象。
+ *
+ * 定义移到 `actions/constants.ts`（避免 read.ts 反向 import actions.ts 造成循环），
+ * 这里 re-export 保持对外 API 不变。
  */
-export const SKILL_CATALOG_FRAME_TOKENS = 171
+export { SKILL_CATALOG_FRAME_TOKENS } from './actions/constants.ts'
 
 /** 统一的失败结果。 */
 export interface ActionFailure {
   ok: false
   error?: string
+  /**
+   * 失败类别。
+   *
+   * 为什么要有它：34 个能力原先只返回 `error` 字符串，
+   * 于是「文件不存在」「状态迁移非法」「隐私拦截」在类型上完全一样，
+   * 前端只能原样显示字符串，无法决定该给红条还是黄条、该给按钮还是给重试。
+   *
+   * 可选字段，向后兼容——既有只读 `ok` / `error` 的代码不受影响。
+   * 分类逻辑在 `actions/errors.ts::classifyError`。
+   */
+  kind?: ActionFailureKind
   /** 命中隐私闸门。 */
   blocked?: boolean
   /** 拦截原因（人可读）。 */
@@ -57,162 +89,21 @@ export interface ActionFailure {
   hint?: string
 }
 
-/** 捕获成功的结果。 */
-export interface CaptureSuccess {
-  ok: true
-  captured: { path: string; row: unknown }
-  privacy: { blocked: false }
-}
 
-/** 捕获结果。 */
-export type CaptureOutcome = CaptureSuccess | ActionFailure
-
-/** 批量捕获结果。 */
-export interface CaptureBatchOutcome {
-  ok: boolean
-  accepted?: string[]
-  blocked?: { line: string; reason: string }[]
-  total?: number
-  error?: string
-}
-
-/** 统一包装：所有能力都返回 `{ ok, ... }`。 */
+/**
+ * 统一包装：所有能力都返回 `{ ok, ... }`。
+ *
+ * 失败时附上 `kind` 与 `hint`（分类见 `actions/errors.ts`）。
+ * 这两个字段是**新增且可选**的，因此既有的 `ok` / `error` 消费方零改动。
+ */
 async function guard<T extends object>(run: () => Promise<T>): Promise<{ ok: true } & T | ActionFailure> {
   try {
     return { ok: true, ...(await run()) }
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    const message = error instanceof Error ? error.message : String(error)
+    const { kind, hint } = classifyError(error)
+    return { ok: false, error: message, kind, hint }
   }
-}
-
-/**
- * 条目的对外投影（UI 只需要这些字段）。
- *
- * `citeCount` 由调用方传入引用计数表——投影本身是纯函数，不读事件流。
- * 设计稿上每张卡片都显示「N 次引用」，那是判断「这条还活着吗」的关键信号，
- * 早先只有详情页里有，列表上看不到。
- */
-function projectEntry(entry: MemoryEntry, nowMs: number, citeCounts?: Map<string, number>) {
-  return {
-    id: entry.id,
-    path: entry.path,
-    title: entry.title,
-    domain: entry.domain,
-    domainLabel: entry.domainLabel,
-    project: entry.project,
-    layer: entry.layer,
-    status: entry.status,
-    confidence: entry.confidence ?? STATE_CONFIDENCE[entry.status as ConfidenceState] ?? null,
-    kind: entry.kind,
-    tags: entry.tags,
-    tokens: entry.tokens,
-    bytes: entry.bytes,
-    lines: entry.lines,
-    overLineLimit: entry.overLineLimit,
-    pinned: entry.pinned,
-    updatedAt: entry.updatedAt,
-    origin: entry.origin,
-    evidence: entry.evidence,
-    anchor: entry.anchor,
-    expiry: expiryOf(entry, nowMs),
-    /** 被 cite 的次数（真正被用上的次数，不含 recall）。 */
-    citeCount: citeCounts?.get(entry.id) ?? 0,
-  }
-}
-
-/** 从事件流统计每个条目的 cite 次数。 */
-function citeCountsOf(events: { kind?: string; ids?: string[] }[]): Map<string, number> {
-  const counts = new Map<string, number>()
-  for (const event of events) {
-    if (event.kind !== 'cite') continue
-    for (const id of event.ids ?? []) counts.set(id, (counts.get(id) ?? 0) + 1)
-  }
-  return counts
-}
-
-/** 作用域的父链（含自身，由近到远）。 */
-function projectLineageOf(scope: ScopeResolution): string[] {
-  return projectLineage(scope.project, scope.parents)
-}
-
-/**
- * 被作用域挡掉的项目及条目数。
- *
- * 为什么这个数字必须给界面：作用是**不让看**，那界面上「少了 12 条」
- * 和「数据丢了 12 条」长得一模一样。给一个明确的「已按作用域隐藏 N 条（gslz）」
- * 才能让人分清「规则生效」与「出故障」——这是本仓库反复踩的那个坑。
- */
-function excludedSummary(
-  entries: MemoryEntry[],
-  scope: ScopeResolution,
-): { project: string | null; count: number }[] {
-  const byProject = new Map<string | null, number>()
-  for (const entry of entries) {
-    if (isEntryVisible(
-      { project: entry.project, branch: entry.branch },
-      { project: scope.project, branch: scope.branch, parents: scope.parents },
-    )) continue
-    byProject.set(entry.project, (byProject.get(entry.project) ?? 0) + 1)
-  }
-  return [...byProject.entries()]
-    .map(([project, count]) => ({ project, count }))
-    .sort((a, b) => b.count - a.count)
-}
-
-/** 一条导航：某个目录下有多少条记忆、多少 token。 */
-export interface NavItem {
-  /** 相对项目的目录路径，如 `V2.1.25-dev/issues`、`_shared`。 */
-  path: string
-  /** 该目录下（不含子目录）的条目数。 */
-  count: number
-  tokens: number
-  /** `branch` = 分支专属；`shared` = 有意全分支共享；`root` = 未落分支。 */
-  kind: 'branch' | 'shared' | 'root'
-}
-
-/**
- * 从条目聚合出导航。
- *
- * 结构完全由数据决定：目录里没有条目就不会出现在导航里，
- * 也不会像手写表格那样列出早已不存在的目录。
- *
- * 层级只到「分支/分类」两层，再深就变成文件清单而非导航了。
- */
-function navOf(entries: MemoryEntry[]): NavItem[] {
-  const byDir = new Map<string, { count: number; tokens: number }>()
-  for (const entry of entries) {
-    if (entry.project === null) continue
-    const parts = entry.path.split('/')
-    /**
-     * 只取「分支层 + 分类层」，且**分类层必须是目录**。
-     *
-     * 早先直接 `slice(2, 4)`，于是 `dsh/main/x.md` 会把文件名当分类层，
-     * 导航退化成文件清单（每个文件一条）。导航要回答「去哪找」，
-     * 不是「有哪些文件」——后者检索本来就该做。
-     */
-    const branch = parts[2]
-    const category = parts[3]
-    if (branch === undefined) continue
-    const dir = category === undefined || category.toLowerCase().endsWith('.md')
-      ? branch.replace(/\.md$/i, '')
-      : `${branch}/${category}`
-    const key = dir
-    const current = byDir.get(key) ?? { count: 0, tokens: 0 }
-    current.count += 1
-    current.tokens += entry.tokens
-    byDir.set(key, current)
-  }
-  return [...byDir.entries()]
-    .map(([key, value]) => {
-      const head = key.split('/')[0]!
-      const kind: NavItem['kind'] = head === '_shared'
-        ? 'shared'
-        : /^v?\d+(\.\d+)+/i.test(head) || ['main', 'master', 'dev', 'develop', 'trunk', 'release'].includes(head.toLowerCase())
-          ? 'branch'
-          : 'root'
-      return { path: key, count: value.count, tokens: value.tokens, kind }
-    })
-    .sort((a, b) => a.path.localeCompare(b.path))
 }
 
 /** 建能力集合。 */
@@ -228,959 +119,18 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
    */
   readExternal?: AnchorReader
 }) {
-  /**
-   * 读全量并附派生字段。
+  /* ==========================================================
+   * 领域模块实例化。
    *
-   * `cwd` 是**可选**的诊断输入：给了它，返回里会带 `resolution`，
-   * 说明「这个 cwd 被解析成了哪个项目、凭什么」。这不是必须的——
-   * 显式传 `project` 的老调用方行为完全不变。
-   */
-  async function snapshot({ project, domain, cwd, branch }: {
-    project?: string | null; domain?: string | null; cwd?: string | null; branch?: string | null
-  } = {}) {
-    return guard(async () => {
-      const entries = await store.scan()
-      const events = await store.readEvents()
-      const misses = await store.readMisses()
-
-      /**
-       * 只给了 cwd 没给 project 时，先把 cwd 解析成**作用域**（项目 + 分支）。
-       *
-       * 为什么不在客户端解析：别名在 `work/<project>/index.md`、父子关系在
-       * 同处 `parent:` 字段、分支要读 git —— 三样客户端都看不到。
-       * 放到 core 才能保证「UI 看到的范围」与「agent 检索用的范围」是同一个判定。
-       *
-       * 老调用方（显式传 project）行为不变：没有 cwd 就不做作用域过滤。
-       */
-      let resolution: ProjectResolution | null = null
-      let scope: ScopeResolution | null = null
-      let effectiveProject = project
-      if ((project === undefined || project === null || project === '') && typeof cwd === 'string' && cwd.trim() !== '') {
-        const projects = projectAliasesOf(entries)
-        /**
-         * 项目识别统一走 `resolveScope`（git remote 优先），不再单独调 `resolveProject`。
-         *
-         * 为什么必须只留一条路：早先这里和 `sessionMemory` 各调一次
-         * `resolveProject`，而 `resolveScope` 内部又有自己的判定。
-         * 两套逻辑并存的后果是「同一 cwd，本项目看到 A，会话记忆看到 B」——
-         * 界面上表现为两个页签数字对不上，而两边都「没报错」。
-         */
-        scope = await resolveScope({ cwd, projects, entries })
-        effectiveProject = scope.project
-        resolution = {
-          project: scope.project,
-          matchedAlias: null,
-          matchedBy: scope.project === null ? null : 'remote',
-          cwd: scope.cwd,
-          knownProjects: projects.map(item => item.name),
-          reason: scope.project === null ? scope.detail : '',
-        }
-        // 显式给了 branch 就覆盖自动识别（人比机器可信，且能救 detached HEAD）
-        if (typeof branch === 'string' && branch.trim() !== '') {
-          scope = { ...scope, branch: branch.trim(), branchSource: null, reasons: scope.reasons.filter(r => r !== 'unknown_branch' && r !== 'no_git' && r !== 'detached_head') }
-        }
-      } else if (typeof branch === 'string' && branch.trim() !== '') {
-        /**
-         * 只有 project + branch、没有 cwd：构造一个最小作用域。
-         * 父项目仍从库里读——否则「显式指定子模块却读不到主仓记忆」，
-         * 正好违反规则④。
-         */
-        scope = {
-          project: project ?? null,
-          branch: branch.trim(),
-          branchSource: null,
-          cwd: null,
-          reasons: [],
-          detail: '由调用方显式指定的项目与分支',
-          parents: projectParentsOf(entries),
-        }
-      }
-
-      const projectFilter = effectiveProject
-
-      /**
-       * 过滤按**可见性**而不是等值：子模块能读主仓（父链），兄弟不可见，
-       * 分支按 `branchMatches` 相容。见 `scope.ts` 的模型说明。
-       */
-      const filtered = entries.filter((entry) => {
-        if (scope !== null) {
-          if (!isEntryVisible(
-            { project: entry.project, branch: entry.branch },
-            { project: scope.project, branch: scope.branch, parents: scope.parents },
-          )) return false
-        } else if (projectFilter !== undefined && projectFilter !== null && projectFilter !== '' && entry.project !== projectFilter) {
-          return false
-        }
-        if (domain !== undefined && domain !== null && domain !== '' && entry.domain !== domain) return false
-        return true
-      })
-
-      // **统计必须跟着过滤走**。
-      // 早先用全量 entries 算 stats，导致「本项目」分区在该项目 0 条记忆时
-      // 仍显示常驻前缀 286——一个自相矛盾的画面（0 条 + 286 tokens）。
-      // 项目视图要回答的是「这个项目占多少」，不是「整个库占多少」。
-      const scoped = projectFilter !== undefined && projectFilter !== null && projectFilter !== ''
-        || domain !== undefined && domain !== null && domain !== ''
-      const stats = store.summarize(scoped ? filtered : entries, events, misses, { nowMs: now() })
-      // 引用次数给列表用：设计稿每张卡片都显示「N 次引用」
-      const citeCounts = citeCountsOf(events)
-
-      const queue = filtered
-        .filter(entry => needsDecision(entry, now()) || entry.status === 'stale')
-        .map((entry) => {
-          const expiry = expiryOf(entry, now())
-          const kind = entry.status === 'stale'
-            ? 'anchor'
-            : expiry.level === 'retire' ? 'retire' : 'confirm'
-          return {
-            id: entry.id,
-            path: entry.path,
-            title: entry.title,
-            domain: entry.domain,
-            domainLabel: entry.domainLabel,
-            status: entry.status,
-            confidence: entry.confidence ?? STATE_CONFIDENCE[entry.status as ConfidenceState] ?? null,
-            kind,
-            evidence: (entry.evidence ?? []).slice(0, 1),
-            origin: entry.origin,
-            days: expiry.days,
-            reason: kind === 'retire'
-              ? `${expiry.days} 天未被引用`
-              : kind === 'anchor' ? '锚点失效，待复核' : '推断待确认',
-          }
-        })
-        .sort((a, b) => (b.days ?? 0) - (a.days ?? 0))
-
-      return {
-        root: store.root,
-        projectScoped: projectFilter !== undefined && projectFilter !== null && projectFilter !== '',
-        project: projectFilter ?? null,
-        domain: domain ?? null,
-        /**
-         * 解析诊断：`null` 表示调用方没给 cwd（不是解析失败）。
-         * 给了 cwd 就必须能回答「凭什么」，否则界面只能猜。
-         */
-        resolution,
-        /**
-         * 作用域：当前会话到底看到哪些记忆，以及为什么。
-         *
-         * `inheritedFrom` 列出因父链而额外可见的项目（子模块读主仓），
-         * `excluded` 列出被挡掉的项目及数量——**必须能说清挡住了什么**，
-         * 否则「规则④生效了」与「数据丢了」在界面上长得一样。
-         */
-        scope: scope === null ? null : {
-          project: scope.project,
-          branch: scope.branch,
-          branchSource: scope.branchSource,
-          label: describeScope({ project: scope.project, branch: scope.branch }),
-          /** 父链（含自身），按由近到远。 */
-          lineage: scope.project === null ? [] : projectLineageOf(scope),
-          /** 因继承而可见的祖先项目。 */
-          inheritedFrom: scope.project === null ? [] : projectLineageOf(scope).slice(1),
-          /** 被作用域挡掉的项目及条目数（诊断用，不参与检索）。 */
-          excluded: excludedSummary(entries, scope),
-          /** 失败原因码：有值说明这次判定不可靠，界面必须显式提示。 */
-          reasons: scope.reasons,
-          detail: scope.detail,
-        },
-        /** 库里有记忆的项目全集，供「你可能想要哪个」提示。 */
-        knownProjects: projectAliasesOf(entries).map(item => item.name),
-        entries: filtered.map(entry => projectEntry(entry, now(), citeCounts)),
-        stats,
-        queue,
-        /**
-         * 统计口径：`all` = 全库；`scoped` = 仅当前 project/domain。
-         * UI 据此说明「这个数字覆盖了什么」，避免与总览的全库数字混淆。
-         */
-        statsScope: scoped ? 'scoped' : 'all',
-        /** 当前项目自己的常驻索引（layer: l0）文件，供「本项目」分区展示。 */
-        projectIndex: filtered
-          .filter(entry => entry.layer === 'l0')
-          .map(entry => ({ path: entry.path, title: entry.title, tokens: entry.tokens })),
-        /**
-         * 导航：**从真实条目聚合，不读手写表格**。
-         *
-         * ## 为什么删掉 index.md 里的导航表
-         *
-         * 手写的目录表必然过时：`sz-web/index.md` 曾列着 `gslx/`、`dsh/`，
-         * 而实际结构早已变成 `V2.1.25-dev/`、`_shared/`——每个字都是错的。
-         * 过时的导航比没有导航更糟，因为它会被当成事实读。
-         *
-         * 这里直接从 `filtered` 条目聚合出「哪个目录有多少条」，
-         * 结构与磁盘天然一致，零维护。
-         */
-        nav: navOf(filtered),
-        generatedAt: new Date(now()).toISOString(),
-      }
-    })
-  }
-
-  /**
-   * 常驻前缀逐项拆解 —— 回答「这 N 个 tokens 到底是什么」。
-   *
-   * 拆成三类，因为它们**付费方式完全不同**，混在一起就会得出错误结论：
-   *   1. `catalog`：skill description + `<available_skills>` 框架，**每个请求都付费**
-   *   2. `index`：`layer: l0` 的索引文件，只在被 read 时才进上下文
-   *   3. `frame`：其余固定文字
-   *
-   * 为什么必须拆开：product.md 把「两个 skill description」与「L0 索引文件」
-   * 都记作「常驻前缀 286 tokens」，但实测前者是 190 + 171 框架 = 361，
-   * 后者是 286。两个数字对不上，说明口径本身有歧义——而这个歧义会直接
-   * 导致「该优化哪个」判断错。
-   */
-  function residentBreakdown(entries: MemoryEntry[], skills: ResidentSkill[]) {
-    const indexItems = entries
-      .filter(entry => entry.layer === 'l0')
-      .map(entry => ({
-        kind: 'index' as const,
-        id: entry.id,
-        path: entry.path,
-        title: entry.title,
-        tokens: entry.tokens,
-        bytes: entry.bytes,
-        lines: entry.lines,
-        overLineLimit: entry.overLineLimit,
-        // 索引是否真的进上下文，取决于它有没有被 skill 目录引用
-        billed: false,
-        note: '仅在被 read 时进上下文',
-      }))
-
-    const catalogItems = skills.map(skill => ({
-      kind: 'catalog' as const,
-      id: `skill.${skill.name}`,
-      path: skill.path,
-      title: skill.name,
-      tokens: skill.descriptionTokens,
-      bytes: skill.description.length,
-      lines: 1,
-      overLineLimit: false,
-      billed: true,
-      note: 'skill description，每请求付费',
-    }))
-
-    const indexTokens = indexItems.reduce((sum, item) => sum + item.tokens, 0)
-    const catalogTokens = catalogItems.reduce((sum, item) => sum + item.tokens, 0)
-
-    return {
-      items: [...catalogItems, ...indexItems],
-      catalogTokens,
-      indexTokens,
-      frameTokens: SKILL_CATALOG_FRAME_TOKENS,
-      /** 真正每请求付费的部分：catalog + 框架。 */
-      billedTokens: catalogTokens + SKILL_CATALOG_FRAME_TOKENS,
-      /** 标了 l0 但按需加载的部分。 */
-      onDemandTokens: indexTokens,
-    }
-  }
-
-  /** 总览：KPI + 预算账本 + 三率 + 域统计。 */
-  async function overview({ skillDescriptions = [], skillsError = '' }: {
-    skillDescriptions?: ResidentSkill[]
-    /** 为什么没读到 skill（空字符串表示没出问题）。 */
-    skillsError?: string
-  } = {}) {
-    return guard(async () => {
-      const entries = await store.scan()
-      const events = await store.readEvents()
-      const misses = await store.readMisses()
-      const stats = store.summarize(entries, events, misses, { nowMs: now() })
-      const l0 = stats.layers.l0.tokens
-      const resident = residentBreakdown(entries, skillDescriptions)
-      return {
-        kpi: {
-          /**
-           * **`residentTokens` 是每请求付费的常驻前缀，不是 L0 索引体积。**
-           *
-           * 这里曾经取 `l0`（所有 `layer: l0` 文件之和），于是顶栏第一格显示的
-           * 是「索引层 286」，而卡片上挂的却是「361」这个基准——两个数字对不上，
-           * 且按它去优化会去删索引表，一分钱每请求成本都省不下来。
-           * 详见 product.md §十二：361 = catalog 190 + 框架 171；286 = 索引文件之和。
-           */
-          residentTokens: resident.billedTokens,
-          /** 索引层体积单列一格，两个数字各自有名字，不再互相冒充。 */
-          indexTokens: l0,
-          residentBudget: RESIDENT_TOKEN_BUDGET,
-          hitRate: stats.rates.hitRate,
-          confirmRate: stats.rates.confirmRate,
-          expireRate: stats.rates.expireRate,
-          pending: stats.counts.pending,
-        },
-        resident: {
-          ...resident,
-          /**
-           * 三态，UI 必须区分：
-           *   `ok`     有 catalog，数字可信
-           *   `empty`  读到了但一个都没有（可能真是没装 skill）
-           *   `error`  没读到（宿主没给服务 / list 抛错），此时 171 只是框架开销
-           *
-           * 不区分三态的话，「读不到」会伪装成「没有」，用户会以为 171 就是全部。
-           */
-          state: skillsError !== '' ? 'error' : (skillDescriptions.length === 0 ? 'empty' : 'ok'),
-          error: skillsError,
-        },
-        /**
-         * 预算账本 —— 三段各自的**付费方式**才是重点，不是数字本身。
-         *
-         * 这里曾经把 L0 的 `tokens` 填成 `l0` 文件之和（索引层 316），
-         * 而 KPI 的「常驻前缀」是 billedTokens（每请求 171）。
-         * 同一屏两个 L0 数字对不上，用户没法判断该信哪个、该优化哪个。
-         *
-         * 现在每段都带 `billing` 与 `advice`：说清「什么时候付费」和「超了该怎么办」。
-         * 数字只有在能指导决策时才有价值。
-         */
-        budget: [
-          {
-            layer: 'L0',
-            name: '常驻前缀',
-            tokens: resident.billedTokens,
-            files: skillDescriptions.length,
-            limit: RESIDENT_TOKEN_BUDGET,
-            billing: 'per-request',
-            note: 'skill description + 目录框架，每个请求都付费',
-            advice: '超了要压缩 skill description（改它才会省每请求成本）',
-          },
-          {
-            layer: 'L1',
-            name: '索引层',
-            tokens: stats.layers.l1.tokens,
-            files: stats.layers.l1.files,
-            limit: 2048,
-            billing: 'on-demand',
-            note: '被 read 时才进上下文，不在每请求前缀里',
-            advice: '超了拆索引文件；这只影响检索定位精度，不影响每请求账单',
-          },
-          {
-            layer: 'L2',
-            name: '详情层',
-            tokens: stats.layers.l2.tokens,
-            files: stats.layers.l2.files,
-            limit: null,
-            billing: 'on-demand',
-            note: '单篇命中才读，总量大不直接等于贵',
-            advice: '关注单篇体积（超 80 行 / 1200 tokens），而不是总量',
-          },
-          {
-            /** 汇总行：把「L0 索引文件之和」这个容易混淆的数字单独摆出来。 */
-            layer: 'L0*',
-            name: '索引文件合计',
-            tokens: l0,
-            files: stats.layers.l0.files,
-            limit: null,
-            billing: 'on-demand',
-            note: '标记 layer: l0 的文件之和，与「常驻前缀」不是同一个数',
-            advice: '这个数字大不代表每请求贵；删它不会省每请求成本',
-          },
-        ],
-        /**
-         * 域统计**带明细**。
-         *
-         * 原来只给「sz-web 35 篇 / 63,030 tokens」——用户看到了数字却不知道是哪 35 篇，
-         * 这个数字就无法验证、无法下钻、也就无法据此做任何事。
-         * 所以每个域都带上自己的文件清单（按 tokens 降序，最重的排前面）。
-         */
-        domains: stats.domains.map(domain => ({
-          ...domain,
-          entries: entries
-            .filter(entry => entry.domain === domain.key)
-            .sort((a, b) => b.tokens - a.tokens)
-            .map(entry => ({
-              id: entry.id,
-              path: entry.path,
-              title: entry.title,
-              layer: entry.layer,
-              status: entry.status,
-              tokens: entry.tokens,
-              lines: entry.lines,
-              overLineLimit: entry.overLineLimit,
-              citeCount: citeCountsOf(events).get(entry.id) ?? 0,
-            })),
-        })),
-        rates: stats.rates,
-        counts: stats.counts,
-        misses: stats.misses,
-        files: stats.files,
-        bytes: stats.bytes,
-        tokens: stats.tokens,
-        overLimit: stats.overLimit,
-        cacheNote: '改常驻前缀会作废当前会话 KV cache（实测单次 20–57 万 tokens），攒批改。',
-      }
-    })
-  }
-
-  /** 记录流：INBOX 全量 + 吞吐统计。 */
-  async function inbox({ domain = 'personal', state, kind }: {
-    domain?: string | null; state?: string; kind?: string
-  } = {}) {
-    return guard(async () => {
-      const result = await store.readInbox(domain)
-      let entries = result.entries.map((entry, index) => ({ ...entry, index }))
-      if (typeof state === 'string' && state !== '') entries = entries.filter(entry => entry.state === state)
-      if (typeof kind === 'string' && kind !== '') entries = entries.filter(entry => entry.kind === kind)
-      const all = result.entries
-      return {
-        path: result.path,
-        exists: result.exists,
-        entries,
-        throughput: {
-          total: all.length,
-          open: all.filter(entry => entry.state === 'open').length,
-          todo: all.filter(entry => entry.state === 'todo').length,
-          done: all.filter(entry => entry.state === 'done').length,
-          dropped: all.filter(entry => entry.state === 'dropped').length,
-          toPromote: all.filter(entry => entry.state === 'done'
-            && (entry.destination === '' || entry.destination === '—')).length,
-          invalidKind: all.filter(entry => !entry.kindValid).length,
-          invalidState: all.filter(entry => !entry.stateValid).length,
-        },
-        kinds: [...INBOX_KINDS],
-        states: [...INBOX_STATES],
-      }
-    })
-  }
-
-  /** 捕获一条（带隐私闸门）。 */
-  async function capture({ content, kind = '想法', domain = 'personal', session = 'plugin' }: {
-    content: string; kind?: string; domain?: string; session?: string
-  }): Promise<CaptureOutcome> {
-    const text = String(content ?? '').trim()
-    if (text === '') return { ok: false, error: '内容不能为空' }
-    if (!INBOX_KINDS.includes(kind as InboxKind)) {
-      return { ok: false, error: `类型必须是 ${INBOX_KINDS.join(' / ')}` }
-    }
-    const privacy = inspectText(text)
-    if (privacy.blocked) {
-      return {
-        ok: false,
-        blocked: true,
-        reason: privacy.reason,
-        masked: privacy.masked,
-        audit: auditRecord(text, privacy.findings),
-        hint: '命中隐私闸门，已拒写。可用脱敏后的文本重存。',
-      }
-    }
-    return guard(async () => {
-      const result = await store.appendInbox({ domain, kind, content: text })
-      await store.appendEvent({ session, kind: 'capture', query: text.slice(0, 80), ids: [] })
-      return { captured: result, privacy: { blocked: false as const } }
-    }) as Promise<CaptureOutcome>
-  }
-
-  /** 批量捕获（换行或分号分隔）。 */
-  async function captureBatch({ text, kind = '想法', domain = 'personal', session = 'plugin' }: {
-    text: string; kind?: string; domain?: string; session?: string
-  }): Promise<CaptureBatchOutcome> {
-    const lines = String(text ?? '')
-      .split(/\n|;/)
-      .map(line => line.trim())
-      .filter(Boolean)
-    if (lines.length === 0) return { ok: false as const, error: '没有可捕获的内容' }
-    const accepted: string[] = []
-    const blocked: { line: string; reason: string }[] = []
-    for (const line of lines) {
-      const result = await capture({ content: line, kind, domain, session })
-      if (result.ok) accepted.push(line)
-      else blocked.push({ line, reason: result.reason ?? result.error ?? '未知原因' })
-    }
-    return { ok: true as const, accepted, blocked, total: lines.length }
-  }
-
-  /** 改一条记录流的状态 / 类型 / 去向。 */
-  async function updateInbox({ domain, lineIndex, patch = {}, session = 'plugin' }: {
-    domain?: string | null
-    lineIndex: number
-    patch?: Record<string, string>
-    session?: string
-  }) {
-    return guard(async () => {
-      if (typeof patch.state === 'string' && !INBOX_STATES.includes(patch.state as InboxState)) {
-        throw new Error(`状态必须是 ${INBOX_STATES.join(' / ')}`)
-      }
-      if (typeof patch.kind === 'string' && !INBOX_KINDS.includes(patch.kind as InboxKind)) {
-        throw new Error(`类型必须是 ${INBOX_KINDS.join(' / ')}`)
-      }
-
-      /**
-       * 按**当前行的类型**校验状态是否合法。
-       *
-       * 为什么读一次当前行而不是直接信任 patch：`patch` 里可能只带 `state`，
-       * 这时类型来自库里已有的那行。拿不到类型就没法判断
-       * 「给决策标 todo」该不该拒——先读再判，不靠调用方自觉。
-       *
-       * 拒绝时要说清「这个类型支持哪些状态」，而不是只报「非法」：
-       * 用户看到的应该是「决策没有进行中，只有 open / done / dropped」。
-       */
-      if (typeof patch.state === 'string') {
-        const before = await store.readInbox(domain)
-        const current = before.entries.find(entry => entry.lineIndex === lineIndex)
-        const effectiveKind = typeof patch.kind === 'string' ? patch.kind : current?.kind ?? ''
-        if (effectiveKind !== '' && !isStateAllowed(effectiveKind, patch.state)) {
-          const allowed = statesOfKind(effectiveKind)
-          throw new Error(
-            `「${effectiveKind}」不支持状态 ${patch.state}，可用：${allowed.join(' / ')}`
-            + (allowed.length < INBOX_STATES.length
-              ? '（该类型没有「进行中」这个阶段）'
-              : ''),
-          )
-        }
-      }
-
-      const result = await store.updateInboxRow({ domain, lineIndex, patch })
-      /**
-       * 进入 todo 时记一条事件，作为「开始时间」。
-       *
-       * 为什么不加表格列：INBOX 是 5 列固定契约，加列会让所有存量行错位。
-       * 而"什么时候开始的"天然是**事件**而不是状态——状态只说明现在，
-       * 事件才能回答"开了头多久没结"。这正好支撑你要的「看到未完成的」。
-       */
-      if (patch.state === 'todo' && result.row !== null) {
-        await store.appendEvent({
-          session, kind: 'inbox-start',
-          query: String(result.row.content ?? '').slice(0, 60),
-        })
-      }
-      await store.appendEvent({ session, kind: 'inbox-update', query: String(result.row?.content ?? '').slice(0, 60) })
-      return { updated: result }
-    })
-  }
-
-  /** 删除一条 / 多条记录流（行号从大往小删，不漂移）。 */
-  async function deleteInbox({ domain, lineIndexes = [], session = 'plugin' }: {
-    domain?: string | null; lineIndexes?: number[]; session?: string
-  }) {
-    return guard(async () => {
-      const result = await store.deleteInboxRows({ domain, lineIndexes })
-      await store.appendEvent({ session, kind: 'inbox-delete', query: `删除 ${result.removed} 行` })
-      return { removed: result.removed, path: result.path }
-    })
-  }
-
-  /** 批量流转状态。 */
-  async function batchInboxState({ domain, lineIndexes = [], state, session = 'plugin' }: {
-    domain?: string | null; lineIndexes?: number[]; state: string; session?: string
-  }) {
-    if (!INBOX_STATES.includes(state as InboxState)) {
-      return { ok: false as const, error: `状态必须是 ${INBOX_STATES.join(' / ')}` }
-    }
-    const updated: number[] = []
-    const failed: { lineIndex: number; error?: string }[] = []
-    // 改状态不增删行，行号稳定；倒序只是为了让失败更早暴露
-    for (const lineIndex of [...lineIndexes].sort((a, b) => b - a)) {
-      const result = await updateInbox({ domain, lineIndex, patch: { state }, session })
-      if (result.ok) updated.push(lineIndex)
-      else failed.push({ lineIndex, error: result.error })
-    }
-    return { ok: true as const, updated, failed }
-  }
-
-  /** 提升一条记录到档案：在目标域新建/追加条目，并把 INBOX 标 done + 去向。 */
-  async function promoteInbox({ domain, lineIndex, target, session = 'plugin' }: {
-    domain?: string | null; lineIndex: number; target?: string; session?: string
-  }) {
-    return guard(async () => {
-      const result = await store.readInbox(domain)
-      const row = result.entries.find(entry => entry.lineIndex === lineIndex)
-      if (row === undefined) throw new Error(`第 ${lineIndex + 1} 行不是 INBOX 条目`)
-      const date = new Date(now()).toISOString().slice(0, 10)
-      const targetPath = String(target ?? '').trim() !== ''
-        ? String(target).trim()
-        : `personal/notes/INBOX-提升-${date}.md`
-      const relPath = targetPath.endsWith('.md') ? targetPath : `${targetPath}.md`
-      const body = `\n# ${row.content}\n\n> 由 INBOX 于 ${date} 提升。类型：${row.kind}。\n\n${row.content}\n`
-      let created: MemoryEntry
-      try {
-        created = await store.createEntry({
-          relPath,
-          frontmatter: {
-            title: truncate(row.content, 40),
-            kind: 'fact',
-            layer: 'l2',
-            status: 'confirmed',
-            confidence: 0.9,
-            origin: 'G1',
-            updated: date,
-          },
-          body,
-        })
-      } catch {
-        // 目标已存在 → 追加到正文末尾
-        const existing = await store.readEntry(relPath)
-        created = await store.writeBody(relPath, `${existing.body.trimEnd()}\n\n## ${date} 提升\n\n${row.content}\n`)
-      }
-      await store.updateInboxRow({ domain, lineIndex, patch: { state: 'done', destination: relPath } })
-      await store.appendEvent({ session, kind: 'promote', ids: [created.id], query: row.content.slice(0, 60) })
-      return { promoted: { path: relPath, id: created.id }, inbox: { lineIndex, state: 'done', destination: relPath } }
-    })
-  }
-
-  /** 检索（同样记账未命中）。 */
-  async function search({ query, project, cwd, branch, session = 'plugin', record = true }: {
-    query: string; project?: string | null; cwd?: string | null; branch?: string | null
-    session?: string; record?: boolean
-  }) {
-    return guard(async () => {
-      const entries = await store.scan()
-      /**
-       * 有 cwd 或 branch 时按作用域检索——**agent 的检索必须与界面同口径**。
-       * 否则会出现「界面上看不到 gslz 的记忆，但 agent 搜得到并写进上下文」，
-       * 那等于作用域只挡住了人，没挡住真正会污染推理的那一端。
-       */
-      let scope: ScopeResolution | null = null
-      if ((typeof cwd === 'string' && cwd.trim() !== '') || (typeof branch === 'string' && branch.trim() !== '')) {
-        const projects = projectAliasesOf(entries)
-        const resolved = typeof cwd === 'string' && cwd.trim() !== ''
-          ? await resolveScope({ cwd, projects, entries })
-          : { project: project ?? null, branch: null, branchSource: null, cwd: null, reasons: [], detail: '', parents: projectParentsOf(entries) }
-        scope = typeof branch === 'string' && branch.trim() !== ''
-          ? { ...resolved, branch: branch.trim() }
-          : resolved
-      }
-      const result = searchEntries(entries, query, { project, scope })
-      if (record) {
-        if (result.matched) {
-          await store.recordCite({ ids: result.hits.map(hit => hit.id), kind: 'recall', session, query: result.query })
-          /**
-           * 命中时推进「验证期」进度。
-           *
-           * 未命中流水线的最后一态（验证期内 → 已验证生效）依赖这个计数：
-           * 草稿落库后，同一个 query 再被检索且**能命中**，说明补对了。
-           * 早先没人写 `hits`，所以最后一态永远是空抽屉。
-           */
-          await store.recordVerifyHit({ query: result.query })
-        } else {
-          await store.recordMiss({ query: result.query, session })
-        }
-      }
-      return {
-        query: result.query,
-        matched: result.matched,
-        hits: result.hits.slice(0, 20),
-        total: result.hits.length,
-        cost: searchCost(result.hits.slice(0, 20)),
-      }
-    })
-  }
-
-  /** 一条记忆的详情（含证据链、锚点、引用记录）。 */
-  async function detail({ path }: { path: string }) {
-    return guard(async () => {
-      const entry = await store.readEntry(path)
-      const events = await store.readEvents()
-      const refs = events.filter(event => (event.ids ?? []).includes(entry.id))
-      const cites = refs.filter(event => event.kind === 'cite')
-      const lastCite = cites.length === 0 ? null : cites[cites.length - 1].at
-      return {
-        entry: {
-          ...projectEntry(entry, now()),
-          overTokenLimit: entry.tokens > FILE_TOKEN_SOFT_LIMIT,
-          body: entry.body,
-        },
-        trust: {
-          confidence: entry.confidence ?? STATE_CONFIDENCE[entry.status as ConfidenceState] ?? null,
-          evidenceCount: (entry.evidence ?? []).length,
-          citeCount: cites.length,
-          recallCount: refs.filter(event => event.kind === 'recall').length,
-          lastCitedAt: lastCite,
-          anchor: entry.anchor,
-          anchorState: entry.status === 'stale' ? 'stale' : entry.anchor === null ? 'none' : 'fresh',
-        },
-        references: refs.slice(-20).reverse(),
-        states: [...CONFIDENCE_STATES],
-        sections: parseSections(entry.body).map(section => ({
-          title: section.title, level: section.level, lines: section.lines.length,
-        })),
-      }
-    })
-  }
-
-  /** 编辑正文（源码单模式）。 */
-  async function writeBody({ path, body, session = 'plugin' }: {
-    path: string; body: string; session?: string
-  }) {
-    const privacy = inspectText(body)
-    if (privacy.blocked) {
-      return {
-        ok: false as const,
-        blocked: true,
-        reason: privacy.reason,
-        masked: privacy.masked,
-        audit: auditRecord(body, privacy.findings),
-      }
-    }
-    return guard(async () => {
-      const entry = await store.writeBody(path, body)
-      await store.appendEvent({ session, kind: 'write', ids: [entry.id] })
-      return { entry: { id: entry.id, path: entry.path, tokens: entry.tokens, lines: entry.lines } }
-    })
-  }
-
-  /** 改状态（含驳回、确认、降级）。 */
-  async function setStatus({ path, status, reason, session = 'plugin' }: {
-    path: string; status: string; reason?: string; session?: string
-  }) {
-    if (!CONFIDENCE_STATES.includes(status as ConfidenceState)) {
-      return { ok: false as const, error: `状态必须是 ${CONFIDENCE_STATES.join(' / ')}` }
-    }
-    if (status === 'rejected' && String(reason ?? '').trim() === '') {
-      return { ok: false as const, error: '驳回必须写一句理由（30 天后可复查）' }
-    }
-    return guard(async () => {
-      const current = await store.readEntry(path)
-      /**
-       * 这里必须用**人**的迁移表，不是自动爬升的那张。
-       *
-       * 这一条调用就是 UI 上「确认」按钮的实现。早先用自动表校验，
-       * 而队列里最常见的就是 hypothesis——于是每次点确认都报
-       * 「非法状态迁移：hypothesis → confirmed」，且总览入口连这句都不显示。
-       * 详见 schema.ts `HUMAN_STATE_TRANSITIONS` 的注释。
-       */
-      if (!canHumanTransition(current.status, status)) {
-        throw new Error(`非法状态迁移：${current.status} → ${status}`)
-      }
-      const patch: Record<string, unknown> = {
-        status,
-        confidence: STATE_CONFIDENCE[status as ConfidenceState] ?? current.confidence,
-      }
-      if (status === 'rejected') {
-        patch.refuted_reason = String(reason).trim()
-        patch.refuted_at = new Date(now()).toISOString()
-      }
-      if (status === 'confirmed') patch.confirmed_at = new Date(now()).toISOString()
-      const entry = await store.patchMeta(path, patch)
-      await store.appendEvent({
-        session, kind: 'status', ids: [entry.id], query: `${current.status} → ${status}`,
-      })
-      return { entry: { id: entry.id, path: entry.path, status: entry.status } }
-    })
-  }
-
-  /** 确认推断。 */
-  async function confirm({ path, session = 'plugin' }: { path: string; session?: string }) {
-    return setStatus({ path, status: 'confirmed', session })
-  }
-
-  /** 驳回推断（30 天静默）。 */
-  async function reject({ path, reason, session = 'plugin' }: {
-    path: string; reason: string; session?: string
-  }) {
-    return setStatus({ path, status: 'rejected', reason, session })
-  }
-
-  /** 撤销驳回。 */
-  async function undoReject({ path, session = 'plugin' }: { path: string; session?: string }) {
-    return setStatus({ path, status: 'reinforced', session })
-  }
-
-  /** 归档退役。 */
-  async function archive({ path, reason = '到期退役', session = 'plugin' }: {
-    path: string; reason?: string; session?: string
-  }) {
-    return guard(async () => {
-      const result = await store.archiveEntry({ relPath: path, reason })
-      await store.appendEvent({ session, kind: 'archive', ids: [path] })
-      return { archived: result }
-    })
-  }
-
-  /** 再留 90 天。 */
-  async function keep({ path, session = 'plugin' }: { path: string; session?: string }) {
-    return guard(async () => {
-      const entry = await store.keepLonger({ relPath: path })
-      await store.appendEvent({ session, kind: 'keep', ids: [entry.id] })
-      return { kept: { id: entry.id, path: entry.path, updatedAt: entry.updatedAt } }
-    })
-  }
-
-  /** 批量归档。 */
-  async function batchArchive({ paths = [], reason = '批量退役', session = 'plugin' }: {
-    paths?: string[]; reason?: string; session?: string
-  }) {
-    const archived: { from: string; to: string }[] = []
-    const failed: { path: string; error?: string }[] = []
-    for (const path of paths) {
-      const result = await archive({ path, reason, session })
-      if (result.ok) archived.push(result.archived)
-      else failed.push({ path, error: result.error })
-    }
-    return { ok: true as const, archived, failed }
-  }
-
-  /** 未命中工作台：全量聚类 + 五态流水线。 */
-  /**
-   * 未命中工作台。
-   *
-   * @param sort - 排序口径：frequency（按频率，默认）/ recent（按最近）/ breadth（按会话广度）
-   *
-   * 为什么排序交给 core 而不是 UI：排序口径只该有一处实现，
-   * 否则 Web 端接了之后必然与插件端分叉（这个教训在 §14.4 记过）。
-   */
-  async function misses({ sort = 'frequency' }: { sort?: string } = {}) {
-    return guard(async () => {
-      const list = await store.readMisses()
-      const pipeline: Record<string, {
-        query: string; count: number; at: string; lastAt: string; state: string
-        drafts: string[]; wastedTokens: number
-        /** 出现过的会话数（比 count 更能说明是不是共性问题）。 */
-        sessions: number
-        /** 验证期内已命中次数（满 3 次转「已验证生效」）。 */
-        hits: number
-        /** 验证期剩余天数；不在验证期时为 null。 */
-        remainingDays: number | null
-        /** 草稿落库路径（验证期内点开能跳过去）。 */
-        draftPath: string | null
-      }[]> = {
-        observing: [], 'should-fill': [], drafting: [], verifying: [], verified: [],
-      }
-      const nowMs = now()
-      for (const miss of list) {
-        const state = miss.state ?? 'observing'
-        const bucket = pipeline[state] ?? pipeline.observing
-        // 验证期剩余天数：从进入验证期的时刻起算，缺字段时退回最近活动时间
-        const startedMs = Date.parse(miss.verifyAt ?? miss.stateAt ?? miss.lastAt ?? miss.at)
-        const elapsedDays = Number.isFinite(startedMs)
-          ? Math.floor((nowMs - startedMs) / 86_400_000)
-          : null
-        bucket.push({
-          query: miss.query,
-          count: miss.count ?? 1,
-          at: miss.at,
-          lastAt: miss.lastAt ?? miss.at,
-          state,
-          drafts: miss.drafts ?? [],
-          // 平均多花多少 token：一次未命中意味着模型多试一轮，按 120 tokens 估
-          wastedTokens: (miss.count ?? 1) * 120,
-          sessions: (miss.sessions ?? [miss.session]).length,
-          hits: miss.hits ?? 0,
-          remainingDays: state === 'verifying' && elapsedDays !== null
-            ? Math.max(0, MISS_VERIFY_DAYS - elapsedDays)
-            : null,
-          draftPath: miss.draftPath ?? null,
-        })
-      }
-      /**
-       * 排序：三种口径都能回答不同的问题。
-       *
-       *   frequency  哪条问得最多 → 该先补哪条（默认）
-       *   recent     最近在问什么 → 跟当前任务相关的可能性大
-       *   breadth    多少会话都在问 → 共性问题优先
-       *
-       * 早先固定按频率，且注释写着「排序口径只该有一处」——那条原则是对的，
-       * 但结论错了：**口径应该可切换，实现应该只有一处**。现在这一处就是这里。
-       */
-      for (const bucket of Object.values(pipeline)) {
-        if (sort === 'recent') {
-          bucket.sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)))
-        } else if (sort === 'breadth') {
-          bucket.sort((a, b) => b.sessions - a.sessions || b.count - a.count)
-        } else {
-          bucket.sort((a, b) => b.count - a.count || String(b.lastAt).localeCompare(String(a.lastAt)))
-        }
-      }
-      return {
-        pipeline,
-        /** 五态各自的条数，供 UI 顶部计数条直接消费（不必自己数）。 */
-        counts: {
-          observing: pipeline.observing.length,
-          'should-fill': pipeline['should-fill'].length,
-          drafting: pipeline.drafting.length,
-          verifying: pipeline.verifying.length,
-          verified: pipeline.verified.length,
-        },
-        total: list.length,
-        conversion: list.length === 0 ? null : pipeline.verified.length / list.length,
-        verifyDays: MISS_VERIFY_DAYS,
-        /** 阈值：问过几次算「该补了」。UI 上要能说清这个数字的来源。 */
-        fillThreshold: 3,
-        /** 当前排序口径，UI 用来回显选中的那一项。 */
-        sort,
-      }
-    })
-  }
-
-  /** 未命中 → 草稿（必须人确认才落库）。 */
-  async function missDraft({ query, type = '问题', session = 'plugin' }: {
-    query: string; type?: string; session?: string
-  }) {
-    if (!INBOX_KINDS.includes(type as InboxKind)) {
-      return { ok: false as const, error: `类型必须是 ${INBOX_KINDS.join(' / ')}` }
-    }
-    return guard(async () => {
-      const updated = await store.updateMiss({ query, state: 'drafting' })
-      const draft = {
-        query,
-        type,
-        title: truncate(query, 40),
-        content: `关于「${query}」的结论：`,
-        at: new Date(now()).toISOString(),
-      }
-      await store.updateMiss({ query, draftId: `${query}@${draft.at}` })
-      await store.appendEvent({ session, kind: 'miss-draft', query })
-      return { draft, miss: updated }
-    })
-  }
-
-  /** 草稿确认 → 落库 → 进入 7 天验证期。 */
-  async function missConfirm({ query, content, type = '问题', domain = 'personal', session = 'plugin' }: {
-    query: string; content: string; type?: string; domain?: string; session?: string
-  }) {
-    return guard(async () => {
-      const text = String(content ?? '').trim()
-      if (text === '') throw new Error('草稿内容不能为空')
-      const privacy = inspectText(text)
-      if (privacy.blocked) {
-        return {
-          ok: false as const,
-          blocked: true,
-          reason: privacy.reason,
-          masked: privacy.masked,
-        }
-      }
-      const date = new Date(now()).toISOString().slice(0, 10)
-      const slug = text.slice(0, 24).replace(/[^\w\u4e00-\u9fff-]+/g, '-')
-      const relPath = `${domain}/misses/${date}-${slug}.md`
-      const entry = await store.createEntry({
-        relPath,
-        frontmatter: {
-          title: truncate(query, 40),
-          kind: 'fact',
-          layer: 'l2',
-          status: 'observed',
-          confidence: 0.5,
-          origin: 'G2',
-          evidence: [{ session, excerpt: text.slice(0, 120), gate: 'G2' }],
-        },
-        body: `\n# ${query}\n\n${text}\n`,
-      })
-      const updated = await store.updateMiss({
-        query, state: 'verifying', draftId: entry.id, draftPath: relPath,
-      })
-      await store.appendEvent({ session, kind: 'miss-confirm', ids: [entry.id], query })
-      return {
-        entry: { id: entry.id, path: relPath },
-        miss: updated,
-        verifyUntil: new Date(now() + MISS_VERIFY_DAYS * 86_400_000).toISOString(),
-        draftType: type,
-      }
-    })
-  }
-
-  /** 批量生成草稿。 */
-  async function missBatchDraft({ queries = [], type = '问题', session = 'plugin' }: {
-    queries?: string[]; type?: string; session?: string
-  }) {
-    const drafts: unknown[] = []
-    const failed: { query: string; error?: string }[] = []
-    for (const query of queries) {
-      const result = await missDraft({ query, type, session })
-      if (result.ok) drafts.push(result.draft)
-      else failed.push({ query, error: result.error })
-    }
-    return { ok: true as const, drafts, failed }
-  }
-
-  /** 删除未命中。 */
-  async function missDelete({ query }: { query: string }) {
-    return guard(async () => ({ removed: await store.deleteMiss(query) }))
-  }
+   * 用 `now: () => now()` 包一层而不是直接传 `now`：
+   * 因为 `now` 是 createActions 的参数，闭包捕获它以后始终读同一个函数，
+   * 直接传引用也没错，但包一层后语义更明确「用当前时间」。
+   * ========================================================== */
+  const ctx = { store, now: () => now() }
+  const readActions = createReadActions(ctx)
+  const memoryActions = createMemoryActions(ctx)
+  const inboxActions = createInboxActions(ctx)
+  const missActions = createMissActions(ctx)
 
   /** 导出：markdown / json，支持按域过滤。 */
   async function exportData({ format = 'markdown', domain }: {
@@ -1268,11 +218,20 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
         projectFilter = resolution.project
       }
 
-      const allEvents = await store.readEvents()
-      /** 会话内的全部事件；没给 sessionId 时才退化成「全库最近 200 条」。 */
+      /**
+       * 事件读取分两条路（第 4 步重构）：
+       *
+       * - 没给 sessionId：只要「全库最近 200 条」。
+       *   用 `readEventsTail(200)` 从文件尾部读，**只解析这 200 条**——
+       *   而不是旧写法 `readEvents()` 读全文解析全部再 `slice(-200)`。
+       *   events.jsonl 永不轮转，这个差别在大库上是数量级的。
+       *
+       * - 给了 sessionId：必须看该会话的**全部**事件（不能只取尾部，
+       *   否则会话早先的注入/引用会丢失），仍用全量 `readEvents()`。
+       */
       const events = sessionId === undefined || sessionId === ''
-        ? allEvents.slice(-200)
-        : allEvents.filter(event => event.session === sessionId)
+        ? await store.readEventsTail(200)
+        : (await store.readEvents()).filter(event => event.session === sessionId)
       const recent = events.slice(-200)
 
       const injectedEvents = recent.filter(event => event.kind === 'recall')
@@ -1638,6 +597,25 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
     })
   }
 
+  /*
+   * 对外返回面：与拆分前**逐字一致**的 34 个能力。
+   *
+   * 前 8 个（inbox 域）+ 8 个（memory 域）+ 5 个（misses 域）
+   * 现在来自领域模块，解构出来保持同名。
+   * bridge.ts 的 34 条路由、client 调用点全部无需改动。
+   */
+  const {
+    inbox, capture, captureBatch, updateInbox, deleteInbox,
+    batchInboxState, promoteInbox,
+  } = inboxActions
+  const {
+    writeBody, setStatus, confirm, reject, undoReject, archive, keep, batchArchive,
+  } = memoryActions
+  const {
+    misses, missDraft, missConfirm, missBatchDraft, missDelete,
+  } = missActions
+  const { snapshot, overview, search, detail } = readActions
+
   return {
     snapshot, overview, inbox, capture, captureBatch, updateInbox, deleteInbox,
     batchInboxState, promoteInbox, search, detail, writeBody, setStatus, confirm,
@@ -1651,3 +629,5 @@ export function createActions({ store, now = () => Date.now(), readExternal }: {
 export type Actions = ReturnType<typeof createActions>
 export type { SearchHit }
 export { estimateTokens, orEmpty }
+
+

@@ -590,242 +590,6 @@ function searchCost(hits) {
   return hits.reduce((sum, hit) => sum + estimateTokens(hit.snippet) + 8, 0);
 }
 
-// ../core/src/privacy.ts
-var PATTERNS = [
-  { label: "OpenAI/DeepSeek \u98CE\u683C\u5BC6\u94A5", re: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
-  { label: "GitHub token", re: /\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g },
-  { label: "AWS Access Key", re: /\b(AKIA|ASIA)[0-9A-Z]{16}\b/g },
-  { label: "Slack token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g },
-  { label: "Google API key", re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
-  { label: "PEM \u79C1\u94A5", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]{0,4096}?-----END [A-Z ]*PRIVATE KEY-----/g },
-  { label: "\u4E2D\u56FD\u5927\u9646\u8EAB\u4EFD\u8BC1\u53F7", re: /\b[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]\b/g },
-  { label: "\u5185\u7F51 IP", re: /\b(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b/g },
-  { label: "\u53E3\u4EE4/\u4EE4\u724C\u8D4B\u503C", re: /\b(?:password|passwd|pwd|secret|token|api[_-]?key)\s*[:=]\s*["']?([^\s"',;]{6,})/gi }
-];
-var MASK = "***";
-function inspectText(text) {
-  const source = String(text ?? "");
-  const findings = [];
-  let masked = source;
-  for (const { label, re } of PATTERNS) {
-    const pattern = new RegExp(re.source, re.flags);
-    let match = pattern.exec(source);
-    let count = 0;
-    while (match !== null) {
-      count += 1;
-      if (match.index === pattern.lastIndex) pattern.lastIndex += 1;
-      match = pattern.exec(source);
-    }
-    if (count === 0) continue;
-    findings.push({ label, count });
-    masked = masked.replace(new RegExp(re.source, re.flags), (full) => {
-      const assignment = /^([^:=]+[:=]\s*["']?)(.+)$/.exec(full);
-      if (assignment !== null) return `${assignment[1]}${MASK}`;
-      return MASK;
-    });
-  }
-  return {
-    blocked: findings.length > 0,
-    findings,
-    masked,
-    reason: findings.length === 0 ? "" : `\u7591\u4F3C\u654F\u611F\u4FE1\u606F\uFF1A${findings.map((item) => `${item.label} \xD7${item.count}`).join("\u3001")}`
-  };
-}
-function auditRecord(text, findings) {
-  return {
-    at: (/* @__PURE__ */ new Date()).toISOString(),
-    length: String(text ?? "").length,
-    findings: findings.map((item) => item.label),
-    // 只留首尾各 6 字，便于定位是哪一条，又不构成泄密
-    preview: `${String(text).slice(0, 6)}\u2026${String(text).slice(-6)}`
-  };
-}
-
-// ../core/src/parse.ts
-var FRONTMATTER_FENCE = "---";
-var INBOX_HEADER = `| ${INBOX_COLUMNS.join(" | ")} |
-|${INBOX_COLUMNS.map(() => "---").join("|")}|`;
-function splitFrontmatter(source) {
-  const text = String(source ?? "").replace(/\r\n/g, "\n");
-  if (!text.startsWith(`${FRONTMATTER_FENCE}
-`)) return { frontmatter: "", body: text };
-  const end = text.indexOf(`
-${FRONTMATTER_FENCE}`, FRONTMATTER_FENCE.length);
-  if (end < 0) return { frontmatter: "", body: text };
-  return {
-    frontmatter: text.slice(FRONTMATTER_FENCE.length + 1, end),
-    body: text.slice(end + FRONTMATTER_FENCE.length + 2)
-  };
-}
-function unquote(value) {
-  const text = String(value ?? "").trim();
-  if (text.length >= 2) {
-    const first = text[0];
-    const last = text[text.length - 1];
-    if (first === '"' && last === '"' || first === "'" && last === "'") {
-      return text.slice(1, -1);
-    }
-  }
-  return text;
-}
-function parseInlineArray(value) {
-  const inner = value.trim().slice(1, -1).trim();
-  if (inner === "") return [];
-  return inner.split(",").map((item) => unquote(item)).filter((item) => item !== "");
-}
-var KEY_PREFIX = /^[A-Za-z_][\w-]*\s*:/;
-function parseFrontmatter(raw) {
-  const result = {};
-  const lines = String(raw ?? "").split("\n");
-  let currentKey = null;
-  let currentItem = null;
-  for (const line of lines) {
-    if (line.trim() === "" || line.trim().startsWith("#")) continue;
-    const itemMatch = /^(\s*)-\s+(.*)$|^(\s*)-\s*$/.exec(line);
-    if (itemMatch !== null && currentKey !== null) {
-      const payload = (itemMatch[2] ?? "").trim();
-      const isObjectItem = KEY_PREFIX.test(payload);
-      const list = Array.isArray(result[currentKey]) ? result[currentKey] : [];
-      if (isObjectItem) {
-        const colon = payload.indexOf(":");
-        const item = {
-          [payload.slice(0, colon).trim()]: unquote(payload.slice(colon + 1))
-        };
-        list.push(item);
-        result[currentKey] = list;
-        currentItem = item;
-      } else {
-        list.push(unquote(payload));
-        result[currentKey] = list;
-        currentItem = null;
-      }
-      continue;
-    }
-    const continuation = /^(\s{2,})([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
-    if (continuation !== null && currentItem !== null && currentKey !== null) {
-      currentItem[continuation[2]] = unquote(continuation[3]);
-      continue;
-    }
-    const match = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
-    if (match === null) continue;
-    const [, key, rawValue] = match;
-    currentKey = key;
-    currentItem = null;
-    const value = rawValue.trim();
-    if (value === "") {
-      result[key] = [];
-    } else if (value.startsWith("[") && value.endsWith("]")) {
-      result[key] = parseInlineArray(value);
-    } else {
-      result[key] = unquote(value);
-    }
-  }
-  return result;
-}
-function serializeFrontmatter(frontmatter) {
-  const lines = [FRONTMATTER_FENCE];
-  for (const [key, value] of Object.entries(frontmatter)) {
-    if (value === void 0 || value === null) continue;
-    if (Array.isArray(value)) {
-      if (value.length === 0) {
-        lines.push(`${key}: []`);
-      } else if (value.every((item) => typeof item !== "object" || item === null)) {
-        lines.push(`${key}: [${value.map((item) => String(item)).join(", ")}]`);
-      } else {
-        lines.push(`${key}:`);
-        for (const item of value) {
-          if (typeof item !== "object" || item === null) {
-            lines.push(`  - ${String(item)}`);
-            continue;
-          }
-          const entries = Object.entries(item).filter(([, v]) => v !== void 0);
-          entries.forEach(([k, v], index) => {
-            lines.push(index === 0 ? `  - ${k}: ${String(v)}` : `    ${k}: ${String(v)}`);
-          });
-        }
-      }
-      continue;
-    }
-    lines.push(`${key}: ${String(value)}`);
-  }
-  lines.push(FRONTMATTER_FENCE);
-  return lines.join("\n");
-}
-function splitTableRow(line) {
-  const text = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-  const cells = [];
-  let buffer = "";
-  for (let index = 0; index < text.length; index += 1) {
-    const ch = text[index];
-    if (ch === "\\" && text[index + 1] === "|") {
-      buffer += "|";
-      index += 1;
-      continue;
-    }
-    if (ch === "|") {
-      cells.push(buffer.trim());
-      buffer = "";
-      continue;
-    }
-    buffer += ch;
-  }
-  cells.push(buffer.trim());
-  return cells;
-}
-function parseInboxRow(line) {
-  const text = String(line ?? "").trim();
-  if (!text.startsWith("|")) return null;
-  const cells = splitTableRow(text);
-  if (cells.length !== INBOX_COLUMNS.length) return null;
-  const [date, kind, content, state, destination] = cells;
-  if (date === INBOX_COLUMNS[0] && kind === INBOX_COLUMNS[1]) return null;
-  if (/^[-: ]+$/.test(date)) return null;
-  return { date, kind, content, state, destination, raw: text };
-}
-function escapeCell(value) {
-  return String(value ?? "").replace(/\|/g, "\\|").replace(/\n+/g, " ").trim();
-}
-function serializeInboxRow(entry) {
-  return `| ${[
-    escapeCell(entry.date),
-    escapeCell(entry.kind),
-    escapeCell(entry.content),
-    escapeCell(entry.state),
-    escapeCell(entry.destination ?? "\u2014")
-  ].join(" | ")} |`;
-}
-function parseInbox(source, kinds, states) {
-  const { frontmatter, body } = splitFrontmatter(source);
-  const lines = body.split("\n");
-  const entries = [];
-  lines.forEach((line, index) => {
-    const row = parseInboxRow(line);
-    if (row === null) return;
-    entries.push({
-      ...row,
-      kindValid: kinds.includes(row.kind),
-      stateValid: states.includes(row.state),
-      lineIndex: index
-    });
-  });
-  return { frontmatter: parseFrontmatter(frontmatter), entries, lines, body };
-}
-function parseSections(body) {
-  const sections = [];
-  let current = { title: "", level: 0, lines: [] };
-  for (const line of String(body ?? "").split("\n")) {
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
-    if (heading !== null) {
-      if (current.lines.length > 0 || current.title !== "") sections.push(current);
-      current = { title: heading[2].trim(), level: heading[1].length, lines: [] };
-      continue;
-    }
-    current.lines.push(line);
-  }
-  if (current.lines.length > 0 || current.title !== "") sections.push(current);
-  return sections;
-}
-
 // ../core/src/maintenance.ts
 import crypto from "node:crypto";
 function hashOf(text) {
@@ -1151,13 +915,233 @@ function planRepairs(entries, today) {
   return { fixes, healthy: entries.length - fixes.length, total: entries.length };
 }
 
-// ../core/src/actions.ts
-var SKILL_CATALOG_FRAME_TOKENS = 171;
+// ../core/src/actions/errors.ts
+function classifyError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const text = message.trim();
+  if (/不存在|已存在|找不到|被删除|ENOENT|no such file/i.test(text)) {
+    return { kind: "not-found", hint: "\u8FD9\u6761\u53EF\u80FD\u5DF2\u88AB\u5220\u9664\u6216\u6539\u540D\uFF0C\u5237\u65B0\u5217\u8868\u518D\u770B\u3002" };
+  }
+  if (/非法状态迁移|不允许的迁移|不能从/.test(text)) {
+    return {
+      kind: "invalid-state",
+      hint: "\u72B6\u6001\u673A\u53EA\u5141\u8BB8\u7279\u5B9A\u8DEF\u5F84\u3002\u4EBA\u53EF\u4EE5\u76F4\u63A5\u786E\u8BA4\u5019\u9009/\u89C2\u5BDF\u4E2D\uFF0C\u4F46\u4E0D\u80FD\u4ECE\u5DF2\u5F52\u6863\u76F4\u63A5\u8DF3\u56DE\u3002"
+    };
+  }
+  if (/写锁超时|EBUSY|EEXIST|锁/.test(text)) {
+    return { kind: "conflict", hint: "\u53E6\u4E00\u4E2A\u8FDB\u7A0B\u6B63\u5728\u5199\u540C\u4E00\u4E2A\u6587\u4EF6\uFF0C\u7B49\u4E00\u4E24\u79D2\u518D\u8BD5\u3002" };
+  }
+  if (/不能为空|不接受|越界|不是 INBOX|非法的行|类型非法/.test(text)) {
+    return { kind: "invalid-input", hint: "\u8FD9\u662F\u5165\u53C2\u95EE\u9898\uFF0C\u4E0D\u662F\u6570\u636E\u635F\u574F\u3002\u6309\u63D0\u793A\u6539\u6B63\u540E\u91CD\u8BD5\u3002" };
+  }
+  if (/隐私|疑似密钥|密钥|私钥|身份证|内网 IP|拒写/.test(text)) {
+    return { kind: "blocked", hint: "\u660E\u6587 Markdown \u4E0D\u80FD\u5B58\u5BC6\u94A5\u3002\u53EF\u4EE5\u7528\u8131\u654F\u7248\u672C\u91CD\u5B58\u3002" };
+  }
+  if (/_shared/.test(text)) {
+    return { kind: "invalid-input", hint: "\u968F\u7248\u672C\u53D8\u5316\u7684\u77E5\u8BC6\u5FC5\u987B\u843D\u5230\u5177\u4F53\u5206\u652F\uFF0C\u4E0D\u80FD\u8FDB\u5171\u4EAB\u5C42\u3002" };
+  }
+  if (/EACCES|EPERM|EROFS|ENOSPC|EIO|磁盘|权限|写入失败|读取失败/.test(text)) {
+    return { kind: "io", hint: "\u78C1\u76D8\u6216\u6743\u9650\u95EE\u9898\u3002\u5E93\u6587\u4EF6\u6CA1\u6709\u4E22\uFF0C\u91CD\u8BD5\u901A\u5E38\u53EF\u6062\u590D\u3002" };
+  }
+  return { kind: "unknown" };
+}
+
+// ../core/src/actions/read.ts
+init_project();
+
+// ../core/src/parse.ts
+var FRONTMATTER_FENCE = "---";
+var INBOX_HEADER = `| ${INBOX_COLUMNS.join(" | ")} |
+|${INBOX_COLUMNS.map(() => "---").join("|")}|`;
+function splitFrontmatter(source) {
+  const text = String(source ?? "").replace(/\r\n/g, "\n");
+  if (!text.startsWith(`${FRONTMATTER_FENCE}
+`)) return { frontmatter: "", body: text };
+  const end = text.indexOf(`
+${FRONTMATTER_FENCE}`, FRONTMATTER_FENCE.length);
+  if (end < 0) return { frontmatter: "", body: text };
+  return {
+    frontmatter: text.slice(FRONTMATTER_FENCE.length + 1, end),
+    body: text.slice(end + FRONTMATTER_FENCE.length + 2)
+  };
+}
+function unquote(value) {
+  const text = String(value ?? "").trim();
+  if (text.length >= 2) {
+    const first = text[0];
+    const last = text[text.length - 1];
+    if (first === '"' && last === '"' || first === "'" && last === "'") {
+      return text.slice(1, -1);
+    }
+  }
+  return text;
+}
+function parseInlineArray(value) {
+  const inner = value.trim().slice(1, -1).trim();
+  if (inner === "") return [];
+  return inner.split(",").map((item) => unquote(item)).filter((item) => item !== "");
+}
+var KEY_PREFIX = /^[A-Za-z_][\w-]*\s*:/;
+function parseFrontmatter(raw) {
+  const result = {};
+  const lines = String(raw ?? "").split("\n");
+  let currentKey = null;
+  let currentItem = null;
+  for (const line of lines) {
+    if (line.trim() === "" || line.trim().startsWith("#")) continue;
+    const itemMatch = /^(\s*)-\s+(.*)$|^(\s*)-\s*$/.exec(line);
+    if (itemMatch !== null && currentKey !== null) {
+      const payload = (itemMatch[2] ?? "").trim();
+      const isObjectItem = KEY_PREFIX.test(payload);
+      const list = Array.isArray(result[currentKey]) ? result[currentKey] : [];
+      if (isObjectItem) {
+        const colon = payload.indexOf(":");
+        const item = {
+          [payload.slice(0, colon).trim()]: unquote(payload.slice(colon + 1))
+        };
+        list.push(item);
+        result[currentKey] = list;
+        currentItem = item;
+      } else {
+        list.push(unquote(payload));
+        result[currentKey] = list;
+        currentItem = null;
+      }
+      continue;
+    }
+    const continuation = /^(\s{2,})([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
+    if (continuation !== null && currentItem !== null && currentKey !== null) {
+      currentItem[continuation[2]] = unquote(continuation[3]);
+      continue;
+    }
+    const match = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
+    if (match === null) continue;
+    const [, key, rawValue] = match;
+    currentKey = key;
+    currentItem = null;
+    const value = rawValue.trim();
+    if (value === "") {
+      result[key] = [];
+    } else if (value.startsWith("[") && value.endsWith("]")) {
+      result[key] = parseInlineArray(value);
+    } else {
+      result[key] = unquote(value);
+    }
+  }
+  return result;
+}
+function serializeFrontmatter(frontmatter) {
+  const lines = [FRONTMATTER_FENCE];
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (value === void 0 || value === null) continue;
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        lines.push(`${key}: []`);
+      } else if (value.every((item) => typeof item !== "object" || item === null)) {
+        lines.push(`${key}: [${value.map((item) => String(item)).join(", ")}]`);
+      } else {
+        lines.push(`${key}:`);
+        for (const item of value) {
+          if (typeof item !== "object" || item === null) {
+            lines.push(`  - ${String(item)}`);
+            continue;
+          }
+          const entries = Object.entries(item).filter(([, v]) => v !== void 0);
+          entries.forEach(([k, v], index) => {
+            lines.push(index === 0 ? `  - ${k}: ${String(v)}` : `    ${k}: ${String(v)}`);
+          });
+        }
+      }
+      continue;
+    }
+    lines.push(`${key}: ${String(value)}`);
+  }
+  lines.push(FRONTMATTER_FENCE);
+  return lines.join("\n");
+}
+function splitTableRow(line) {
+  const text = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells = [];
+  let buffer = "";
+  for (let index = 0; index < text.length; index += 1) {
+    const ch = text[index];
+    if (ch === "\\" && text[index + 1] === "|") {
+      buffer += "|";
+      index += 1;
+      continue;
+    }
+    if (ch === "|") {
+      cells.push(buffer.trim());
+      buffer = "";
+      continue;
+    }
+    buffer += ch;
+  }
+  cells.push(buffer.trim());
+  return cells;
+}
+function parseInboxRow(line) {
+  const text = String(line ?? "").trim();
+  if (!text.startsWith("|")) return null;
+  const cells = splitTableRow(text);
+  if (cells.length !== INBOX_COLUMNS.length) return null;
+  const [date, kind, content, state, destination] = cells;
+  if (date === INBOX_COLUMNS[0] && kind === INBOX_COLUMNS[1]) return null;
+  if (/^[-: ]+$/.test(date)) return null;
+  return { date, kind, content, state, destination, raw: text };
+}
+function escapeCell(value) {
+  return String(value ?? "").replace(/\|/g, "\\|").replace(/\n+/g, " ").trim();
+}
+function serializeInboxRow(entry) {
+  return `| ${[
+    escapeCell(entry.date),
+    escapeCell(entry.kind),
+    escapeCell(entry.content),
+    escapeCell(entry.state),
+    escapeCell(entry.destination ?? "\u2014")
+  ].join(" | ")} |`;
+}
+function parseInbox(source, kinds, states) {
+  const { frontmatter, body } = splitFrontmatter(source);
+  const lines = body.split("\n");
+  const entries = [];
+  lines.forEach((line, index) => {
+    const row = parseInboxRow(line);
+    if (row === null) return;
+    entries.push({
+      ...row,
+      kindValid: kinds.includes(row.kind),
+      stateValid: states.includes(row.state),
+      lineIndex: index
+    });
+  });
+  return { frontmatter: parseFrontmatter(frontmatter), entries, lines, body };
+}
+function parseSections(body) {
+  const sections = [];
+  let current = { title: "", level: 0, lines: [] };
+  for (const line of String(body ?? "").split("\n")) {
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading !== null) {
+      if (current.lines.length > 0 || current.title !== "") sections.push(current);
+      current = { title: heading[2].trim(), level: heading[1].length, lines: [] };
+      continue;
+    }
+    current.lines.push(line);
+  }
+  if (current.lines.length > 0 || current.title !== "") sections.push(current);
+  return sections;
+}
+
+// ../core/src/actions/context.ts
 async function guard(run) {
   try {
     return { ok: true, ...await run() };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    const { kind, hint } = classifyError(error);
+    return { ok: false, error: message, kind, hint };
   }
 }
 function projectEntry(entry, nowMs, citeCounts) {
@@ -1187,6 +1171,8 @@ function projectEntry(entry, nowMs, citeCounts) {
     citeCount: citeCounts?.get(entry.id) ?? 0
   };
 }
+
+// ../core/src/actions/helpers.ts
 function citeCountsOf(events) {
   const counts = /* @__PURE__ */ new Map();
   for (const event of events) {
@@ -1218,11 +1204,10 @@ function navOf(entries) {
     const category = parts[3];
     if (branch === void 0) continue;
     const dir = category === void 0 || category.toLowerCase().endsWith(".md") ? branch.replace(/\.md$/i, "") : `${branch}/${category}`;
-    const key = dir;
-    const current = byDir.get(key) ?? { count: 0, tokens: 0 };
+    const current = byDir.get(dir) ?? { count: 0, tokens: 0 };
     current.count += 1;
     current.tokens += entry.tokens;
-    byDir.set(key, current);
+    byDir.set(dir, current);
   }
   return [...byDir.entries()].map(([key, value]) => {
     const head = key.split("/")[0];
@@ -1230,12 +1215,17 @@ function navOf(entries) {
     return { path: key, count: value.count, tokens: value.tokens, kind };
   }).sort((a, b) => a.path.localeCompare(b.path));
 }
-function createActions({ store, now = () => Date.now(), readExternal }) {
+
+// ../core/src/actions/constants.ts
+var SKILL_CATALOG_FRAME_TOKENS = 171;
+
+// ../core/src/actions/read.ts
+function createReadActions({ store, now }) {
   async function snapshot({ project, domain, cwd, branch } = {}) {
     return guard(async () => {
       const entries = await store.scan();
       const events = await store.readEvents();
-      const misses2 = await store.readMisses();
+      const misses = await store.readMisses();
       let resolution = null;
       let scope = null;
       let effectiveProject = project;
@@ -1279,7 +1269,7 @@ function createActions({ store, now = () => Date.now(), readExternal }) {
         return true;
       });
       const scoped = projectFilter !== void 0 && projectFilter !== null && projectFilter !== "" || domain !== void 0 && domain !== null && domain !== "";
-      const stats = store.summarize(scoped ? filtered : entries, events, misses2, { nowMs: now() });
+      const stats = store.summarize(scoped ? filtered : entries, events, misses, { nowMs: now() });
       const citeCounts = citeCountsOf(events);
       const queue = filtered.filter((entry) => needsDecision(entry, now()) || entry.status === "stale").map((entry) => {
         const expiry = expiryOf(entry, now());
@@ -1403,8 +1393,8 @@ function createActions({ store, now = () => Date.now(), readExternal }) {
     return guard(async () => {
       const entries = await store.scan();
       const events = await store.readEvents();
-      const misses2 = await store.readMisses();
-      const stats = store.summarize(entries, events, misses2, { nowMs: now() });
+      const misses = await store.readMisses();
+      const stats = store.summarize(entries, events, misses, { nowMs: now() });
       const l0 = stats.layers.l0.tokens;
       const resident = residentBreakdown(entries, skillDescriptions);
       return {
@@ -1524,10 +1514,232 @@ function createActions({ store, now = () => Date.now(), readExternal }) {
       };
     });
   }
+  async function search({ query, project, cwd, branch, session = "plugin", record = true }) {
+    return guard(async () => {
+      const entries = await store.scan();
+      let scope = null;
+      if (typeof cwd === "string" && cwd.trim() !== "" || typeof branch === "string" && branch.trim() !== "") {
+        const projects = projectAliasesOf(entries);
+        const resolved = typeof cwd === "string" && cwd.trim() !== "" ? await resolveScope({ cwd, projects, entries }) : { project: project ?? null, branch: null, branchSource: null, cwd: null, reasons: [], detail: "", parents: projectParentsOf(entries) };
+        scope = typeof branch === "string" && branch.trim() !== "" ? { ...resolved, branch: branch.trim() } : resolved;
+      }
+      const result = searchEntries(entries, query, { project, scope });
+      if (record) {
+        if (result.matched) {
+          await store.recordCite({ ids: result.hits.map((hit) => hit.id), kind: "recall", session, query: result.query });
+          await store.recordVerifyHit({ query: result.query });
+        } else {
+          await store.recordMiss({ query: result.query, session });
+        }
+      }
+      return {
+        query: result.query,
+        matched: result.matched,
+        hits: result.hits.slice(0, 20),
+        total: result.hits.length,
+        cost: searchCost(result.hits.slice(0, 20))
+      };
+    });
+  }
+  async function detail({ path: path5 }) {
+    return guard(async () => {
+      const entry = await store.readEntry(path5);
+      const events = await store.readEvents();
+      const refs = events.filter((event) => (event.ids ?? []).includes(entry.id));
+      const cites = refs.filter((event) => event.kind === "cite");
+      const lastCite = cites.length === 0 ? null : cites[cites.length - 1].at;
+      return {
+        entry: {
+          ...projectEntry(entry, now()),
+          overTokenLimit: entry.tokens > FILE_TOKEN_SOFT_LIMIT,
+          body: entry.body
+        },
+        trust: {
+          confidence: entry.confidence ?? STATE_CONFIDENCE[entry.status] ?? null,
+          evidenceCount: (entry.evidence ?? []).length,
+          citeCount: cites.length,
+          recallCount: refs.filter((event) => event.kind === "recall").length,
+          lastCitedAt: lastCite,
+          anchor: entry.anchor,
+          anchorState: entry.status === "stale" ? "stale" : entry.anchor === null ? "none" : "fresh"
+        },
+        references: refs.slice(-20).reverse(),
+        states: [...CONFIDENCE_STATES],
+        sections: parseSections(entry.body).map((section) => ({
+          title: section.title,
+          level: section.level,
+          lines: section.lines.length
+        }))
+      };
+    });
+  }
+  return { snapshot, overview, search, detail };
+}
+
+// ../core/src/privacy.ts
+var PATTERNS = [
+  { label: "OpenAI/DeepSeek \u98CE\u683C\u5BC6\u94A5", re: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
+  { label: "GitHub token", re: /\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g },
+  { label: "AWS Access Key", re: /\b(AKIA|ASIA)[0-9A-Z]{16}\b/g },
+  { label: "Slack token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g },
+  { label: "Google API key", re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  { label: "PEM \u79C1\u94A5", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]{0,4096}?-----END [A-Z ]*PRIVATE KEY-----/g },
+  { label: "\u4E2D\u56FD\u5927\u9646\u8EAB\u4EFD\u8BC1\u53F7", re: /\b[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]\b/g },
+  { label: "\u5185\u7F51 IP", re: /\b(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b/g },
+  { label: "\u53E3\u4EE4/\u4EE4\u724C\u8D4B\u503C", re: /\b(?:password|passwd|pwd|secret|token|api[_-]?key)\s*[:=]\s*["']?([^\s"',;]{6,})/gi }
+];
+var MASK = "***";
+function inspectText(text) {
+  const source = String(text ?? "");
+  const findings = [];
+  let masked = source;
+  for (const { label, re } of PATTERNS) {
+    const pattern = new RegExp(re.source, re.flags);
+    let match = pattern.exec(source);
+    let count = 0;
+    while (match !== null) {
+      count += 1;
+      if (match.index === pattern.lastIndex) pattern.lastIndex += 1;
+      match = pattern.exec(source);
+    }
+    if (count === 0) continue;
+    findings.push({ label, count });
+    masked = masked.replace(new RegExp(re.source, re.flags), (full) => {
+      const assignment = /^([^:=]+[:=]\s*["']?)(.+)$/.exec(full);
+      if (assignment !== null) return `${assignment[1]}${MASK}`;
+      return MASK;
+    });
+  }
+  return {
+    blocked: findings.length > 0,
+    findings,
+    masked,
+    reason: findings.length === 0 ? "" : `\u7591\u4F3C\u654F\u611F\u4FE1\u606F\uFF1A${findings.map((item) => `${item.label} \xD7${item.count}`).join("\u3001")}`
+  };
+}
+function auditRecord(text, findings) {
+  return {
+    at: (/* @__PURE__ */ new Date()).toISOString(),
+    length: String(text ?? "").length,
+    findings: findings.map((item) => item.label),
+    // 只留首尾各 6 字，便于定位是哪一条，又不构成泄密
+    preview: `${String(text).slice(0, 6)}\u2026${String(text).slice(-6)}`
+  };
+}
+
+// ../core/src/actions/memory.ts
+function createMemoryActions({ store, now }) {
+  async function writeBody({ path: path5, body, session = "plugin" }) {
+    const privacy = inspectText(body);
+    if (privacy.blocked) {
+      return {
+        ok: false,
+        kind: "blocked",
+        blocked: true,
+        reason: privacy.reason,
+        masked: privacy.masked,
+        audit: auditRecord(body, privacy.findings),
+        hint: "\u6B63\u6587\u91CC\u6709\u7591\u4F3C\u5BC6\u94A5\uFF0C\u5DF2\u62D2\u5199\u3002\u6539\u5B8C\u518D\u5B58\uFF0C\u6216\u7528\u8131\u654F\u7248\u672C\u3002"
+      };
+    }
+    return guard(async () => {
+      const entry = await store.writeBody(path5, body);
+      await store.appendEvent({ session, kind: "write", ids: [entry.id] });
+      return { entry: { id: entry.id, path: entry.path, tokens: entry.tokens, lines: entry.lines } };
+    });
+  }
+  async function setStatus({ path: path5, status, reason, session = "plugin" }) {
+    if (!CONFIDENCE_STATES.includes(status)) {
+      return {
+        ok: false,
+        kind: "invalid-state",
+        error: `\u72B6\u6001\u5FC5\u987B\u662F ${CONFIDENCE_STATES.join(" / ")}`,
+        hint: "\u8BB0\u5FC6\u72B6\u6001\u53EA\u80FD\u662F\u7F6E\u4FE1\u5EA6\u72B6\u6001\u673A\u91CC\u7684\u503C\u3002"
+      };
+    }
+    if (status === "rejected" && String(reason ?? "").trim() === "") {
+      return {
+        ok: false,
+        kind: "invalid-input",
+        error: "\u9A73\u56DE\u5FC5\u987B\u5199\u4E00\u53E5\u7406\u7531\uFF0830 \u5929\u540E\u53EF\u590D\u67E5\uFF09",
+        hint: "\u9A73\u56DE\u4F1A\u9759\u9ED8 30 \u5929\uFF0C\u6CA1\u6709\u7406\u7531\u5C31\u65E0\u6CD5\u5728\u590D\u6838\u65F6\u5224\u65AD\u5F53\u521D\u4E3A\u4EC0\u4E48\u5426\u6389\u5B83\u3002"
+      };
+    }
+    return guard(async () => {
+      const current = await store.readEntry(path5);
+      if (!canHumanTransition(current.status, status)) {
+        throw new Error(`\u975E\u6CD5\u72B6\u6001\u8FC1\u79FB\uFF1A${current.status} \u2192 ${status}`);
+      }
+      const patch = {
+        status,
+        confidence: STATE_CONFIDENCE[status] ?? current.confidence
+      };
+      if (status === "rejected") {
+        patch.refuted_reason = String(reason).trim();
+        patch.refuted_at = new Date(now()).toISOString();
+      }
+      if (status === "confirmed") patch.confirmed_at = new Date(now()).toISOString();
+      const entry = await store.patchMeta(path5, patch);
+      await store.appendEvent({
+        session,
+        kind: "status",
+        ids: [entry.id],
+        query: `${current.status} \u2192 ${status}`
+      });
+      return { entry: { id: entry.id, path: entry.path, status: entry.status } };
+    });
+  }
+  async function confirm({ path: path5, session = "plugin" }) {
+    return setStatus({ path: path5, status: "confirmed", session });
+  }
+  async function reject({ path: path5, reason, session = "plugin" }) {
+    return setStatus({ path: path5, status: "rejected", reason, session });
+  }
+  async function undoReject({ path: path5, session = "plugin" }) {
+    return setStatus({ path: path5, status: "reinforced", session });
+  }
+  async function archive({ path: path5, reason = "\u5230\u671F\u9000\u5F79", session = "plugin" }) {
+    return guard(async () => {
+      const result = await store.archiveEntry({ relPath: path5, reason });
+      await store.appendEvent({ session, kind: "archive", ids: [path5] });
+      return { archived: result };
+    });
+  }
+  async function keep({ path: path5, session = "plugin" }) {
+    return guard(async () => {
+      const entry = await store.keepLonger({ relPath: path5 });
+      await store.appendEvent({ session, kind: "keep", ids: [entry.id] });
+      return { kept: { id: entry.id, path: entry.path, updatedAt: entry.updatedAt } };
+    });
+  }
+  async function batchArchive({ paths = [], reason = "\u6279\u91CF\u9000\u5F79", session = "plugin" }) {
+    const archived = [];
+    const failed = [];
+    for (const path5 of paths) {
+      const result = await archive({ path: path5, reason, session });
+      if (result.ok) archived.push(result.archived);
+      else failed.push({ path: path5, error: result.error });
+    }
+    return { ok: true, archived, failed };
+  }
+  return {
+    writeBody,
+    setStatus,
+    confirm,
+    reject,
+    undoReject,
+    archive,
+    keep,
+    batchArchive
+  };
+}
+
+// ../core/src/actions/inbox.ts
+function createInboxActions({ store, now }) {
   async function inbox({ domain = "personal", state, kind } = {}) {
     return guard(async () => {
       const result = await store.readInbox(domain);
-      let entries = result.entries.map((entry, index2) => ({ ...entry, index: index2 }));
+      let entries = result.entries.map((entry, index) => ({ ...entry, index }));
       if (typeof state === "string" && state !== "") entries = entries.filter((entry) => entry.state === state);
       if (typeof kind === "string" && kind !== "") entries = entries.filter((entry) => entry.kind === kind);
       const all = result.entries;
@@ -1552,14 +1764,27 @@ function createActions({ store, now = () => Date.now(), readExternal }) {
   }
   async function capture({ content, kind = "\u60F3\u6CD5", domain = "personal", session = "plugin" }) {
     const text = String(content ?? "").trim();
-    if (text === "") return { ok: false, error: "\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A" };
+    if (text === "") {
+      return {
+        ok: false,
+        kind: "invalid-input",
+        error: "\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A",
+        hint: "\u5199\u70B9\u5185\u5BB9\u518D\u5B58\u3002"
+      };
+    }
     if (!INBOX_KINDS.includes(kind)) {
-      return { ok: false, error: `\u7C7B\u578B\u5FC5\u987B\u662F ${INBOX_KINDS.join(" / ")}` };
+      return {
+        ok: false,
+        kind: "invalid-input",
+        error: `\u7C7B\u578B\u5FC5\u987B\u662F ${INBOX_KINDS.join(" / ")}`,
+        hint: "\u4ECE\u8FD9\u4E94\u4E2A\u7C7B\u578B\u91CC\u9009\u4E00\u4E2A\u3002"
+      };
     }
     const privacy = inspectText(text);
     if (privacy.blocked) {
       return {
         ok: false,
+        kind: "blocked",
         blocked: true,
         reason: privacy.reason,
         masked: privacy.masked,
@@ -1575,7 +1800,14 @@ function createActions({ store, now = () => Date.now(), readExternal }) {
   }
   async function captureBatch({ text, kind = "\u60F3\u6CD5", domain = "personal", session = "plugin" }) {
     const lines = String(text ?? "").split(/\n|;/).map((line) => line.trim()).filter(Boolean);
-    if (lines.length === 0) return { ok: false, error: "\u6CA1\u6709\u53EF\u6355\u83B7\u7684\u5185\u5BB9" };
+    if (lines.length === 0) {
+      return {
+        ok: false,
+        kind: "invalid-input",
+        error: "\u6CA1\u6709\u53EF\u6355\u83B7\u7684\u5185\u5BB9",
+        hint: "\u8F93\u5165\u4E3A\u7A7A\uFF0C\u6CA1\u6709\u53EF\u5B58\u7684\u6761\u76EE\u3002"
+      };
+    }
     const accepted = [];
     const blocked = [];
     for (const line of lines) {
@@ -1612,7 +1844,11 @@ function createActions({ store, now = () => Date.now(), readExternal }) {
           query: String(result.row.content ?? "").slice(0, 60)
         });
       }
-      await store.appendEvent({ session, kind: "inbox-update", query: String(result.row?.content ?? "").slice(0, 60) });
+      await store.appendEvent({
+        session,
+        kind: "inbox-update",
+        query: String(result.row?.content ?? "").slice(0, 60)
+      });
       return { updated: result };
     });
   }
@@ -1625,7 +1861,12 @@ function createActions({ store, now = () => Date.now(), readExternal }) {
   }
   async function batchInboxState({ domain, lineIndexes = [], state, session = "plugin" }) {
     if (!INBOX_STATES.includes(state)) {
-      return { ok: false, error: `\u72B6\u6001\u5FC5\u987B\u662F ${INBOX_STATES.join(" / ")}` };
+      return {
+        ok: false,
+        kind: "invalid-state",
+        error: `\u72B6\u6001\u5FC5\u987B\u662F ${INBOX_STATES.join(" / ")}`,
+        hint: "INBOX \u7684\u5408\u6CD5\u72B6\u6001\u662F open / todo / done / dropped\u3002"
+      };
     }
     const updated = [];
     const failed = [];
@@ -1668,158 +1909,42 @@ ${row.content}
         });
       } catch {
         const existing = await store.readEntry(relPath);
-        created = await store.writeBody(relPath, `${existing.body.trimEnd()}
+        created = await store.writeBody(
+          relPath,
+          `${existing.body.trimEnd()}
 
 ## ${date} \u63D0\u5347
 
 ${row.content}
-`);
+`
+        );
       }
       await store.updateInboxRow({ domain, lineIndex, patch: { state: "done", destination: relPath } });
-      await store.appendEvent({ session, kind: "promote", ids: [created.id], query: row.content.slice(0, 60) });
-      return { promoted: { path: relPath, id: created.id }, inbox: { lineIndex, state: "done", destination: relPath } };
-    });
-  }
-  async function search({ query, project, cwd, branch, session = "plugin", record = true }) {
-    return guard(async () => {
-      const entries = await store.scan();
-      let scope = null;
-      if (typeof cwd === "string" && cwd.trim() !== "" || typeof branch === "string" && branch.trim() !== "") {
-        const projects = projectAliasesOf(entries);
-        const resolved = typeof cwd === "string" && cwd.trim() !== "" ? await resolveScope({ cwd, projects, entries }) : { project: project ?? null, branch: null, branchSource: null, cwd: null, reasons: [], detail: "", parents: projectParentsOf(entries) };
-        scope = typeof branch === "string" && branch.trim() !== "" ? { ...resolved, branch: branch.trim() } : resolved;
-      }
-      const result = searchEntries(entries, query, { project, scope });
-      if (record) {
-        if (result.matched) {
-          await store.recordCite({ ids: result.hits.map((hit) => hit.id), kind: "recall", session, query: result.query });
-          await store.recordVerifyHit({ query: result.query });
-        } else {
-          await store.recordMiss({ query: result.query, session });
-        }
-      }
-      return {
-        query: result.query,
-        matched: result.matched,
-        hits: result.hits.slice(0, 20),
-        total: result.hits.length,
-        cost: searchCost(result.hits.slice(0, 20))
-      };
-    });
-  }
-  async function detail({ path: path3 }) {
-    return guard(async () => {
-      const entry = await store.readEntry(path3);
-      const events = await store.readEvents();
-      const refs = events.filter((event) => (event.ids ?? []).includes(entry.id));
-      const cites = refs.filter((event) => event.kind === "cite");
-      const lastCite = cites.length === 0 ? null : cites[cites.length - 1].at;
-      return {
-        entry: {
-          ...projectEntry(entry, now()),
-          overTokenLimit: entry.tokens > FILE_TOKEN_SOFT_LIMIT,
-          body: entry.body
-        },
-        trust: {
-          confidence: entry.confidence ?? STATE_CONFIDENCE[entry.status] ?? null,
-          evidenceCount: (entry.evidence ?? []).length,
-          citeCount: cites.length,
-          recallCount: refs.filter((event) => event.kind === "recall").length,
-          lastCitedAt: lastCite,
-          anchor: entry.anchor,
-          anchorState: entry.status === "stale" ? "stale" : entry.anchor === null ? "none" : "fresh"
-        },
-        references: refs.slice(-20).reverse(),
-        states: [...CONFIDENCE_STATES],
-        sections: parseSections(entry.body).map((section) => ({
-          title: section.title,
-          level: section.level,
-          lines: section.lines.length
-        }))
-      };
-    });
-  }
-  async function writeBody({ path: path3, body, session = "plugin" }) {
-    const privacy = inspectText(body);
-    if (privacy.blocked) {
-      return {
-        ok: false,
-        blocked: true,
-        reason: privacy.reason,
-        masked: privacy.masked,
-        audit: auditRecord(body, privacy.findings)
-      };
-    }
-    return guard(async () => {
-      const entry = await store.writeBody(path3, body);
-      await store.appendEvent({ session, kind: "write", ids: [entry.id] });
-      return { entry: { id: entry.id, path: entry.path, tokens: entry.tokens, lines: entry.lines } };
-    });
-  }
-  async function setStatus({ path: path3, status, reason, session = "plugin" }) {
-    if (!CONFIDENCE_STATES.includes(status)) {
-      return { ok: false, error: `\u72B6\u6001\u5FC5\u987B\u662F ${CONFIDENCE_STATES.join(" / ")}` };
-    }
-    if (status === "rejected" && String(reason ?? "").trim() === "") {
-      return { ok: false, error: "\u9A73\u56DE\u5FC5\u987B\u5199\u4E00\u53E5\u7406\u7531\uFF0830 \u5929\u540E\u53EF\u590D\u67E5\uFF09" };
-    }
-    return guard(async () => {
-      const current = await store.readEntry(path3);
-      if (!canHumanTransition(current.status, status)) {
-        throw new Error(`\u975E\u6CD5\u72B6\u6001\u8FC1\u79FB\uFF1A${current.status} \u2192 ${status}`);
-      }
-      const patch = {
-        status,
-        confidence: STATE_CONFIDENCE[status] ?? current.confidence
-      };
-      if (status === "rejected") {
-        patch.refuted_reason = String(reason).trim();
-        patch.refuted_at = new Date(now()).toISOString();
-      }
-      if (status === "confirmed") patch.confirmed_at = new Date(now()).toISOString();
-      const entry = await store.patchMeta(path3, patch);
       await store.appendEvent({
         session,
-        kind: "status",
-        ids: [entry.id],
-        query: `${current.status} \u2192 ${status}`
+        kind: "promote",
+        ids: [created.id],
+        query: row.content.slice(0, 60)
       });
-      return { entry: { id: entry.id, path: entry.path, status: entry.status } };
+      return {
+        promoted: { path: relPath, id: created.id },
+        inbox: { lineIndex, state: "done", destination: relPath }
+      };
     });
   }
-  async function confirm({ path: path3, session = "plugin" }) {
-    return setStatus({ path: path3, status: "confirmed", session });
-  }
-  async function reject({ path: path3, reason, session = "plugin" }) {
-    return setStatus({ path: path3, status: "rejected", reason, session });
-  }
-  async function undoReject({ path: path3, session = "plugin" }) {
-    return setStatus({ path: path3, status: "reinforced", session });
-  }
-  async function archive({ path: path3, reason = "\u5230\u671F\u9000\u5F79", session = "plugin" }) {
-    return guard(async () => {
-      const result = await store.archiveEntry({ relPath: path3, reason });
-      await store.appendEvent({ session, kind: "archive", ids: [path3] });
-      return { archived: result };
-    });
-  }
-  async function keep({ path: path3, session = "plugin" }) {
-    return guard(async () => {
-      const entry = await store.keepLonger({ relPath: path3 });
-      await store.appendEvent({ session, kind: "keep", ids: [entry.id] });
-      return { kept: { id: entry.id, path: entry.path, updatedAt: entry.updatedAt } };
-    });
-  }
-  async function batchArchive({ paths = [], reason = "\u6279\u91CF\u9000\u5F79", session = "plugin" }) {
-    const archived = [];
-    const failed = [];
-    for (const path3 of paths) {
-      const result = await archive({ path: path3, reason, session });
-      if (result.ok) archived.push(result.archived);
-      else failed.push({ path: path3, error: result.error });
-    }
-    return { ok: true, archived, failed };
-  }
+  return {
+    inbox,
+    capture,
+    captureBatch,
+    updateInbox,
+    deleteInbox,
+    batchInboxState,
+    promoteInbox
+  };
+}
+
+// ../core/src/actions/misses.ts
+function createMissActions({ store, now }) {
   async function misses({ sort = "frequency" } = {}) {
     return guard(async () => {
       const list = await store.readMisses();
@@ -1882,7 +2007,12 @@ ${row.content}
   }
   async function missDraft({ query, type = "\u95EE\u9898", session = "plugin" }) {
     if (!INBOX_KINDS.includes(type)) {
-      return { ok: false, error: `\u7C7B\u578B\u5FC5\u987B\u662F ${INBOX_KINDS.join(" / ")}` };
+      return {
+        ok: false,
+        kind: "invalid-input",
+        error: `\u7C7B\u578B\u5FC5\u987B\u662F ${INBOX_KINDS.join(" / ")}`,
+        hint: "\u8349\u7A3F\u7C7B\u578B\u5FC5\u987B\u4ECE\u4E94\u4E2A INBOX \u7C7B\u578B\u91CC\u9009\u3002"
+      };
     }
     return guard(async () => {
       const updated = await store.updateMiss({ query, state: "drafting" });
@@ -1906,9 +2036,11 @@ ${row.content}
       if (privacy.blocked) {
         return {
           ok: false,
+          kind: "blocked",
           blocked: true,
           reason: privacy.reason,
-          masked: privacy.masked
+          masked: privacy.masked,
+          hint: "\u7ED3\u8BBA\u91CC\u6709\u7591\u4F3C\u5BC6\u94A5\uFF0C\u5DF2\u62D2\u5199\u3002\u6539\u5B8C\u518D\u5B58\u3002"
         };
       }
       const date = new Date(now()).toISOString().slice(0, 10);
@@ -1959,8 +2091,27 @@ ${text}
   async function missDelete({ query }) {
     return guard(async () => ({ removed: await store.deleteMiss(query) }));
   }
+  return { misses, missDraft, missConfirm, missBatchDraft, missDelete };
+}
+
+// ../core/src/actions.ts
+async function guard2(run) {
+  try {
+    return { ok: true, ...await run() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const { kind, hint } = classifyError(error);
+    return { ok: false, error: message, kind, hint };
+  }
+}
+function createActions({ store, now = () => Date.now(), readExternal }) {
+  const ctx = { store, now: () => now() };
+  const readActions = createReadActions(ctx);
+  const memoryActions = createMemoryActions(ctx);
+  const inboxActions = createInboxActions(ctx);
+  const missActions = createMissActions(ctx);
   async function exportData({ format = "markdown", domain } = {}) {
-    return guard(async () => {
+    return guard2(async () => {
       const entries = await store.scan();
       const scoped = domain === void 0 || domain === null || domain === "" ? entries : entries.filter((entry) => entry.domain === domain);
       const stamp = new Date(now()).toISOString().slice(0, 10);
@@ -2007,7 +2158,7 @@ ${text}
     });
   }
   async function sessionMemory({ query, project, sessionId, cwd } = {}) {
-    return guard(async () => {
+    return guard2(async () => {
       const entries = await store.scan();
       let resolution = null;
       let projectFilter = project;
@@ -2015,8 +2166,7 @@ ${text}
         resolution = resolveProject(cwd, projectAliasesOf(entries));
         projectFilter = resolution.project;
       }
-      const allEvents = await store.readEvents();
-      const events = sessionId === void 0 || sessionId === "" ? allEvents.slice(-200) : allEvents.filter((event) => event.session === sessionId);
+      const events = sessionId === void 0 || sessionId === "" ? await store.readEventsTail(200) : (await store.readEvents()).filter((event) => event.session === sessionId);
       const recent = events.slice(-200);
       const injectedEvents = recent.filter((event) => event.kind === "recall");
       const citedEvents = recent.filter((event) => event.kind === "cite");
@@ -2075,7 +2225,7 @@ ${text}
     });
   }
   async function health() {
-    return guard(async () => {
+    return guard2(async () => {
       const entries = await store.scan();
       const events = await store.readEvents();
       const misses2 = await store.readMisses();
@@ -2097,7 +2247,7 @@ ${text}
     });
   }
   async function verifyAnchorJob({ baseDir = "", apply: apply2 = false, session = "plugin" } = {}) {
-    return guard(async () => {
+    return guard2(async () => {
       const entries = await store.scan();
       const reader = readExternal ?? (async () => null);
       const report = await verifyAnchors(entries, reader, { baseDir });
@@ -2134,7 +2284,7 @@ ${text}
     });
   }
   async function compact({ paths = [], apply: apply2 = false, session = "plugin" } = {}) {
-    return guard(async () => {
+    return guard2(async () => {
       const entries = await store.scan();
       const targets = paths.length > 0 ? entries.filter((entry) => paths.includes(entry.path)) : entries.filter((entry) => needsCompact(entry));
       const previews = targets.map((entry) => {
@@ -2198,7 +2348,7 @@ ${text}
     });
   }
   async function review({ days = 7 } = {}) {
-    return guard(async () => {
+    return guard2(async () => {
       const entries = await store.scan();
       const events = await store.readEvents();
       const misses2 = await store.readMisses();
@@ -2206,7 +2356,7 @@ ${text}
     });
   }
   async function promote({ apply: apply2 = false, session = "plugin" } = {}) {
-    return guard(async () => {
+    return guard2(async () => {
       const entries = await store.scan();
       const events = await store.readEvents();
       const plans = planPromotions(entries, events);
@@ -2237,7 +2387,7 @@ ${text}
     });
   }
   async function repairMeta({ apply: apply2 = false, paths = [], session = "plugin" } = {}) {
-    return guard(async () => {
+    return guard2(async () => {
       const entries = await store.scan();
       const today = new Date(now()).toISOString().slice(0, 10);
       const plan = planRepairs(entries, today);
@@ -2272,7 +2422,7 @@ ${text}
     });
   }
   async function index({ domain } = {}) {
-    return guard(async () => {
+    return guard2(async () => {
       const entries = await store.scan();
       const scoped = domain === void 0 || domain === null || domain === "" ? entries : entries.filter((entry) => entry.domain === domain);
       const rows = scoped.filter((entry) => entry.layer === "l0" || entry.layer === "l1" || entry.path.endsWith("index.md")).map((entry) => ({
@@ -2288,6 +2438,33 @@ ${text}
       };
     });
   }
+  const {
+    inbox,
+    capture,
+    captureBatch,
+    updateInbox,
+    deleteInbox,
+    batchInboxState,
+    promoteInbox
+  } = inboxActions;
+  const {
+    writeBody,
+    setStatus,
+    confirm,
+    reject,
+    undoReject,
+    archive,
+    keep,
+    batchArchive
+  } = memoryActions;
+  const {
+    misses,
+    missDraft,
+    missConfirm,
+    missBatchDraft,
+    missDelete
+  } = missActions;
+  const { snapshot, overview, search, detail } = readActions;
   return {
     snapshot,
     overview,
@@ -2328,17 +2505,20 @@ ${text}
 
 // ../core/src/store.ts
 import fs from "node:fs";
-import fsp from "node:fs/promises";
+import fsp2 from "node:fs/promises";
+import path3 from "node:path";
+
+// ../core/src/store/paths.ts
 import os from "node:os";
 import path from "node:path";
+var SKIP_NAMES = /* @__PURE__ */ new Set([".DS_Store", ".gitignore", "README.md"]);
+var STATE_DIR = ".state";
+var ARCHIVE_DIR = "archive";
 function defaultRoot() {
   const configured = process.env.MEMORY_OPS_ROOT;
   if (typeof configured === "string" && configured.trim() !== "") return configured.trim();
   return path.join(os.homedir(), ".memory-ops");
 }
-var STATE_DIR = ".state";
-var ARCHIVE_DIR = "archive";
-var SKIP_NAMES = /* @__PURE__ */ new Set([".DS_Store", ".gitignore", "README.md"]);
 function identityOf(relPath, frontmatter) {
   const declared = frontmatter?.id;
   if (typeof declared === "string" && declared.trim() !== "") return declared.trim();
@@ -2364,7 +2544,7 @@ function branchOfEntry(pathBranch, declared) {
   if (pathBranch !== null && pathBranch !== "") return pathBranch;
   const text = typeof declared === "string" ? declared.trim() : "";
   if (text === "") return null;
-  if (/[\/,、]/.test(text)) return null;
+  if (/[/,、]/.test(text)) return null;
   return text;
 }
 function safeRelPath(input) {
@@ -2374,16 +2554,31 @@ function safeRelPath(input) {
   if (value.split("/").includes("..")) throw new Error("\u4E0D\u63A5\u53D7\u4E0A\u7EA7\u76EE\u5F55\u7A7F\u8D8A");
   return value.replace(/^\.\//, "");
 }
+function normalizeAnchor(raw) {
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof first !== "object" || first === null) return null;
+  const record = first;
+  const shaped = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (value === void 0 || value === null) continue;
+    shaped[key] = String(value);
+  }
+  return Object.keys(shaped).length === 0 ? null : shaped;
+}
+
+// ../core/src/store/io.ts
+import fsp from "node:fs/promises";
+import path2 from "node:path";
 async function atomicWrite(target, content) {
-  const dir = path.dirname(target);
+  const dir = path2.dirname(target);
   await fsp.mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`);
+  const tmp = path2.join(dir, `.${path2.basename(target)}.${process.pid}.${Date.now()}.tmp`);
   await fsp.writeFile(tmp, content, "utf8");
   await fsp.rename(tmp, target);
 }
 async function withLock(target, run, { timeoutMs = 3e3 } = {}) {
   const lockPath = `${target}.lock`;
-  await fsp.mkdir(path.dirname(lockPath), { recursive: true });
+  await fsp.mkdir(path2.dirname(lockPath), { recursive: true });
   const started = Date.now();
   let handle = null;
   while (handle === null) {
@@ -2415,7 +2610,7 @@ async function withLock(target, run, { timeoutMs = 3e3 } = {}) {
   }
 }
 async function listMarkdown(root, relative = "") {
-  const absolute = path.join(root, relative);
+  const absolute = path2.join(root, relative);
   let entries;
   try {
     entries = await fsp.readdir(absolute, { withFileTypes: true });
@@ -2437,33 +2632,114 @@ async function listMarkdown(root, relative = "") {
   }
   return found;
 }
-function normalizeAnchor(raw) {
-  const first = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof first !== "object" || first === null) return null;
-  const record = first;
-  const shaped = {};
-  for (const [key, value] of Object.entries(record)) {
-    if (value === void 0 || value === null) continue;
-    shaped[key] = String(value);
+
+// ../core/src/store/stats.ts
+function summarize(entries, events, misses, { nowMs }, expiryOf2) {
+  const byDomain = /* @__PURE__ */ new Map();
+  let bytes = 0;
+  let tokens = 0;
+  let overLimit = 0;
+  for (const entry of entries) {
+    bytes += entry.bytes;
+    tokens += entry.tokens;
+    if (entry.overLineLimit) overLimit += 1;
+    const bucket = byDomain.get(entry.domain) ?? {
+      key: entry.domain,
+      label: entry.domainLabel,
+      files: 0,
+      bytes: 0,
+      tokens: 0,
+      overLimit: 0
+    };
+    bucket.files += 1;
+    bucket.bytes += entry.bytes;
+    bucket.tokens += entry.tokens;
+    if (entry.overLineLimit) bucket.overLimit += 1;
+    byDomain.set(entry.domain, bucket);
   }
-  return Object.keys(shaped).length === 0 ? null : shaped;
+  const layers = {
+    l0: { files: 0, tokens: 0 },
+    l1: { files: 0, tokens: 0 },
+    l2: { files: 0, tokens: 0 }
+  };
+  for (const entry of entries) {
+    const key = String(entry.layer).toLowerCase();
+    if (key === "l0" || key === "l1" || key === "l2") {
+      layers[key].files += 1;
+      layers[key].tokens += entry.tokens;
+    }
+  }
+  const windowStart = nowMs - 30 * 864e5;
+  const recent = events.filter((event) => {
+    const at = Date.parse(event.at ?? "");
+    return Number.isFinite(at) && at >= windowStart;
+  });
+  const recallEvents = recent.filter((event) => event.kind === "recall");
+  const citedIds = /* @__PURE__ */ new Set();
+  for (const event of recent) {
+    if (event.kind !== "cite") continue;
+    for (const id of event.ids ?? []) citedIds.add(id);
+  }
+  const recalledIds = /* @__PURE__ */ new Set();
+  for (const event of recallEvents) {
+    for (const id of event.ids ?? []) recalledIds.add(id);
+  }
+  const hitRate = recalledIds.size === 0 ? null : Math.min(1, citedIds.size / recalledIds.size);
+  const confirmed = entries.filter((entry) => entry.status === "confirmed").length;
+  const rejected = entries.filter((entry) => entry.status === "rejected").length;
+  const confirmRate = confirmed + rejected === 0 ? null : confirmed / (confirmed + rejected);
+  const staleOrArchived = entries.filter(
+    (entry) => entry.status === "stale" || entry.status === "archived"
+  ).length;
+  const expireRate = entries.length === 0 ? null : staleOrArchived / entries.length;
+  const missTotal = misses.length;
+  const missVerified = misses.filter((miss) => miss.state === "verified").length;
+  const missRate = missTotal === 0 ? null : missVerified / missTotal;
+  return {
+    files: entries.length,
+    bytes,
+    tokens,
+    overLimit,
+    /** 按文件数降序（不是 tokens）——保持原口径。 */
+    domains: [...byDomain.values()].sort((a, b) => b.files - a.files),
+    layers,
+    rates: { hitRate, confirmRate, expireRate, missRate },
+    misses: { total: missTotal, verified: missVerified },
+    counts: {
+      pending: entries.filter((entry) => entry.status === "hypothesis" || entry.status === "observed").length,
+      confirmed,
+      rejected,
+      stale: entries.filter((entry) => entry.status === "stale").length,
+      archived: entries.filter((entry) => entry.status === "archived").length
+    },
+    expiry: entries.map((entry) => ({ id: entry.id, ...expiryOf2(entry, nowMs) }))
+  };
 }
+
+// ../core/src/store.ts
 function createStore({ root, now = () => Date.now() } = {}) {
-  const base = path.resolve(root ?? defaultRoot());
-  const stateDir = path.join(base, STATE_DIR);
-  const eventsPath = path.join(stateDir, "events.jsonl");
-  const missesPath = path.join(stateDir, "misses.json");
-  const absoluteOf = (relPath) => path.join(base, safeRelPath(relPath));
+  const base = path3.resolve(root ?? defaultRoot());
+  const stateDir = path3.join(base, STATE_DIR);
+  const eventsPath = path3.join(stateDir, "events.jsonl");
+  const missesPath = path3.join(stateDir, "misses.json");
+  let scanCount = 0;
+  function getScanCount() {
+    return scanCount;
+  }
+  function resetScanCount() {
+    scanCount = 0;
+  }
+  const absoluteOf = (relPath) => path3.join(base, safeRelPath(relPath));
   async function ensureLayout() {
-    await fsp.mkdir(stateDir, { recursive: true });
-    await fsp.mkdir(path.join(base, "personal"), { recursive: true });
-    await fsp.mkdir(path.join(base, "work"), { recursive: true });
-    await fsp.mkdir(path.join(base, ARCHIVE_DIR), { recursive: true });
+    await fsp2.mkdir(stateDir, { recursive: true });
+    await fsp2.mkdir(path3.join(base, "personal"), { recursive: true });
+    await fsp2.mkdir(path3.join(base, "work"), { recursive: true });
+    await fsp2.mkdir(path3.join(base, ARCHIVE_DIR), { recursive: true });
   }
   async function readEntry(relPath, declaredBranches) {
     const absolute = absoluteOf(relPath);
-    const stat = await fsp.stat(absolute);
-    const source = await fsp.readFile(absolute, "utf8");
+    const stat = await fsp2.stat(absolute);
+    const source = await fsp2.readFile(absolute, "utf8");
     const { frontmatter, body } = splitFrontmatter(source);
     const meta = parseFrontmatter(frontmatter);
     const lineCount = source.split("\n").length;
@@ -2478,7 +2754,7 @@ function createStore({ root, now = () => Date.now() } = {}) {
       project: pathScope.project,
       branch: branchOfEntry(pathScope.branch, meta.branch),
       unscoped: isUnscopedEntry(relPath, declaredBranches),
-      title: orEmpty(meta.title ?? path.basename(relPath, ".md")),
+      title: orEmpty(meta.title ?? path3.basename(relPath, ".md")),
       kind: orEmpty(meta.kind),
       scope: orEmpty(meta.scope),
       layer: orEmpty(meta.layer),
@@ -2506,6 +2782,7 @@ function createStore({ root, now = () => Date.now() } = {}) {
     };
   }
   async function scan() {
+    scanCount += 1;
     const files = await listMarkdown(base);
     const declared = /* @__PURE__ */ new Map();
     for (const relPath of files) {
@@ -2513,21 +2790,22 @@ function createStore({ root, now = () => Date.now() } = {}) {
       if (parts[0] !== "work" || parts.length !== 3) continue;
       if (parts[2].toLowerCase() !== "index.md") continue;
       try {
-        const { frontmatter } = splitFrontmatter(await fsp.readFile(absoluteOf(relPath), "utf8"));
+        const { frontmatter } = splitFrontmatter(await fsp2.readFile(absoluteOf(relPath), "utf8"));
         const meta = parseFrontmatter(frontmatter);
         const branches = Array.isArray(meta.branches) ? meta.branches.map((item) => String(item).trim()).filter((item) => item !== "") : [];
         if (branches.length > 0) declared.set(parts[1], branches);
       } catch {
       }
     }
-    const entries = [];
-    for (const relPath of files) {
+    const loaded = await Promise.all(files.map(async (relPath) => {
       try {
         const project = projectOf(relPath);
-        entries.push(await readEntry(relPath, project === null ? void 0 : declared.get(project)));
+        return await readEntry(relPath, project === null ? void 0 : declared.get(project));
       } catch {
+        return null;
       }
-    }
+    }));
+    const entries = loaded.filter((entry) => entry !== null);
     entries.sort((a, b) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       return String(b.updatedAt).localeCompare(String(a.updatedAt));
@@ -2537,10 +2815,48 @@ function createStore({ root, now = () => Date.now() } = {}) {
   async function readEvents() {
     let raw = "";
     try {
-      raw = await fsp.readFile(eventsPath, "utf8");
+      raw = await fsp2.readFile(eventsPath, "utf8");
     } catch {
       return [];
     }
+    return parseEventLines(raw);
+  }
+  async function readEventsTail(count) {
+    if (count <= 0) return [];
+    let handle = null;
+    try {
+      handle = await fsp2.open(eventsPath, "r");
+      const size = (await handle.stat()).size;
+      if (size === 0) return [];
+      const BLOCK = 64 * 1024;
+      let position = size;
+      let text = "";
+      let newlines = 0;
+      while (position > 0 && newlines <= count) {
+        const want = Math.min(BLOCK, position);
+        position -= want;
+        const buf = Buffer.allocUnsafe(want);
+        const { bytesRead } = await handle.read(buf, 0, want, position);
+        text = buf.subarray(0, bytesRead).toString("utf8") + text;
+        newlines = 0;
+        for (let i = 0; i < text.length; i += 1) {
+          if (text[i] === "\n") newlines += 1;
+        }
+      }
+      const lines = text.split("\n");
+      const atFileStart = position === 0;
+      const usable = atFileStart ? lines : lines.slice(1);
+      const nonEmpty = usable.filter((line) => line.trim() !== "");
+      const tail = nonEmpty.slice(-count);
+      return parseEventLines(tail.join("\n"));
+    } catch {
+      return [];
+    } finally {
+      await handle?.close().catch(() => {
+      });
+    }
+  }
+  function parseEventLines(raw) {
     const events = [];
     for (const line of raw.split("\n")) {
       if (line.trim() === "") continue;
@@ -2552,15 +2868,15 @@ function createStore({ root, now = () => Date.now() } = {}) {
     return events;
   }
   async function appendEvent(event) {
-    await fsp.mkdir(stateDir, { recursive: true });
+    await fsp2.mkdir(stateDir, { recursive: true });
     const row = { at: new Date(now()).toISOString(), ...event };
-    await fsp.appendFile(eventsPath, `${JSON.stringify(row)}
+    await fsp2.appendFile(eventsPath, `${JSON.stringify(row)}
 `, "utf8");
     return row;
   }
   async function readMisses() {
     try {
-      const raw = await fsp.readFile(missesPath, "utf8");
+      const raw = await fsp2.readFile(missesPath, "utf8");
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed.misses) ? parsed.misses : [];
     } catch {
@@ -2568,7 +2884,7 @@ function createStore({ root, now = () => Date.now() } = {}) {
     }
   }
   async function writeMisses(misses) {
-    await fsp.mkdir(stateDir, { recursive: true });
+    await fsp2.mkdir(stateDir, { recursive: true });
     await atomicWrite(missesPath, `${JSON.stringify({ version: 1, misses }, null, 2)}
 `);
   }
@@ -2650,7 +2966,7 @@ function createStore({ root, now = () => Date.now() } = {}) {
   async function writeBody(relPath, body) {
     const absolute = absoluteOf(relPath);
     return withLock(absolute, async () => {
-      const source = await fsp.readFile(absolute, "utf8");
+      const source = await fsp2.readFile(absolute, "utf8");
       const { frontmatter } = splitFrontmatter(source);
       const meta = parseFrontmatter(frontmatter);
       meta.updated = new Date(now()).toISOString().slice(0, 10);
@@ -2662,7 +2978,7 @@ ${String(body ?? "").replace(/^\n+/, "")}`);
   async function mergeMeta(relPath, patch, { overwrite = [] } = {}) {
     const absolute = absoluteOf(relPath);
     return withLock(absolute, async () => {
-      const source = await fsp.readFile(absolute, "utf8");
+      const source = await fsp2.readFile(absolute, "utf8");
       const { frontmatter, body } = splitFrontmatter(source);
       const meta = parseFrontmatter(frontmatter);
       for (const [key, value] of Object.entries(patch)) {
@@ -2681,7 +2997,7 @@ ${body.replace(/^\n+/, "")}`);
   async function patchMeta(relPath, patch) {
     const absolute = absoluteOf(relPath);
     return withLock(absolute, async () => {
-      const source = await fsp.readFile(absolute, "utf8");
+      const source = await fsp2.readFile(absolute, "utf8");
       const { frontmatter, body } = splitFrontmatter(source);
       const meta = parseFrontmatter(frontmatter);
       for (const [key, value] of Object.entries(patch)) {
@@ -2745,10 +3061,8 @@ ${String(body).replace(/^\n+/, "")}`);
     );
   }
   function inboxPathOf(domain) {
-    if (domain === void 0 || domain === null || domain === "personal") return "personal/INBOX.md";
-    const [kind, project] = String(domain).split("/");
-    if (kind === "work" && project !== void 0) return `work/${project}/INBOX.md`;
-    return "personal/INBOX.md";
+    const key = String(domain ?? "personal");
+    return `${key}/INBOX.md`;
   }
   async function appendInbox({ domain, kind, content, state = "open", destination = "\u2014" }) {
     const relPath = inboxPathOf(domain);
@@ -2756,7 +3070,7 @@ ${String(body).replace(/^\n+/, "")}`);
     return withLock(absolute, async () => {
       let source = "";
       try {
-        source = await fsp.readFile(absolute, "utf8");
+        source = await fsp2.readFile(absolute, "utf8");
       } catch {
         const date = new Date(now()).toISOString().slice(0, 10);
         source = `---
@@ -2799,7 +3113,10 @@ ${INBOX_HEADER}`;
       meta.updated = new Date(now()).toISOString().slice(0, 10);
       await atomicWrite(absolute, `${serializeFrontmatter(meta)}
 ${lines.join("\n").replace(/^\n+/, "")}`);
-      return { path: relPath, row: parseInboxRow(row) === null ? null : { ...parseInboxRow(row), kindValid: true, stateValid: true, lineIndex: insertAt + 1 } };
+      return {
+        path: relPath,
+        row: parseInboxRow(row) === null ? null : { ...parseInboxRow(row), kindValid: true, stateValid: true, lineIndex: insertAt + 1 }
+      };
     });
   }
   async function readInbox(domain) {
@@ -2807,7 +3124,7 @@ ${lines.join("\n").replace(/^\n+/, "")}`);
     const absolute = absoluteOf(relPath);
     let source = "";
     try {
-      source = await fsp.readFile(absolute, "utf8");
+      source = await fsp2.readFile(absolute, "utf8");
     } catch {
       return { path: relPath, entries: [], exists: false };
     }
@@ -2818,7 +3135,7 @@ ${lines.join("\n").replace(/^\n+/, "")}`);
     const relPath = inboxPathOf(domain);
     const absolute = absoluteOf(relPath);
     return withLock(absolute, async () => {
-      const source = await fsp.readFile(absolute, "utf8");
+      const source = await fsp2.readFile(absolute, "utf8");
       const parsed = parseInbox(source, INBOX_KINDS, INBOX_STATES);
       const lines = parsed.body.split("\n");
       const row = parseInboxRow(lines[lineIndex] ?? "");
@@ -2839,7 +3156,12 @@ ${lines.join("\n").replace(/^\n+/, "")}`);
       return {
         path: relPath,
         lineIndex,
-        row: updated === null ? null : { ...updated, kindValid: INBOX_KINDS.includes(updated.kind), stateValid: INBOX_STATES.includes(updated.state), lineIndex }
+        row: updated === null ? null : {
+          ...updated,
+          kindValid: INBOX_KINDS.includes(updated.kind),
+          stateValid: INBOX_STATES.includes(updated.state),
+          lineIndex
+        }
       };
     });
   }
@@ -2847,7 +3169,7 @@ ${lines.join("\n").replace(/^\n+/, "")}`);
     const relPath = inboxPathOf(domain);
     const absolute = absoluteOf(relPath);
     return withLock(absolute, async () => {
-      const source = await fsp.readFile(absolute, "utf8");
+      const source = await fsp2.readFile(absolute, "utf8");
       const parsed = parseInbox(source, INBOX_KINDS, INBOX_STATES);
       const lines = parsed.body.split("\n");
       const ordered = [...new Set(lineIndexes)].sort((a, b) => b - a);
@@ -2871,8 +3193,8 @@ ${lines.join("\n").replace(/^\n+/, "")}`);
       const stamp = new Date(now()).toISOString().slice(0, 10).replace(/-/g, "");
       const targetRel = `${ARCHIVE_DIR}/${stamp}/${relative}`;
       const targetAbs = absoluteOf(targetRel);
-      await fsp.mkdir(path.dirname(targetAbs), { recursive: true });
-      const source = await fsp.readFile(absolute, "utf8");
+      await fsp2.mkdir(path3.dirname(targetAbs), { recursive: true });
+      const source = await fsp2.readFile(absolute, "utf8");
       const { frontmatter, body } = splitFrontmatter(source);
       const meta = parseFrontmatter(frontmatter);
       meta.status = "archived";
@@ -2880,8 +3202,13 @@ ${lines.join("\n").replace(/^\n+/, "")}`);
       meta.archive_reason = reason;
       await atomicWrite(targetAbs, `${serializeFrontmatter(meta)}
 ${body.replace(/^\n+/, "")}`);
-      await fsp.unlink(absolute);
-      await appendEvent({ session: "plugin", kind: "archive", ids: [identityOf(relative, meta)], query: reason });
+      await fsp2.unlink(absolute);
+      await appendEvent({
+        session: "plugin",
+        kind: "archive",
+        ids: [identityOf(relative, meta)],
+        query: reason
+      });
       return { from: relative, to: targetRel };
     });
   }
@@ -2907,83 +3234,8 @@ ${body.replace(/^\n+/, "")}`);
     }
     return event;
   }
-  function summarize(entries, events, misses, { nowMs = now() } = {}) {
-    const byDomain = /* @__PURE__ */ new Map();
-    let bytes = 0;
-    let tokens = 0;
-    let overLimit = 0;
-    for (const entry of entries) {
-      bytes += entry.bytes;
-      tokens += entry.tokens;
-      if (entry.overLineLimit) overLimit += 1;
-      const bucket = byDomain.get(entry.domain) ?? {
-        key: entry.domain,
-        label: entry.domainLabel,
-        files: 0,
-        bytes: 0,
-        tokens: 0,
-        overLimit: 0
-      };
-      bucket.files += 1;
-      bucket.bytes += entry.bytes;
-      bucket.tokens += entry.tokens;
-      if (entry.overLineLimit) bucket.overLimit += 1;
-      byDomain.set(entry.domain, bucket);
-    }
-    const layers = {
-      l0: { files: 0, tokens: 0 },
-      l1: { files: 0, tokens: 0 },
-      l2: { files: 0, tokens: 0 }
-    };
-    for (const entry of entries) {
-      const key = String(entry.layer).toLowerCase();
-      if (key === "l0" || key === "l1" || key === "l2") {
-        layers[key].files += 1;
-        layers[key].tokens += entry.tokens;
-      }
-    }
-    const windowStart = nowMs - 30 * 864e5;
-    const recent = events.filter((event) => {
-      const at = Date.parse(event.at ?? "");
-      return Number.isFinite(at) && at >= windowStart;
-    });
-    const recallEvents = recent.filter((event) => event.kind === "recall");
-    const citedIds = /* @__PURE__ */ new Set();
-    for (const event of recent) {
-      if (event.kind !== "cite") continue;
-      for (const id of event.ids ?? []) citedIds.add(id);
-    }
-    const recalledIds = /* @__PURE__ */ new Set();
-    for (const event of recallEvents) {
-      for (const id of event.ids ?? []) recalledIds.add(id);
-    }
-    const hitRate = recalledIds.size === 0 ? null : Math.min(1, citedIds.size / recalledIds.size);
-    const confirmed = entries.filter((entry) => entry.status === "confirmed").length;
-    const rejected = entries.filter((entry) => entry.status === "rejected").length;
-    const confirmRate = confirmed + rejected === 0 ? null : confirmed / (confirmed + rejected);
-    const stale = entries.filter((entry) => entry.status === "stale" || entry.status === "archived").length;
-    const expireRate = entries.length === 0 ? null : stale / entries.length;
-    const missTotal = misses.length;
-    const missVerified = misses.filter((miss) => miss.state === "verified").length;
-    const missRate = missTotal === 0 ? null : missVerified / missTotal;
-    return {
-      files: entries.length,
-      bytes,
-      tokens,
-      overLimit,
-      domains: [...byDomain.values()].sort((a, b) => b.files - a.files),
-      layers,
-      rates: { hitRate, confirmRate, expireRate, missRate },
-      misses: { total: missTotal, verified: missVerified },
-      counts: {
-        pending: entries.filter((entry) => entry.status === "hypothesis" || entry.status === "observed").length,
-        confirmed,
-        rejected,
-        stale,
-        archived: entries.filter((entry) => entry.status === "archived").length
-      },
-      expiry: entries.map((entry) => ({ id: entry.id, ...expiryOf(entry, nowMs) }))
-    };
+  function summarizeStats(entries, events, misses, { nowMs = now() } = {}) {
+    return summarize(entries, events, misses, { nowMs }, expiryOf);
   }
   return {
     root: base,
@@ -2992,8 +3244,11 @@ ${body.replace(/^\n+/, "")}`);
     missesPath,
     ensureLayout,
     scan,
+    getScanCount,
+    resetScanCount,
     readEntry,
     readEvents,
+    readEventsTail,
     appendEvent,
     readMisses,
     writeMisses,
@@ -3014,14 +3269,14 @@ ${body.replace(/^\n+/, "")}`);
     archiveEntry,
     keepLonger,
     recordCite,
-    summarize,
+    summarize: summarizeStats,
     absoluteOf
   };
 }
 
 // src/index.ts
-import fsp2 from "node:fs/promises";
-import path2 from "node:path";
+import fsp3 from "node:fs/promises";
+import path4 from "node:path";
 
 // src/bridge.ts
 var ROUTES = {
@@ -3390,7 +3645,7 @@ function apply(ctx, config = {}) {
   const readExternal = async (relPath) => {
     try {
       const safe = safeRelPath(relPath);
-      return await fsp2.readFile(path2.join(process.cwd(), safe), "utf8");
+      return await fsp3.readFile(path4.join(process.cwd(), safe), "utf8");
     } catch {
       return null;
     }

@@ -196,7 +196,27 @@ describe('路由与能力的对应关系', () => {
     const names = [...block.matchAll(/^\s{2}([a-zA-Z]+):\s*\{/gm)].map(match => match[1])
     assert.equal(names.length >= 34, true, `路由数偏少：${names.length}`)
 
-    const actions = await fsp.readFile(path.join(SRC_DIR, '..', '..', 'core', 'src', 'actions.ts'), 'utf8')
+    /*
+     * 能力实现现在分布在 actions.ts + actions/ 子目录（领域拆分后）。
+     *
+     * ⚠️ 早先这里只读单个 actions.ts，拆分后会误报「路由 inbox 找不到实现」——
+     * 因为它被移到了 actions/inbox.ts。测试要跟着结构走，而不是反过来
+     * 为了迁就测试而不拆文件。
+     *
+     * 但仍保留原来的强度：每条路由都必须能在**某个**源文件里找到 `function <name>(`，
+     * 这依然能挡住「有路由没实现」的脱节。
+     */
+    const coreSrc = path.join(SRC_DIR, '..', '..', 'core', 'src')
+    const actionFiles = [
+      path.join(coreSrc, 'actions.ts'),
+      ...(await fsp.readdir(path.join(coreSrc, 'actions')))
+        .filter(name => name.endsWith('.ts'))
+        .map(name => path.join(coreSrc, 'actions', name)),
+    ]
+    const sources = await Promise.all(
+      actionFiles.map(file => fsp.readFile(file, 'utf8')),
+    )
+    const allActions = sources.join('\n')
     // healthCheck 是诊断路由，不对应核心能力；export 在 actions 里叫 exportData
     const aliases = { healthCheck: null, export: 'exportData', verifyAnchor: 'verifyAnchorJob' }
     for (const name of names) {
@@ -204,7 +224,7 @@ describe('路由与能力的对应关系', () => {
       if (alias === null) continue
       const symbol = alias ?? name
       assert.equal(
-        actions.includes(`function ${symbol}(`), true,
+        allActions.includes(`function ${symbol}(`), true,
         `路由 ${name} 在 core 里找不到实现 ${symbol}——传输层与能力层已脱节`,
       )
     }

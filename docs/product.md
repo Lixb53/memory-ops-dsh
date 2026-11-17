@@ -39,7 +39,7 @@
 | `packages/dsh-plugin` | ✅ 已实现并安装运行 | host 半体（34 条路由 + 2 个工具）+ 浏览器半体（4 表面） |
 | `packages/memory-web` | ❌ **未实现** | Web 管理端**没有代码**，本文档中所有 Web 端描述均为设计意图 |
 
-测试：core 232 项 + plugin 90 项 = **322 项**，`tsc --noEmit` 0 错误。
+测试：core 252 项 + plugin 90 项 = **342 项**，`tsc --noEmit` 0 错误。
 
 ### 2.2 表面与分区：真实完成度
 
@@ -316,7 +316,7 @@ core **能读能写**，但：
 
 | 项 | 状态 |
 |---|---|
-| core（契约 / 解析 / 存储 / 检索 / 隐私 / 维护作业 / 能力层） | ✅ 已实现，232 项测试 |
+| core（契约 / 解析 / 存储 / 检索 / 隐私 / 维护作业 / 能力层） | ✅ 已实现，252 项测试 |
 | DSH 插件 host（34 路由 + 2 工具） | ✅ 已实现，90 项测试 |
 | DSH 插件 client（4 表面 + 5 分区） | ✅ 已挂载，**部分能力未接入 UI**（§2.3） |
 | 个人域数据骨架 | ✅ `~/.memory-ops/personal/` 6 档案 + index |
@@ -1577,7 +1577,7 @@ remote 会说谎的两种情况都兜住了：不是 git 仓库（退回路径�
 
 ### 20.5 验证
 
-`scope.test.ts` 26 项 + `project.test.ts` 3 项 + `scope-migrate.test.ts` 5 项回归。core 232 项、plugin 90 项，共 322 项全绿。
+`scope.test.ts` 26 项 + `project.test.ts` 3 项 + `scope-migrate.test.ts` 5 项回归。core 252 项、plugin 90 项，共 342 项全绿。
 
 | 断言的 | 挡住的回潮 |
 |---|---|

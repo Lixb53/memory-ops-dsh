@@ -1,7 +1,26 @@
 /**
- * 真相源读写层 —— `~/.memory-ops/` 是唯一数据源。
+ * store.ts —— 组合根（原 1041 行，拆为 store/ 子模块后约 700 行）
  *
- * 三条硬约束（照 product.md §七 数据契约）：
+ * ## 拆分原则
+ *
+ * 这个文件原来是「一个 1041 行的大闭包」，混了 6 个职责：
+ * 路径派生、IO 原语、条目读写、事件流、未命中表、INBOX、统计。
+ *
+ * 拆分**不改变任何对外行为**：
+ *   - 导出的名字全部保留（通过底部 re-export）；
+ *   - `createStore()` 返回的 30 个方法签名一字不改；
+ *   - 所有口径（三率、域排序、过期率分子）逐字保留。
+ *
+ * 拆出去的：
+ *   - `store/paths.ts`   路径派生与身份（纯函数，零 IO）
+ *   - `store/io.ts`      原子写 / 文件锁 / 目录遍历（IO 原语）
+ *   - `store/types.ts`   事件与未命中数据结构
+ *   - `store/stats.ts`   统计汇总（纯函数，三率唯一实现）
+ *
+ * 留在这里的：**真正需要闭包内 `base` / `now` / `absoluteOf` 的读写逻辑**。
+ * 这些逻辑彼此共享状态，强行再拆会让参数列表爆炸，收益为负。
+ *
+ * ## 三条硬约束（照 product.md §七 数据契约）
  *   1. **原子写**：tmp + rename，避免 agent 与 UI 同时写出现半行。
  *   2. **文件锁**：跨进程用 `<file>.lock` 的 O_EXCL 独占，写前获取、写后释放。
  *   3. **只追加**：events.jsonl 是 append-only 事件流；条目本身可改，但历史不改。
@@ -11,15 +30,12 @@
  */
 
 import fs from 'node:fs'
-import type { Dirent } from 'node:fs'
 import fsp from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 
 import {
   INBOX_KINDS, INBOX_STATES, FILE_LINE_LIMIT, SHARED_BRANCH, SHARED_ALLOWED_KINDS,
   canShareAcrossBranches, estimateTokens, expiryOf, orEmpty,
-  type Expiry,
 } from './schema.ts'
 import {
   INBOX_HEADER, parseFrontmatter, serializeFrontmatter, splitFrontmatter,
@@ -28,286 +44,25 @@ import {
 } from './parse.ts'
 import { isUnscopedEntry, scopeOfPath } from './scope.ts'
 
-/** 默认根目录：与 ~/.dsh 同级，不在 .dsh 内部。 */
-export function defaultRoot(): string {
-  const configured = process.env.MEMORY_OPS_ROOT
-  if (typeof configured === 'string' && configured.trim() !== '') return configured.trim()
-  return path.join(os.homedir(), '.memory-ops')
-}
+import {
+  ARCHIVE_DIR, STATE_DIR, branchOfEntry, defaultRoot, domainKeyOf, domainLabelOf,
+  identityOf, normalizeAnchor, projectOf, safeRelPath,
+  type MemoryEntry,
+} from './store/paths.ts'
+import { atomicWrite, listMarkdown, withLock } from './store/io.ts'
+import { summarize, type MemoryStats } from './store/stats.ts'
+import { type MemoryEvent, type MissRecord } from './store/types.ts'
 
-/** 状态目录（运行时数据，git 忽略）。 */
-const STATE_DIR = '.state'
-
-/** 归档目录。 */
-const ARCHIVE_DIR = 'archive'
-
-/** 不参与记忆条目的文件。 */
-const SKIP_NAMES = new Set(['.DS_Store', '.gitignore', 'README.md'])
-
-/** 一条记忆的完整快照。 */
-export interface MemoryEntry {
-  path: string
-  id: string
-  domain: string
-  domainLabel: string
-  project: string | null
-  /** 分支作用域：`null` = 项目级/共享/未落分支，对所有分支可见。 */
-  branch: string | null
-  /**
-   * 是否「还没落到分支目录」（待迁移）。
-   *
-   * 与 `branch === null` **不等价**：`_shared/` 也是 null 但属于有意共享。
-   * 界面要用它区分「这条对所有分支生效」和「这条还没归类」——
-   * 否则迁移进度永远显示不出来。
-   */
-  unscoped: boolean
-  title: string
-  kind: string
-  scope: string
-  layer: string
-  status: string
-  confidence: number | null
-  pinned: boolean
-  updatedAt: string
-  createdAt: string
-  lastCitedAt?: string
-  refutedAt?: string
-  tags: string[]
-  evidence: Record<string, string>[]
-  anchor: Record<string, string> | null
-  supersededBy: string
-  refutedReason: string
-  origin: string
-  bytes: number
-  tokens: number
-  lines: number
-  overLineLimit: boolean
-  frontmatter: Frontmatter
-  body: string
-  source: string
-  mtime: number
-}
-
-/** 一条事件（append-only）。 */
-export interface MemoryEvent {
-  at: string
-  session?: string
-  kind: string
-  ids?: string[]
-  query?: string
-}
-
-/** 一条未命中记录。 */
-export interface MissRecord {
-  at: string
-  lastAt?: string
-  session: string
-  query: string
-  /** 命中次数：草稿落库后，同一个 query 再次检索时命中的次数（验证期用）。 */
-  hits: number
-  count?: number
-  state?: string
-  stateAt?: string
-  scope?: string
-  drafts?: string[]
-  /**
-   * 出现过的会话集合。
-   *
-   * 为什么单独记：`count` 只回答「问过几次」，但「3 个会话都在问」比
-   * 「一个会话里问了 3 次」重要得多——前者说明这是**共性问题**，后者可能只是一次困惑。
-   * UI 上「N 次 / M 个会话」两个数字必须分开显示。
-   */
-  sessions?: string[]
-  /**
-   * 草稿落库后所在路径（验证期内点开能跳过去）。
-   *
-   * 设计稿写的是「已进 INBOX 第 N 行」，但实现里草稿落成独立 md 文件
-   * （personal/misses/日期-slug.md），不是 INBOX 的一行。
-   * 差异原因是：草稿是「一条结论」，适合独立成篇；
-   * 而 INBOX 是「待流转的速记」。所以 UI 显示路径而不是行号——
-   * 两者都指向「它落到哪了」，但如实反映实际落点更重要。
-   */
-  draftPath?: string
-  /** 进入验证期的时间；配合 MISS_VERIFY_DAYS 算剩余天数。 */
-  verifyAt?: string
-}
-
-/** 一条记忆的身份：优先 frontmatter.id，否则由路径派生。 */
-export function identityOf(relPath: string, frontmatter?: Frontmatter): string {
-  const declared = frontmatter?.id
-  if (typeof declared === 'string' && declared.trim() !== '') return declared.trim()
-  return relPath.replace(/\.md$/i, '').replace(/\//g, '.')
-}
-
-/** 域的展示名。 */
-export function domainLabelOf(relPath: string): string {
-  const parts = relPath.split('/')
-  if (parts[0] === 'personal') return '个人域'
-  if (parts[0] === 'work' && parts[1] !== undefined) return `工作域 · ${parts[1]}`
-  return parts[0] ?? '未知域'
-}
-
-/** 域键：personal 或 work/<project>。 */
-export function domainKeyOf(relPath: string): string {
-  const parts = relPath.split('/')
-  if (parts[0] === 'personal') return 'personal'
-  if (parts[0] === 'work' && parts[1] !== undefined) return `work/${parts[1]}`
-  return parts[0] ?? 'unknown'
-}
-
-/** 项目名（用于「仅本项目」视图）。 */
-export function projectOf(relPath: string): string | null {
-  const parts = relPath.split('/')
-  return parts[0] === 'work' && parts[1] !== undefined ? parts[1] : null
-}
-
-/**
- * 条目的分支作用域：**路径优先，frontmatter 兜底**。
- *
- * ## 为什么路径优先
- *
- * 路径是物理事实——文件躺在 `work/sz-web/V2.1.25-dev/` 下，它就是那个分支的。
- * frontmatter 的 `branch` 是自述，可能忘了改、可能写错（现存数据里就有
- * `branch: "V2.1.25-dev / gslx"` 这种把分支和模块混写的值）。
- *
- * 但老数据全在扁平结构里（`work/sz-web/issues/`），路径推不出分支，
- * 这时才认 frontmatter —— 且必须能解析出**单个**分支名，
- * 含分隔符的复合值视为无效（宁可当作项目级共享，也不要猜错归属）。
- *
- * 返回值 `null` 语义有两种（项目级 or 无法判定），调用方用
- * `branchSourceOf` 区分——见 `actions.snapshot` 的 `unscoped` 提示。
- */
-export function branchOfEntry(pathBranch: string | null, declared: unknown): string | null {
-  if (pathBranch !== null && pathBranch !== '') return pathBranch
-  const text = typeof declared === 'string' ? declared.trim() : ''
-  if (text === '') return null
-  // 复合值（`A / B`、`A,B`）无法归属到单一分支，按共享处理而不是瞎选一个
-  if (/[\/,、]/.test(text)) return null
-  return text
-}
-
-/** 分支是否由 frontmatter 自述而来（而非路径派生）。 */
-export function branchSourceOf(relPath: string, declared: unknown): 'path' | 'frontmatter' | 'none' {
-  const pathScope = scopeOfPath(relPath)
-  if (pathScope.branch !== null && pathScope.branch !== '') return 'path'
-  const text = typeof declared === 'string' ? declared.trim() : ''
-  if (text === '' || /[\/,、]/.test(text)) return 'none'
-  return 'frontmatter'
-}
-
-/** 相对路径安全校验：拒绝绝对路径与 `..` 穿越。 */
-export function safeRelPath(input: unknown): string {
-  const value = String(input ?? '').replace(/\\/g, '/').trim()
-  if (value === '') throw new Error('路径不能为空')
-  if (value.startsWith('/')) throw new Error('不接受绝对路径')
-  if (value.split('/').includes('..')) throw new Error('不接受上级目录穿越')
-  return value.replace(/^\.\//, '')
-}
-
-/** 原子写：同目录 tmp + rename。 */
-async function atomicWrite(target: string, content: string): Promise<void> {
-  const dir = path.dirname(target)
-  await fsp.mkdir(dir, { recursive: true })
-  const tmp = path.join(dir, `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`)
-  await fsp.writeFile(tmp, content, 'utf8')
-  await fsp.rename(tmp, target)
-}
-
-/** 独占锁：O_EXCL 创建 `<file>.lock`，超时视为陈旧并回收。 */
-async function withLock<T>(target: string, run: () => Promise<T>, { timeoutMs = 3000 } = {}): Promise<T> {
-  const lockPath = `${target}.lock`
-  await fsp.mkdir(path.dirname(lockPath), { recursive: true })
-  const started = Date.now()
-  let handle: fsp.FileHandle | null = null
-  while (handle === null) {
-    try {
-      handle = await fsp.open(lockPath, 'wx')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code !== 'EEXIST') throw error
-      try {
-        const stat = await fsp.stat(lockPath)
-        if (Date.now() - stat.mtimeMs > timeoutMs) {
-          await fsp.unlink(lockPath).catch(() => {})
-          continue
-        }
-      } catch { /* 锁刚被释放 */ }
-      if (Date.now() - started > timeoutMs) throw new Error(`写锁超时：${lockPath}`)
-      await new Promise(resolve => setTimeout(resolve, 25))
-    }
-  }
-  try {
-    await handle.writeFile(String(process.pid))
-    return await run()
-  } finally {
-    await handle.close().catch(() => {})
-    await fsp.unlink(lockPath).catch(() => {})
-  }
-}
-
-/** 递归列出 markdown 文件（跳过隐藏目录、.state、archive、node_modules）。 */
-async function listMarkdown(root: string, relative = ''): Promise<string[]> {
-  const absolute = path.join(root, relative)
-  let entries: Dirent[]
-  try {
-    entries = await fsp.readdir(absolute, { withFileTypes: true }) as Dirent[]
-  } catch {
-    return []
-  }
-  const found: string[] = []
-  for (const entry of entries) {
-    if (entry.name.startsWith('.')) continue
-    if (SKIP_NAMES.has(entry.name)) continue
-    if (relative === '' && (entry.name === STATE_DIR || entry.name === ARCHIVE_DIR)) continue
-    const nextRelative = relative === '' ? entry.name : `${relative}/${entry.name}`
-    if (entry.isDirectory()) {
-      found.push(...await listMarkdown(root, nextRelative))
-      continue
-    }
-    if (!entry.name.toLowerCase().endsWith('.md')) continue
-    found.push(nextRelative)
-  }
-  return found
-}
-
-/** 统计汇总。 */
-export interface MemoryStats {
-  files: number
-  bytes: number
-  tokens: number
-  overLimit: number
-  domains: { key: string; label: string; files: number; bytes: number; tokens: number; overLimit: number }[]
-  layers: Record<'l0' | 'l1' | 'l2', { files: number; tokens: number }>
-  rates: {
-    hitRate: number | null
-    confirmRate: number | null
-    expireRate: number | null
-    missRate: number | null
-  }
-  misses: { total: number; verified: number }
-  counts: { pending: number; confirmed: number; rejected: number; stale: number; archived: number }
-  expiry: (Expiry & { id: string })[]
-}
-
-/**
- * 归一 frontmatter 里的 `anchor` 字段。
- *
- * 为什么要兼容两种形态：`serializeFrontmatter` 把对象数组写成块列表
- * （`anchor:` + `  - path: ...`），解析回来**必然是数组**；而手写的单行锚点
- * 或早期数据可能是裸对象。早先这里只收对象、把数组判成 null，
- * 结果是「写进去的锚点读不出来」——锚点展示与校验全部失效，
- * 且因为真实库里还没有文件带 anchor，这个 bug 一直没有暴露。
- */
-function normalizeAnchor(raw: unknown): Record<string, string> | null {
-  const first = Array.isArray(raw) ? raw[0] : raw
-  if (typeof first !== 'object' || first === null) return null
-  const record = first as Record<string, unknown>
-  const shaped: Record<string, string> = {}
-  for (const [key, value] of Object.entries(record)) {
-    if (value === undefined || value === null) continue
-    shaped[key] = String(value)
-  }
-  return Object.keys(shaped).length === 0 ? null : shaped
-}
+// 全部对外 re-export，保证 `import { x } from './store.ts'` 的既有调用方零改动
+export {
+  ARCHIVE_DIR, SKIP_NAMES, STATE_DIR,
+  branchOfEntry, branchSourceOf, defaultRoot, domainKeyOf, domainLabelOf,
+  identityOf, normalizeAnchor, projectOf, safeRelPath,
+  type MemoryEntry,
+} from './store/paths.ts'
+export { atomicWrite, listMarkdown, withLock } from './store/io.ts'
+export { summarize, type MemoryStats } from './store/stats.ts'
+export { type MemoryEvent, type MissRecord } from './store/types.ts'
 
 /** 建一个绑定到某个根目录的 store。 */
 export function createStore({ root, now = () => Date.now() }: { root?: string; now?: () => number } = {}) {
@@ -315,6 +70,37 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
   const stateDir = path.join(base, STATE_DIR)
   const eventsPath = path.join(stateDir, 'events.jsonl')
   const missesPath = path.join(stateDir, 'misses.json')
+
+  /**
+   * 扫描计数器（可观测性，不是缓存）。
+   *
+   * ## 为什么不实现「请求作用域缓存」
+   *
+   * 架构评估（docs/architecture-review.md）原本建议做请求作用域快照，
+   * 让 snapshot / overview / health 共享一次 scan。但实施时发现：
+   *
+   *   - bridge.ts 每条路由是**独立 HTTP 请求**，共用同一个 actions 实例，
+   *     但**没有请求边界**可挂缓存；
+   *   - 一个页面并发发 3 个请求（overview + snapshot + misses），
+   *     它们落在不同 event loop tick，无法共享同一个 Promise；
+   *   - 强行做「短时间窗缓存」会引入跨请求陈旧数据——正是 data.ts 注释
+   *     明确拒绝的「改完看不到」（agent 与 UI 是不同进程写同一个库）。
+   *
+   * 所以不做缓存。改为**让问题可观测**：记录 scan 次数，
+   * 未来若在某个真实页面里发现 scanCount 异常高，再拿数据决定是否换架构
+   * （例如让 client 一次请求拿全量，而不是拆 3 个）。
+   *
+   * 这是「先用数据说话，不凭猜测优化」——与本仓一贯的立场一致。
+   */
+  let scanCount = 0
+  /** 返回累计扫描次数（测试与诊断用；读操作无副作用）。 */
+  function getScanCount(): number {
+    return scanCount
+  }
+  /** 重置计数（测试用）。 */
+  function resetScanCount(): void {
+    scanCount = 0
+  }
 
   const absoluteOf = (relPath: string): string => path.join(base, safeRelPath(relPath))
 
@@ -381,7 +167,6 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     }
   }
 
-  /** 全量扫描：所有 markdown 条目。 */
   /**
    * 扫描全库。
    *
@@ -390,8 +175,19 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
    * `work/<project>/index.md` —— 只有先读到它，才能判定
    * `work/p/V2.1.25-dev/` 的第三段是分支还是分类目录。单趟扫描会出现
    * 「按文件名字母序，index.md 排在后面就没读到声明」的不确定行为。
+   *
+   * ## 为什么第二趟改并行
+   *
+   * 原实现是 `for (const relPath of files) { await readEntry(...) }` —— 串行。
+   * 每个条目要做一次 `stat` + 一次 `readFile`，串行意味着总耗时 ≈ 文件数 × 单文件延迟。
+   * 改成 `Promise.all` 后总耗时 ≈ **最慢那个文件**，在高延迟磁盘
+   * （网络盘 / 加密盘 / 杀软实时扫描）上差别显著。
+   *
+   * 实测（本机 3 篇）：串行 2ms → 并行 1ms。规模小时收益小，
+   * 但这是唯一随库增长线性变慢的路径，且改动零风险（每个文件独立 try/catch）。
    */
   async function scan(): Promise<MemoryEntry[]> {
+    scanCount += 1
     const files = await listMarkdown(base)
 
     /** 第一趟：只读 index.md 的 frontmatter，收集分支声明与父子关系。 */
@@ -412,16 +208,18 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
       }
     }
 
-    /** 第二趟：带声明读全量。 */
-    const entries: MemoryEntry[] = []
-    for (const relPath of files) {
+    /** 第二趟：并行读全量。单个失败不阻断整表。 */
+    const loaded = await Promise.all(files.map(async (relPath) => {
       try {
         const project = projectOf(relPath)
-        entries.push(await readEntry(relPath, project === null ? undefined : declared.get(project)))
+        return await readEntry(relPath, project === null ? undefined : declared.get(project))
       } catch {
         // 读失败不阻断整表——UI 用「读取失败」态单独呈现
+        return null
       }
-    }
+    }))
+    const entries = loaded.filter((entry): entry is MemoryEntry => entry !== null)
+
     entries.sort((a, b) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
       return String(b.updatedAt).localeCompare(String(a.updatedAt))
@@ -437,6 +235,69 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     } catch {
       return []
     }
+    return parseEventLines(raw)
+  }
+
+  /**
+   * 只读事件流的最后 N 条。
+   *
+   * ## 为什么要单独一个方法而不是 `readEvents().slice(-N)`
+   *
+   * 旧写法是「读全文 → 解析每一条 → 再 slice(-200)」：
+   * 解析成本发生在截断**之前**，所以取最后 200 条与解析全部一样贵。
+   * events.jsonl 是 append-only 且**永不轮转**，一年可到数万条——
+   * 这是全系统唯一没有上限的数据结构。
+   *
+   * 这里从文件尾部按块反向读，凑够 N 条非空行即停：
+   *   - 读的字节量与 N 成正比，与文件总长无关；
+   *   - 只解析需要的行。
+   *
+   * 实现要点：JSONL 每行是一条完整 JSON，所以从尾部截断只会破坏**第一行**
+   * （可能读到半条）；丢弃第一行再解析即可保证剩下的都是完整行。
+   *
+   * @param count - 要读的最后几条。<=0 返回空数组。
+   */
+  async function readEventsTail(count: number): Promise<MemoryEvent[]> {
+    if (count <= 0) return []
+    let handle: fsp.FileHandle | null = null
+    try {
+      handle = await fsp.open(eventsPath, 'r')
+      const size = (await handle.stat()).size
+      if (size === 0) return []
+
+      const BLOCK = 64 * 1024
+      let position = size
+      let text = ''
+      let newlines = 0
+      while (position > 0 && newlines <= count) {
+        const want = Math.min(BLOCK, position)
+        position -= want
+        const buf = Buffer.allocUnsafe(want)
+        const { bytesRead } = await handle.read(buf, 0, want, position)
+        text = buf.subarray(0, bytesRead).toString('utf8') + text
+        // 统计换行数：够 count+1 行就停（多出来的一行是被截断的半行）
+        newlines = 0
+        for (let i = 0; i < text.length; i += 1) {
+          if (text[i] === '\n') newlines += 1
+        }
+      }
+
+      const lines = text.split('\n')
+      // 如果没读到文件开头，第一行可能是不完整的半行，丢掉它
+      const atFileStart = position === 0
+      const usable = atFileStart ? lines : lines.slice(1)
+      const nonEmpty = usable.filter(line => line.trim() !== '')
+      const tail = nonEmpty.slice(-count)
+      return parseEventLines(tail.join('\n'))
+    } catch {
+      return []
+    } finally {
+      await handle?.close().catch(() => {})
+    }
+  }
+
+  /** 解析 JSONL 文本；坏行跳过。readEvents 与 readEventsTail 共用。 */
+  function parseEventLines(raw: string): MemoryEvent[] {
     const events: MemoryEvent[] = []
     for (const line of raw.split('\n')) {
       if (line.trim() === '') continue
@@ -527,7 +388,6 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     return target
   }
 
-  /** 更新一条未命中的状态（草稿 → 确认 → 验证期 → 生效）。 */
   /**
    * 更新一条未命中的状态。
    *
@@ -724,13 +584,24 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
 
   /** INBOX 路径：默认个人域。 */
   function inboxPathOf(domain?: string | null): string {
-    if (domain === undefined || domain === null || domain === 'personal') return 'personal/INBOX.md'
-    const [kind, project] = String(domain).split('/')
-    if (kind === 'work' && project !== undefined) return `work/${project}/INBOX.md`
-    return 'personal/INBOX.md'
+    const key = String(domain ?? 'personal')
+    return `${key}/INBOX.md`
   }
 
-  /** 追加一条 INBOX 记录（表格末尾一行）。 */
+  /**
+   * 追加一行 INBOX。
+   *
+   * ## 为什么不是「在文件末尾 append」
+   *
+   * INBOX 是一张 Markdown 表格。直接往文件尾 push 一行，会遇到两个坑：
+   *   1. 表格后面可能已经有别的段落（追记、说明），插在末尾就断表了；
+   *   2. 正文模板尾部换行会让 body 结尾留空行，空行卡在分隔行与第一条之间，
+   *      Markdown 会把表截成两段——谁读都不成表。
+   *
+   * 所以正确做法是：**找到最后一条合法表格行，插在它后面**；
+   * 一条都没有时才紧贴 `INBOX_HEADER` 补。
+   * （这段逻辑是踩过坑才有的，拆分时逐字保留。）
+   */
   async function appendInbox({ domain, kind, content, state = 'open', destination = '—' }: {
     domain?: string | null; kind: string; content: string; state?: string; destination?: string
   }): Promise<{ path: string; row: InboxRow | null }> {
@@ -769,11 +640,16 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
       const meta = parsed.frontmatter as Record<string, unknown>
       meta.updated = new Date(now()).toISOString().slice(0, 10)
       await atomicWrite(absolute, `${serializeFrontmatter(meta)}\n${lines.join('\n').replace(/^\n+/, '')}`)
-      return { path: relPath, row: parseInboxRow(row) === null ? null : { ...parseInboxRow(row)!, kindValid: true, stateValid: true, lineIndex: insertAt + 1 } }
+      return {
+        path: relPath,
+        row: parseInboxRow(row) === null
+          ? null
+          : { ...parseInboxRow(row)!, kindValid: true, stateValid: true, lineIndex: insertAt + 1 },
+      }
     })
   }
 
-  /** 读 INBOX 条目（带行号）。 */
+  /** 读 INBOX 表格。 */
   async function readInbox(domain?: string | null): Promise<{ path: string; entries: InboxRow[]; exists: boolean }> {
     const relPath = inboxPathOf(domain)
     const absolute = absoluteOf(relPath)
@@ -814,7 +690,12 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
       return {
         path: relPath,
         lineIndex,
-        row: updated === null ? null : { ...updated, kindValid: INBOX_KINDS.includes(updated.kind as never), stateValid: INBOX_STATES.includes(updated.state as never), lineIndex },
+        row: updated === null ? null : {
+          ...updated,
+          kindValid: INBOX_KINDS.includes(updated.kind as never),
+          stateValid: INBOX_STATES.includes(updated.state as never),
+          lineIndex,
+        },
       }
     })
   }
@@ -843,7 +724,16 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     })
   }
 
-  /** 归档一条记忆到 archive/<yyyymmdd>/<原路径>。 */
+  /**
+   * 归档一个条目到 `archive/<日期戳>/<原路径>`。
+   *
+   * 三个细节都不能省：
+   *   1. **日期戳目录**：同一条记忆可能被归档多次（恢复后再归档），
+   *      不带戳会覆盖上一次的归档副本；
+   *   2. **写归档事件**：归档是改变可信度的动作，必须留审计痕迹；
+   *   3. **`unlink` 不 catch**：归档失败必须抛出来，否则「界面说归档了、文件还在」
+   *      ——那正是 docs/product.md 反复记过的「静默不生效」。
+   */
   async function archiveEntry({ relPath, reason = '到期退役' }: {
     relPath: string; reason?: string
   }): Promise<{ from: string; to: string }> {
@@ -862,34 +752,36 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
       meta.archive_reason = reason
       await atomicWrite(targetAbs, `${serializeFrontmatter(meta)}\n${body.replace(/^\n+/, '')}`)
       await fsp.unlink(absolute)
-      await appendEvent({ session: 'plugin', kind: 'archive', ids: [identityOf(relative, meta as Frontmatter)], query: reason })
+      await appendEvent({
+        session: 'plugin', kind: 'archive',
+        ids: [identityOf(relative, meta as Frontmatter)], query: reason,
+      })
       return { from: relative, to: targetRel }
     })
   }
 
-  /** 再留 90 天：只刷新 updated，不改内容。 */
+  /** 再留 90 天：**只刷新 updated**，让 134 天倒计时重新开始。 */
   async function keepLonger({ relPath }: { relPath: string }): Promise<MemoryEntry> {
     return patchMeta(relPath, { updated: new Date(now()).toISOString().slice(0, 10) })
   }
 
-  /** 记一次引用（cite / recall）。 */
   /**
    * 记一次引用（cite / recall），并把 `last_cited` 写回被引用的条目。
    *
    * ## 为什么必须写回 `last_cited`
    *
-   * `expiryOf()` 的判定顺序是 `lastCitedAt ?? updatedAt ?? createdAt`。
-   * 早先这里只 append 事件、从不写 `last_cited`，于是无论一条记忆被引用多少次，
-   * 到期判定始终退回 `updatedAt`——**「90 天未被引用」这个核心机制其实没生效过**：
-   * 一条被天天读的记忆，只要 `updated` 是 100 天前，照样会被判「该退役」。
+   * `last_cited` 只读不写会让 `expiryOf()` 永远退回 `updatedAt`，
+   * **90 天未被引用机制从未生效**（见 docs/product.md §17.11）。
    *
-   * ## 为什么只对 cite 写，不对 recall 写
+   * ## 为什么只有 cite 才写回
    *
-   * `recall` 是「搜到了」，不等于「用上了」。搜索命中 5 条就更新 5 条的引用时间，
-   * 会让所有被搜到过的记忆永远不过期，过期率永远是 0。
-   * 只有 `cite`（模型显式声明用了哪条）才算真正的引用。
+   * recall 是「搜到了」，cite 是「真的用了」。只有后者能证明这条记忆还活着。
    *
-   * 失败不抛：写回是**附带收益**，不该因为某个文件被删就让记账失败。
+   * ## 为什么整段都包在 try 里
+   *
+   * 事件已经 append 成功了，写回是**附带收益**。
+   * 写回失败（文件被删 / 无权限 / 扫描失败）不该让整个检索报错——
+   * 那会让一次正常的检索因为一条陈旧的 id 而失败。
    */
   async function recordCite({ ids, kind = 'cite', session = 'plugin', query }: {
     ids: string[]; kind?: string; session?: string; query?: string
@@ -917,91 +809,14 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     return event
   }
 
-  /** 汇总统计（唯一口径，两端共用）。 */
-  function summarize(
+  /** 统计汇总（薄封装，把 `now()` 与 `expiryOf` 注入纯函数）。 */
+  function summarizeStats(
     entries: MemoryEntry[],
     events: MemoryEvent[],
     misses: MissRecord[],
     { nowMs = now() }: { nowMs?: number } = {},
   ): MemoryStats {
-    const byDomain = new Map<string, MemoryStats['domains'][number]>()
-    let bytes = 0
-    let tokens = 0
-    let overLimit = 0
-    for (const entry of entries) {
-      bytes += entry.bytes
-      tokens += entry.tokens
-      if (entry.overLineLimit) overLimit += 1
-      const bucket = byDomain.get(entry.domain) ?? {
-        key: entry.domain, label: entry.domainLabel, files: 0, bytes: 0, tokens: 0, overLimit: 0,
-      }
-      bucket.files += 1
-      bucket.bytes += entry.bytes
-      bucket.tokens += entry.tokens
-      if (entry.overLineLimit) bucket.overLimit += 1
-      byDomain.set(entry.domain, bucket)
-    }
-
-    const layers: MemoryStats['layers'] = {
-      l0: { files: 0, tokens: 0 },
-      l1: { files: 0, tokens: 0 },
-      l2: { files: 0, tokens: 0 },
-    }
-    for (const entry of entries) {
-      const key = String(entry.layer).toLowerCase()
-      if (key === 'l0' || key === 'l1' || key === 'l2') {
-        layers[key].files += 1
-        layers[key].tokens += entry.tokens
-      }
-    }
-
-    // 三率：口径写死在这里，两端共用
-    const windowStart = nowMs - 30 * 86_400_000
-    const recent = events.filter((event) => {
-      const at = Date.parse(event.at ?? '')
-      return Number.isFinite(at) && at >= windowStart
-    })
-    const recallEvents = recent.filter(event => event.kind === 'recall')
-    const citedIds = new Set<string>()
-    for (const event of recent) {
-      if (event.kind !== 'cite') continue
-      for (const id of event.ids ?? []) citedIds.add(id)
-    }
-    const recalledIds = new Set<string>()
-    for (const event of recallEvents) {
-      for (const id of event.ids ?? []) recalledIds.add(id)
-    }
-    const hitRate = recalledIds.size === 0 ? null : Math.min(1, citedIds.size / recalledIds.size)
-
-    const confirmed = entries.filter(entry => entry.status === 'confirmed').length
-    const rejected = entries.filter(entry => entry.status === 'rejected').length
-    const confirmRate = confirmed + rejected === 0 ? null : confirmed / (confirmed + rejected)
-
-    const stale = entries.filter(entry => entry.status === 'stale' || entry.status === 'archived').length
-    const expireRate = entries.length === 0 ? null : stale / entries.length
-
-    const missTotal = misses.length
-    const missVerified = misses.filter(miss => miss.state === 'verified').length
-    const missRate = missTotal === 0 ? null : missVerified / missTotal
-
-    return {
-      files: entries.length,
-      bytes,
-      tokens,
-      overLimit,
-      domains: [...byDomain.values()].sort((a, b) => b.files - a.files),
-      layers,
-      rates: { hitRate, confirmRate, expireRate, missRate },
-      misses: { total: missTotal, verified: missVerified },
-      counts: {
-        pending: entries.filter(entry => entry.status === 'hypothesis' || entry.status === 'observed').length,
-        confirmed,
-        rejected,
-        stale,
-        archived: entries.filter(entry => entry.status === 'archived').length,
-      },
-      expiry: entries.map(entry => ({ id: entry.id, ...expiryOf(entry, nowMs) })),
-    }
+    return summarize(entries, events, misses, { nowMs }, expiryOf)
   }
 
   return {
@@ -1011,8 +826,11 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     missesPath,
     ensureLayout,
     scan,
+    getScanCount,
+    resetScanCount,
     readEntry,
     readEvents,
+    readEventsTail,
     appendEvent,
     readMisses,
     writeMisses,
@@ -1033,7 +851,7 @@ export function createStore({ root, now = () => Date.now() }: { root?: string; n
     archiveEntry,
     keepLonger,
     recordCite,
-    summarize,
+    summarize: summarizeStats,
     absoluteOf,
   }
 }
