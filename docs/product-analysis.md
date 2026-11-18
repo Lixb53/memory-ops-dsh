@@ -577,7 +577,7 @@ const hitRate = recalledIds.size === 0 ? null : Math.min(1, citedIds.size / reca
 **每一步之后 `pnpm test` 与 `pnpm typecheck` 必须全绿**，且 `test/wiring-ui.test.mjs` 的路由全表断言不能红
 ——它是防止「重构中丢入口」的机器闸门。
 
-> 测试数**不写死**：本会话写作时实测 core 252 + plugin 90 = **342**，与 `docs/product.md` §2.1 一致；
+> 测试数**不写死**：本会话写作时实测 core 252 + plugin 85 = **337**，与 `docs/product.md` §2.1 一致；
 > 但 `README.md` 仍写 231+89=320，而并发重构还在新增测试。
 > 执行时以**实际 `pnpm test` 输出**为准，别拿文档里的数字当门禁。
 

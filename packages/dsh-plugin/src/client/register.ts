@@ -74,7 +74,7 @@ export function registerSessionView(ctx: ClientContext): () => void {
     label: () => '记忆',
     inject: (): { ctx: ClientContext; onGotoMisses: () => void } => ({
       ctx,
-      onGotoMisses: () => { gotoPane(ctx, 'misses', layoutService) },
+      onGotoMisses: () => { gotoPane(ctx, 'todo', layoutService) },
     }),
   }, SessionMemoryView as unknown as (props: Record<string, unknown>) => ReactNode)))
 

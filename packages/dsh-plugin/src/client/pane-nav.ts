@@ -22,8 +22,19 @@ import { useEffect, useState } from 'react'
 /** 面板 id（同时用作 sidebar.panellist 的 id 与 main 的 key）。 */
 export const PANEL_ID = 'memory-ops'
 
-/** 5 个分区 id。 */
-export type PaneId = 'project' | 'stream' | 'memory' | 'misses' | 'overview'
+/**
+ * 5 个分区 id（v4 任务导向入口）。
+ *
+ * 原先是 5 个数据分区（project / stream / memory / misses / overview），
+ * v4 改为按「用户要干的事」组织：
+ *   today    我现在该做什么（默认落地页）
+ *   capture  记一条
+ *   todo     待办（拍板 / 流转 / 补库）
+ *   memory   全库台账
+ *   health   库健康（成本 / 维护）
+ * 会话 tab 的「去未命中工作台」相应改为跳 `todo`（补库段在待办页）。
+ */
+export type PaneId = 'today' | 'capture' | 'todo' | 'memory' | 'health'
 
 /** 待处理请求状态。 */
 export interface PaneRequestState {

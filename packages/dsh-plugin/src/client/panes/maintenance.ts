@@ -64,16 +64,16 @@ export function MaintenancePanel({ onOpenMemory }: { onOpenMemory: (path: string
   }
 
   const TABLES: { id: 'repair' | 'anchor' | 'compact' | 'promote' | 'review'; label: string; badge: number }[] = [
-    { id: 'repair', label: '修补', badge: repair.data?.fixes.length ?? 0 },
-    { id: 'anchor', label: '锚点校验', badge: (anchor.data?.summary.stale ?? 0) + (anchor.data?.summary.missing ?? 0) },
-    { id: 'compact', label: '减重', badge: compact.data?.total ?? 0 },
-    { id: 'promote', label: '爬升', badge: promote.data?.plans.length ?? 0 },
-    { id: 'review', label: '复盘', badge: review.data?.todo.length ?? 0 },
+    { id: 'repair', label: '补全缺失的元数据', badge: repair.data?.fixes.length ?? 0 },
+    { id: 'anchor', label: '检查引用的代码还在不在', badge: (anchor.data?.summary.stale ?? 0) + (anchor.data?.summary.missing ?? 0) },
+    { id: 'compact', label: '压缩空行', badge: compact.data?.total ?? 0 },
+    { id: 'promote', label: '升级可信度', badge: promote.data?.plans.length ?? 0 },
+    { id: 'review', label: '本周小结', badge: review.data?.todo.length ?? 0 },
   ]
 
   return createElement('div', { style: { marginTop: 12 } },
     createElement('div', { className: 'dmo-lane-head' }, '维护作业',
-      createElement('span', { className: 'dmo-lane-count' }, '按需触发，无常驻定时器')),
+      createElement('span', { className: 'dmo-lane-count' }, '平时不用管；每项都先给预览，你点了才执行')),
     createElement('div', { className: 'dmo-note', style: { marginTop: 0 } },
       '这四件事都会改记忆的可信度或内容，所以一律「先预览、再执行」。'),
 
@@ -121,7 +121,7 @@ function AnchorSection({ data, phase, error, busy, run, onRetry, onOpenMemory }:
   onRetry: () => void
   onOpenMemory: (path: string) => void
 }): ReactNode {
-  const loading = Loading({ phase, error, onRetry, what: '锚点校验' })
+  const loading = Loading({ phase, error, onRetry, what: '引用检查' })
   if (loading !== null) return loading
   if (data === undefined) return null
 
@@ -187,7 +187,7 @@ function CompactSection({ data, phase, error, busy, run, onRetry, onOpenMemory }
   onRetry: () => void
   onOpenMemory: (path: string) => void
 }): ReactNode {
-  const loading = Loading({ phase, error, onRetry, what: '减重候选' })
+  const loading = Loading({ phase, error, onRetry, what: '压缩候选' })
   if (loading !== null) return loading
   if (data === undefined) return null
 
@@ -247,7 +247,7 @@ function PromoteSection({ data, phase, error, busy, run, onRetry, onOpenMemory }
   onRetry: () => void
   onOpenMemory: (path: string) => void
 }): ReactNode {
-  const loading = Loading({ phase, error, onRetry, what: '爬升计划' })
+  const loading = Loading({ phase, error, onRetry, what: '升级计划' })
   if (loading !== null) return loading
   if (data === undefined) return null
 
@@ -257,7 +257,7 @@ function PromoteSection({ data, phase, error, busy, run, onRetry, onOpenMemory }
 同一会话问三次不算——那是同一次困惑，不是独立验证。`),
 
     data.plans.length === 0
-      ? createElement(Empty, { title: '没有可爬升的条目' },
+      ? createElement(Empty, { title: '没有可升级的条目' },
         createElement('div', null, '要么引用次数还不够，要么已经是 confirmed（人拍的板，代码不许改）。'))
       : createElement('div', null,
         data.plans.slice(0, 10).map(plan => createElement('div', { key: plan.id, className: 'dmo-resident-row' },
@@ -277,9 +277,9 @@ function PromoteSection({ data, phase, error, busy, run, onRetry, onOpenMemory }
           createElement(Button, {
             small: true, variant: 'primary', disabled: busy,
             onClick: () => {
-              run(() => call('promote', { apply: true }), `已爬升 ${data.plans.length} 条`, onRetry)
+              run(() => call('promote', { apply: true }), `已升级 ${data.plans.length} 条`, onRetry)
             },
-          }, `按计划爬升（${data.plans.length} 条）`))))
+          }, `按计划升级（${data.plans.length} 条）`))))
 }
 
 /** ④ 每周复盘。 */
@@ -290,7 +290,7 @@ function ReviewSection({ data, phase, error, onRetry, onOpenMemory }: {
   onRetry: () => void
   onOpenMemory: (path: string) => void
 }): ReactNode {
-  const loading = Loading({ phase, error, onRetry, what: '复盘' })
+  const loading = Loading({ phase, error, onRetry, what: '本周小结' })
   if (loading !== null) return loading
   if (data === undefined) return null
 
@@ -381,7 +381,7 @@ function RepairSection({ data, phase, error, busy, run, onRetry, onOpenMemory }:
   onRetry: () => void
   onOpenMemory: (path: string) => void
 }): ReactNode {
-  const loading = Loading({ phase, error, onRetry, what: '修补计划' })
+  const loading = Loading({ phase, error, onRetry, what: '修补' })
   if (loading !== null) return loading
   if (data === undefined) return null
 

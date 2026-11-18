@@ -1,101 +1,73 @@
 /**
- * 分区「记忆」—— 全量记忆列表 + 详情 + 源码编辑。
+ * 分区「记忆」—— 全库台账 + 详情。
  *
- * 编辑走**源码单模式**：侧栏宽度放不下表单化，但能力必须对等，
- * 所以不做「只读」。详情里给出证据链、锚点状态与四出口。
+ * ## 列表为什么不是卡片
  *
- * v3.5 两处补齐（都是 product.md §2.3 点名的缺口）：
- *   1. **检索改走 `search` 路由**。早先用客户端 `filter`，看着也能搜，
- *      但 `recall` / `cite` / `miss` 事件一条都不会产生——于是「命中率」恒为 null，
- *      「未命中」分区也永远收不到输入。客户端过滤不是检索，它没有账可记。
- *   2. **驳回与撤销驳回**。状态机里有 rejected、有 30 天静默、有 undoReject 路由、
- *      有测试覆盖，但界面上没有按钮。纠正机制用不上，等于没有。
+ * 旧实现每条记忆是一张 `border-radius: 8` 卡片，3 条记忆看起来像 3 个功能模块。
+ * 台账应该像台账：hairline 分隔、行内元信息等宽。
+ *
+ * ## 检索必须走路由（记账）
+ *
+ * 早先用客户端 filter，看着也能搜，但 recall / cite / miss 事件一条都不会产生——
+ * 于是「命中率」恒为 null。客户端过滤不是检索，它没有账可记。
+ *
+ * ## brand 名额
+ *
+ * 列表有内容时「搜」是进入页面的第一动作（实底）；
+ * 列表为空时空态出口是唯一动作（实底），「搜」让位。两者不能同时是 primary。
  */
 
 import { createElement, useState, type ReactNode } from 'react'
 
 import { call, type DetailView, type SearchView, type SnapshotView } from '../api.ts'
 import { useBridge } from '../data.ts'
-import { scopeBody } from '../session-context.ts'
+import { scopeBody, useSessionProject, type ClientContextLike } from '../session-context.ts'
 import {
-  Badge, Button, Chip, Empty, ErrorState, RejectBox, SelectionBar, Skeleton, Stepper,
-  count, orEmpty, statusLabel, statusTone, truncate,
+  Btn, EmptyState, ErrorAlert, InlineDone, Primary, RejectBox, SectionHead, SkeletonRows,
+  TextLink, count, h, tag, truncate,
 } from '../ui.ts'
 
-/** 记忆分区。 */
-export function MemoryPane({ project, cwd, onOpenMemory, detailPath }: {
-  project: string | undefined
-  cwd: string | undefined
-  onOpenMemory: (path: string) => void
+/** 状态筛选分组（口径与 core 的 needsDecision 对齐）。 */
+const STATUS_GROUPS: { id: string; label: string; match: (s: string) => boolean }[] = [
+  { id: '', label: '全部', match: () => true },
+  { id: 'pending', label: '要我拍板', match: s => s === 'hypothesis' || s === 'observed' },
+  { id: 'stale', label: '待复核', match: s => s === 'stale' },
+  { id: 'confirmed', label: '已确认', match: s => s === 'confirmed' || s === 'active' },
+]
+
+/** 「记忆」分区：列表态。 */
+export function MemoryPane({ ctx, detailPath, onOpenDetail }: {
+  ctx?: ClientContextLike
   detailPath: string | undefined
+  onOpenDetail: (path: string | null) => void
 }): ReactNode {
   if (detailPath !== undefined) {
-    return createElement(MemoryDetail, { path: detailPath, onBack: () => { onOpenMemory('') } })
+    return createElement(MemoryDetail, { path: detailPath, onBack: () => { onOpenDetail(null) } })
   }
-  return createElement(MemoryList, { project, cwd, onOpenMemory })
+  return createElement(MemoryList, { ctx, onOpenDetail })
 }
 
-/** 列表。 */
-function MemoryList({ project, cwd, onOpenMemory }: {
-  project: string | undefined
-  cwd: string | undefined
-  onOpenMemory: (path: string) => void
+/** 列表态。 */
+function MemoryList({ ctx, onOpenDetail }: {
+  ctx?: ClientContextLike
+  onOpenDetail: (path: string) => void
 }): ReactNode {
-  /**
-   * 范围开关：默认**全库**。
-   *
-   * 这里曾经直接把 `project` 传给 snapshot，于是「记忆」页签和「本项目」
-   * 显示的是同一份东西——当前项目没有记忆时，两页都是 0 条。
-   * 用户看到「记忆一栏是空的」会以为库坏了，而实际是 42 篇都在、只是被项目过滤掉了。
-   *
-   * 分工应该是：「本项目」回答「这个项目有什么」，「记忆」回答「我到底存了什么」。
-   * 后者必须是全库，否则没有任何一页能看到全貌。
-   */
+  const { cwd, project } = useSessionProject(ctx)
   const [scope, setScope] = useState<'all' | 'project'>('all')
-  /**
-   * 「仅本项目」把 cwd 交给 core 解析，而不是用末段目录名。
-   *
-   * 早先这里的选项文案直接拼 `project`（如 `V2.1.25-dev`），
-   * 用户选了它得到空列表，会以为库坏了。
-   */
-  const scopeParams = scope === 'project' ? scopeBody(cwd, project) : {}
   const [query, setQuery] = useState('')
-  /** 已提交的检索词（回车或点检索才提交，避免每敲一个字都记一条 miss）。 */
   const [submitted, setSubmitted] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [domainFilter, setDomainFilter] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
-  const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
-  /**
-   * 域筛选 —— 域统计「下钻」的落地方式。
-   *
-   * 总览的域统计告诉你「sz-web 有 35 篇」，但看不到是哪 35 篇。
-   * 点一下跳到这一页并带上域过滤，才是那个数字的自然去处。
-   *
-   * ⚠️ 这个 hook **必须放在下面所有 early return 之前**。
-   * 曾经把它写在 `if (phase === 'loading') return ...` 之后，
-   * 结果首帧走 loading 分支时 hook 被跳过，数据到达后 hook 数量变化
-   * → React 抛错 → 整个面板白屏。Hooks 顺序是硬契约，不能有任何条件分支穿过它。
-   */
-  const [domainFilter, setDomainFilter] = useState('')
-  /**
-   * 状态筛选药丸（设计稿 .chip）。
-   *
-   * ⚠️ hook 顺序：这个 useState 必须与其它 hook 一样位于所有 early return 之前。
-   * 实测踩过：把它写在 `if (phase === 'loading') return` 之后 → 首帧跳过该 hook
-   * → 数据到达后 hook 数量变化 → React 抛错 → 整片白屏。
-   */
-  const [statusFilter, setStatusFilter] = useState('')
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
 
-  const { phase, data, error, reload } = useBridge<SnapshotView>(
-    'snapshot',
-    scopeParams,
-    [scope, cwd, project],
-  )
+  const scopeParams = scope === 'project' ? scopeBody(cwd, project) : {}
+  const snapshot = useBridge<SnapshotView>('snapshot', scopeParams, [scope, cwd, project])
   /**
    * 检索走路由才有账可记。
-   *
    * `record` 只在**人主动检索**时为 true：空 query 的空跑不能记 miss，
-   * 否则一进列表页就凭空污染未命中表，把真正该补的信号冲掉。
+   * 否则一进列表页就凭空污染未命中表。
    */
   const search = useBridge<SearchView>(
     'search',
@@ -103,91 +75,70 @@ function MemoryList({ project, cwd, onOpenMemory }: {
     [submitted, scope, cwd, project],
   )
 
-  if (phase === 'loading') return createElement(Skeleton, { rows: 5, height: 44 })
-  if (phase === 'error') return createElement(ErrorState, { message: `读取记忆失败：${orEmpty(error)}`, onRetry: reload })
-  if (data === undefined) return createElement(Skeleton, { rows: 2 })
-
-  const searching = submitted.trim() !== ''
-  const rawList = searching
-    ? (search.data?.hits ?? []).map(hit => ({
-      id: hit.id,
-      path: hit.path,
-      title: hit.title,
-      status: hit.status,
-      layer: hit.layer,
-      tokens: hit.tokens,
-      domainLabel: hit.domainLabel,
-      citeCount: undefined as number | undefined,
-      snippet: hit.snippet as string | undefined,
-    }))
-    : data.entries.map(entry => ({
-      id: entry.id,
-      path: entry.path,
-      title: entry.title,
-      status: entry.status,
-      layer: entry.layer,
-      tokens: entry.tokens,
-      domainLabel: entry.domainLabel,
-      citeCount: entry.citeCount,
-      snippet: undefined as string | undefined,
-    }))
-
-  /**
-   * 状态药丸的四个分组。
-   *
-   * 为什么要做成计数药丸而不是下拉：这四组是「我需要处理什么」的直接答案，
-   * 计数必须在**不展开**时就可见。「全部 42 / 待确认 2 / 待复核 1 …」
-   * 一眼能看出库里有多少欠账——下拉只能看到当前选中项。
-   */
-  const statusGroups: { id: string; label: string; match: (status: string) => boolean }[] = [
-    { id: '', label: '全部', match: () => true },
-    { id: 'pending', label: '待确认', match: s => s === 'hypothesis' || s === 'observed' || s === 'pending' },
-    { id: 'stale', label: '待复核', match: s => s === 'stale' },
-    { id: 'confirmed', label: '已确认', match: s => s === 'confirmed' || s === 'active' },
-    { id: 'archived', label: '已归档', match: s => s === 'archived' },
-    { id: 'rejected', label: '已驳回', match: s => s === 'rejected' },
-  ]
-  const statusCounts = statusGroups.map(group => ({
-    ...group,
-    count: rawList.filter(item => group.match(item.status)).length,
-  }))
-  const statusMatched = statusFilter === ''
-    ? rawList
-    : rawList.filter(item => (statusGroups.find(g => g.id === statusFilter)?.match(item.status) ?? true))
-  const list = domainFilter === ''
-    ? statusMatched
-    : statusMatched.filter(item => item.domainLabel === domainFilter)
-  /** 当前列表里出现过的域（去重），供下拉选择。 */
-  const domainOptions = [...new Set(rawList.map(item => item.domainLabel))]
-
-  function run(action: () => Promise<{ archived?: unknown[]; failed?: unknown[] }>, success: string): void {
+  function runBatch(action: () => Promise<{ archived?: unknown[]; failed?: unknown[] }>, success: string): void {
     setBusy(true)
-    setToast(null)
     void action()
       .then((result) => {
-        // 批量归档必须报出失败数：部分失败却显示「已归档 N 条」会让人以为清干净了
         const failed = result?.failed?.length ?? 0
-        setToast({
+        setFeedback({
           ok: failed === 0,
           text: failed === 0 ? success : `${success}，但有 ${failed} 条失败（可能已被改动）`,
         })
         setSelected([])
-        reload()
+        snapshot.reload()
       })
-      .catch((failure: unknown) => {
-        setToast({ ok: false, text: failure instanceof Error ? failure.message : String(failure) })
+      .catch((error: unknown) => {
+        setFeedback({ ok: false, text: error instanceof Error ? error.message : String(error) })
       })
-      .finally(() => {
-        setBusy(false)
-      })
+      .finally(() => { setBusy(false) })
   }
 
-  return createElement('div', null,
-    createElement('div', { className: 'dmo-row', style: { marginBottom: 8 } },
+  const entries = snapshot.data?.entries ?? []
+  const searching = submitted.trim() !== ''
+
+  const rawList = searching
+    ? (search.data?.hits ?? []).map(hit => ({
+        id: hit.id, path: hit.path, title: hit.title, status: hit.status,
+        tokens: hit.tokens, domainLabel: hit.domainLabel, citeCount: undefined as number | undefined,
+        snippet: hit.snippet as string | undefined,
+      }))
+    : entries.map(entry => ({
+        id: entry.id, path: entry.path, title: entry.title, status: entry.status,
+        tokens: entry.tokens, domainLabel: entry.domainLabel, citeCount: entry.citeCount,
+        snippet: undefined as string | undefined,
+      }))
+
+  const statusCounts = STATUS_GROUPS.map(group => ({
+    ...group,
+    num: rawList.filter(item => group.match(item.status)).length,
+  }))
+  const statusMatched = statusFilter === ''
+    ? rawList
+    : rawList.filter(item => (STATUS_GROUPS.find(g => g.id === statusFilter)?.match(item.status) ?? true))
+  const list = domainFilter === ''
+    ? statusMatched
+    : statusMatched.filter(item => item.domainLabel === domainFilter)
+  const domainOptions = [...new Set(rawList.map(item => item.domainLabel))]
+  const listEmpty = list.length === 0
+
+  const searchBtn = listEmpty
+    ? Btn({ children: '搜', onClick: () => { setSubmitted(query) }, attrs: { 'data-action': 'search' } })
+    : Primary({ children: '搜', onClick: () => { setSubmitted(query) }, attrs: { 'data-action': 'search' } })
+
+  const head = [
+    h('h1', { className: 'dmo-page-name' }, '记忆'),
+    h('p', { className: 'dmo-lede' }, `库里一共 ${count(entries.length)} 条，${count(snapshot.data?.stats.tokens ?? 0)} tokens`),
+    h('p', { className: 'dmo-lede-sub' },
+      snapshot.data === undefined
+        ? ''
+        : `最重的一条占 ${count(Math.max(...entries.map(e => e.tokens), 0))} tokens；超 80 行 ${count(snapshot.data.stats.overLimit)} 篇。`),
+
+    createElement('div', { className: 'dmo-toolbar', style: { marginTop: 0 } },
       createElement('input', {
         className: 'dmo-input',
-        placeholder: '检索正文，回车记账（命中记 cite，未命中记 miss）…',
+        'data-field': 'query',
         value: query,
+        placeholder: '搜标题或域…',
         'aria-label': '检索记忆',
         onChange: (event: { target: { value: string } }) => { setQuery(event.target.value) },
         onKeyDown: (event: { key: string }) => {
@@ -195,290 +146,267 @@ function MemoryList({ project, cwd, onOpenMemory }: {
           if (event.key === 'Escape') { setQuery(''); setSubmitted('') }
         },
       }),
-      createElement(Button, { small: true, onClick: () => { setSubmitted(query) } }, '检索')),
+      searchBtn),
 
-    // 范围 + 域筛选：这一页默认看全库，因为它是唯一能看到全貌的地方
-    createElement('div', { className: 'dmo-toolbar' },
-      createElement('select', {
-        className: 'dmo-select',
-        value: scope,
-        'aria-label': '范围',
-        onChange: (event: { target: { value: string } }) => {
-          setScope(event.target.value === 'project' ? 'project' : 'all')
-          setSelected([])
-        },
-      },
-      createElement('option', { value: 'all' }, '全部记忆'),
-      /**
-       * 选项文案用**解析后**的项目名，不是 cwd 末段。
-       *
-       * `V2.1.25-dev` 这种分支目录不该出现在「项目」这个位置上。
-       */
-      createElement('option', { value: 'project' },
-        data.projectScoped && data.project !== null
-          ? `仅本项目 · ${data.project}`
-          : '仅本项目（未识别到项目）')),
-      createElement('select', {
-        className: 'dmo-select',
-        value: domainFilter,
-        'aria-label': '按域筛选',
-        onChange: (event: { target: { value: string } }) => {
-          setDomainFilter(event.target.value)
-          setSelected([])
-        },
-      },
-      createElement('option', { value: '' }, '全部域'),
-      domainOptions.map(name => createElement('option', { key: name, value: name }, name)))),
-
-    // 状态药丸：计数常驻可见
-    createElement('div', { className: 'dmo-chips', role: 'group', 'aria-label': '状态筛选' },
-      statusCounts.map(group => createElement(Chip, {
+    createElement('div', { className: 'dmo-kindrow', role: 'group', 'aria-label': '按状态筛选' },
+      statusCounts.map(group => createElement('button', {
         key: group.id,
-        label: group.label,
-        count: group.count,
-        active: statusFilter === group.id,
-        onClick: () => {
-          setStatusFilter(group.id)
-          setSelected([])
+        type: 'button',
+        className: 'dmo-kindbtn',
+        'data-status': group.id,
+        'aria-pressed': statusFilter === group.id,
+        onClick: () => { setStatusFilter(group.id); setSelected([]) },
+      }, `${group.label} ${group.num}`))),
+
+    createElement('div', { className: 'dmo-kindrow', role: 'group', 'aria-label': '按域筛选' },
+      createElement('button', {
+        type: 'button',
+        className: 'dmo-kindbtn',
+        'data-scope': '',
+        'aria-pressed': scope === 'all' && domainFilter === '',
+        onClick: () => { setScope('all'); setDomainFilter(''); setSelected([]) },
+      }, `全库 ${entries.length}`),
+      createElement('button', {
+        type: 'button',
+        className: 'dmo-kindbtn',
+        'data-scope': 'project',
+        'aria-pressed': scope === 'project',
+        onClick: () => { setScope(scope === 'project' ? 'all' : 'project'); setSelected([]) },
+      }, scope === 'project' && snapshot.data?.project !== null && snapshot.data?.project !== undefined
+        ? `仅本项目 · ${snapshot.data.project}`
+        : '仅本项目'),
+      domainOptions.map(name => createElement('button', {
+        key: name,
+        type: 'button',
+        className: 'dmo-kindbtn',
+        'data-domain': name,
+        'aria-pressed': domainFilter === name,
+        onClick: () => { setDomainFilter(domainFilter === name ? '' : name); setSelected([]) },
+      }, name))),
+  ]
+
+  if (snapshot.phase === 'loading') return SkeletonRows({ rows: 4, height: 56 })
+  if (snapshot.phase === 'error') {
+    return createElement('div', null, head,
+      h(ErrorAlert, {
+        title: '读不到记忆',
+        body: '库文件没有丢，这是读取问题。记忆不会因为这次失败而消失。',
+        actions: [Primary({ children: '重试', onClick: snapshot.reload, attrs: { 'data-action': 'retry' } })],
+      }))
+  }
+
+  const emptyBlock = searching
+    ? h(EmptyState, {
+        title: `没搜到「${truncate(submitted, 20)}」`,
+        body: '检索落空本身就是一条信号——它已记进「待办 · 要我补的」。'
+          + '换个词，或去待办看这次落空。',
+        actions: [
+          Primary({ children: '换个词', onClick: () => { setQuery(''); setSubmitted('') }, attrs: { 'data-action': 'clear-search' } }),
+          Btn({ children: '去待办看', attrs: { 'data-action': 'goto', 'data-pane': 'todo' } }),
+        ],
+      })
+    : entries.length === 0
+      ? h(EmptyState, {
+          title: '库是空的',
+          body: '还没有任何记忆。记一条，它就会出现在这里。',
+          actions: [Primary({ children: '记一条', attrs: { 'data-action': 'goto', 'data-pane': 'capture' } })],
+        })
+      : h(EmptyState, {
+          title: '这个筛选下没有',
+          body: '换个筛选，或者清空筛选看全部。',
+          actions: [
+            Primary({ children: '清空筛选', onClick: () => { setStatusFilter(''); setDomainFilter(''); setScope('all') }, attrs: { 'data-action': 'clear-filter' } }),
+            Btn({ children: '记一条', attrs: { 'data-action': 'goto', 'data-pane': 'capture' } }),
+          ],
+        })
+
+  const rows = list.map(entry => createElement('li', { key: entry.id, className: 'dmo-row' },
+    createElement('button', {
+      type: 'button',
+      className: 'dmo-row-button',
+      'data-action': 'open-detail',
+      'data-path': entry.path,
+      onClick: () => { onOpenDetail(entry.path) },
+    }, truncate(entry.title, 60)),
+    h('div', { className: 'dmo-meta-row' },
+      tag(statusLabel(entry.status), entry.status === 'confirmed' || entry.status === 'active' ? 'ok' : entry.status === 'rejected' ? 'err' : entry.status === 'stale' || entry.status === 'observed' || entry.status === 'hypothesis' ? 'warn' : ''),
+      h('span', { className: 'dmo-meta' }, `${entry.tokens} tokens`),
+      h('span', { className: 'dmo-meta' }, entry.domainLabel),
+      h('span', { className: 'dmo-meta' },
+        entry.citeCount === undefined || entry.citeCount === 0 ? '未引用' : `引用 ${entry.citeCount} 次`),
+      entry.snippet === undefined ? null : h('span', { className: 'dmo-meta' }, truncate(entry.snippet, 60)),
+      createElement('input', {
+        type: 'checkbox',
+        className: 'dmo-check',
+        checked: selected.includes(entry.path),
+        'aria-label': `选择：${truncate(entry.title, 20)}`,
+        onClick: (event: { stopPropagation(): void }) => { event.stopPropagation() },
+        onChange: () => {
+          setSelected(current => current.includes(entry.path)
+            ? current.filter(p => p !== entry.path)
+            : [...current, entry.path])
         },
-      }))),
+      }))))
 
-    searching
-      ? createElement('div', { className: 'dmo-note' },
-        search.phase === 'loading'
-          ? '检索中…'
-          : search.data?.matched === true
-            ? `命中 ${count(search.data.total)} 条 · 本次读取约 ${count(search.data.cost)} tokens`
-            : '未命中——已记一条，去「未命中」分区把它补成一条记忆。')
-      : createElement('div', { className: 'dmo-note' },
-        `${count(list.length)} 条`
-        + (domainFilter === '' && scope === 'all' ? '' : `（${scope === 'project' ? '仅本项目' : '全库'}${domainFilter === '' ? '' : ` · ${domainFilter}`}）`)
-        + ` · 超 80 行 ${count(data.stats.overLimit)} 条 · 检索会记账，过滤不该记账`),
+  return createElement('div', null, head,
+    selected.length === 0 ? null : createElement('div', { className: 'dmo-bulk' },
+      h('span', { className: 'dmo-meta' }, `已选 ${selected.length} / ${list.length} 条`),
+      Btn({
+        children: `归档选中 ${selected.length} 条`, small: true, disabled: busy,
+        onClick: () => { runBatch(() => call('batchArchive', { paths: selected, reason: '批量退役' }), `已归档 ${selected.length} 条`) },
+        attrs: { 'data-action': 'batchArchive' },
+      }),
+      Btn({ children: '清空选择', small: true, disabled: busy, onClick: () => { setSelected([]) } })),
 
-    toast === null ? null : createElement('div', {
-      className: `dmo-toast ${toast.ok ? 'dmo-toast-ok' : 'dmo-toast-err'}`,
-      role: 'status',
-      style: { marginBottom: 8 },
-    }, toast.text),
-
-    // 批量归档
-    createElement(SelectionBar, {
-      count: selected.length,
-      total: list.length,
-      busy,
-      onClear: () => { setSelected([]) },
-    },
-    createElement(Button, {
-      small: true,
-      variant: 'danger',
-      disabled: busy,
-      onClick: () => {
-        run(() => call('batchArchive', { paths: selected, reason: '批量退役' }), `已归档 ${selected.length} 条`)
-      },
-    }, `归档选中 ${selected.length} 条`)),
-
-    list.length === 0
-      ? createElement(Empty, { title: searching ? '没有命中' : '没有记忆' },
-        createElement('div', null, searching ? '换个词，或去「未命中」看这次未命中。' : '这个域还没有条目。'))
-      : list.map(entry => createElement('div', {
-        key: entry.id,
-        className: 'dmo-card',
-        role: 'button',
-        tabIndex: 0,
-        style: { cursor: 'pointer' },
-        onClick: () => { onOpenMemory(entry.path) },
-        onKeyDown: (event: { key: string }) => {
-          if (event.key === 'Enter' || event.key === ' ') onOpenMemory(entry.path)
-        },
-      },
-      createElement('div', { className: 'dmo-card-title' }, truncate(entry.title, 46)),
-      createElement('div', { className: 'dmo-card-meta' },
-        createElement('input', {
-          type: 'checkbox',
-          className: 'dmo-check',
-          checked: selected.includes(entry.path),
-          'aria-label': `选择：${truncate(entry.title, 20)}`,
-          onClick: (event: { stopPropagation(): void }) => { event.stopPropagation() },
-          onChange: () => {
-            setSelected(current => current.includes(entry.path)
-              ? current.filter(path => path !== entry.path)
-              : [...current, entry.path])
-          },
-        }),
-        createElement(Badge, { tone: statusTone(entry.status) }, statusLabel(entry.status)),
-        createElement(Badge, { tone: 'idle' }, entry.layer.toUpperCase()),
-        entry.status === 'stale' ? createElement(Badge, { tone: 'warn' }, '待复核') : null,
-        createElement('span', null, count(entry.tokens), ' tokens'),
-        createElement('span', null, entry.domainLabel),
-        // 引用次数：判断「这条还活着吗」的关键信号
-        createElement('span', null,
-          entry.citeCount === undefined || entry.citeCount === 0
-            ? '未引用'
-            : `${count(entry.citeCount)} 次引用`)),
-      entry.snippet === undefined
-        ? createElement('div', { className: 'dmo-row-sub' }, orEmpty(entry.path))
-        : createElement('div', { className: 'dmo-row-sub' }, truncate(entry.snippet, 90)))))
+    SectionHead({ title: searching ? '检索结果' : '全部记忆', count: `${list.length} 条` }),
+    searching && search.phase === 'loading'
+      ? SkeletonRows({ rows: 2, height: 44 })
+      : listEmpty
+        ? emptyBlock
+        : createElement('ul', { className: 'dmo-list dmo-list-clickable' }, rows),
+    searching && search.phase === 'ready' && search.data !== undefined && !listEmpty
+      ? h('p', { className: 'dmo-note' },
+          `命中 ${count(search.data.total)} 条 · 本次读取约 ${count(search.data.cost)} tokens（已记账）`)
+      : null,
+    feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }))
 }
 
-/** 详情：状态 stepper + 信任栏 + 锚点 + 证据链 + 源码编辑 + 出口。 */
+/** 详情态。 */
 function MemoryDetail({ path, onBack }: { path: string; onBack: () => void }): ReactNode {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [rejecting, setRejecting] = useState(false)
-  const [reason, setReason] = useState('')
+  const detail = useBridge<DetailView>('detail', { path }, [path])
   const [busy, setBusy] = useState(false)
-  const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
-  const { phase, data, error, reload } = useBridge<DetailView>('detail', { path }, [path])
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
+  const [rejecting, setRejecting] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<string | null>(null)
 
   function run(action: () => Promise<unknown>, success: string): void {
     setBusy(true)
-    setToast(null)
     void action()
       .then(() => {
-        setToast({ ok: true, text: success })
-        setEditing(false)
+        setFeedback({ ok: true, text: success })
         setRejecting(false)
-        setReason('')
-        reload()
+        setRejectReason('')
+        setEditing(false)
+        setDraft(null)
       })
-      .catch((failure: unknown) => {
-        setToast({ ok: false, text: failure instanceof Error ? failure.message : String(failure) })
+      .catch((error: unknown) => {
+        setFeedback({ ok: false, text: error instanceof Error ? error.message : String(error) })
       })
-      .finally(() => {
-        setBusy(false)
-      })
+      .finally(() => { setBusy(false) })
   }
 
-  if (phase === 'loading') return createElement(Skeleton, { rows: 4 })
-  if (phase === 'error') return createElement(ErrorState, { message: `读取详情失败：${orEmpty(error)}`, onRetry: reload })
-  if (data === undefined) return createElement(Skeleton, { rows: 2 })
+  if (detail.phase === 'loading') return SkeletonRows({ rows: 4 })
+  if (detail.phase === 'error') {
+    return createElement('div', null,
+      createElement('div', { className: 'dmo-back' },
+        TextLink({ children: '← 返回列表', onClick: onBack, attrs: { 'data-action': 'back-to-list' } })),
+      h(ErrorAlert, {
+        title: '读不到这条记忆',
+        body: '它可能已被删除或改名。返回列表重新找——这不影响库里其它条目。',
+        actions: [Primary({ children: '返回列表', onClick: onBack, attrs: { 'data-action': 'back-to-list' } })],
+      }))
+  }
+  const data = detail.data
+  if (data === undefined) return null
 
   const { entry, trust } = data
-  /** 驳回是「任何态都可做」，所以不看当前状态；撤销只在 rejected 时才有意义。 */
+  const canConfirm = entry.status === 'stale' || entry.status === 'observed' || entry.status === 'hypothesis'
   const canReject = entry.status !== 'rejected'
-  const canUndoReject = entry.status === 'rejected'
 
   return createElement('div', null,
-    createElement('div', { className: 'dmo-row', style: { marginBottom: 8 } },
-      createElement(Button, { small: true, onClick: onBack }, '← 返回列表'),
-      createElement('span', { className: 'dmo-row-sub', style: { marginTop: 0 } }, orEmpty(entry.domainLabel))),
+    createElement('div', { className: 'dmo-back' },
+      TextLink({ children: '← 返回列表', onClick: onBack, attrs: { 'data-action': 'back-to-list' } })),
+    h('h1', { className: 'dmo-detail-title' }, entry.title),
+    h('div', { className: 'dmo-meta-row', style: { marginTop: 0 } },
+      tag(statusLabel(entry.status),
+        entry.status === 'confirmed' || entry.status === 'active' ? 'ok'
+          : entry.status === 'rejected' ? 'err'
+            : entry.status === 'stale' || entry.status === 'observed' || entry.status === 'hypothesis' ? 'warn' : ''),
+      h('span', { className: 'dmo-meta' }, entry.domainLabel),
+      h('span', { className: 'dmo-meta' }, `${entry.tokens} tokens`),
+      h('span', { className: 'dmo-meta' }, `${entry.lines} 行`),
+      h('span', { className: 'dmo-meta' }, `引用 ${count(trust.citeCount)} 次`)),
 
-    createElement('div', { className: 'dmo-card-title', style: { fontSize: 14 } }, entry.title),
-    createElement('div', { className: 'dmo-card-meta' },
-      createElement(Badge, { tone: statusTone(entry.status) }, statusLabel(entry.status)),
-      createElement(Badge, { tone: 'idle' }, `${count(entry.tokens)} tokens`),
-      createElement(Badge, { tone: entry.overLineLimit ? 'warn' : 'idle' }, `${entry.lines} 行`),
-      entry.overTokenLimit ? createElement(Badge, { tone: 'warn' }, '超 1200 tokens') : null),
-
-    createElement(Stepper, { status: entry.status }),
-
-    // 驳回静默：说清「它现在为什么不被推荐」
-    entry.status === 'rejected'
-      ? createElement('div', { className: 'dmo-degrade' },
-        `驳回静默中：这条 30 天内不再参与纠错。理由——${orEmpty(entry.evidence.length === 0 ? '（未记录）' : '见下')}`,
-        createElement('div', { style: { marginTop: 4 } },
-          createElement(Button, {
-            small: true, disabled: busy,
-            onClick: () => { run(() => call('undoReject', { path }), '撤销驳回：已恢复为已强化') },
-          }, '撤销驳回')))
-      : null,
-
-    // 信任栏
-    createElement('div', { className: 'dmo-card' },
-      createElement('div', { className: 'dmo-card-meta' },
-        createElement('span', null, `置信 ${entry.confidence === null ? '—' : entry.confidence.toFixed(1)}`),
-        createElement('span', null, `证据 ${count(trust.evidenceCount)}`),
-        createElement('span', null, `引用 ${count(trust.citeCount)}`),
-        createElement('span', null, `最后引用 ${orEmpty(trust.lastCitedAt)}`)),
-      trust.anchor === null ? null : createElement('div', { style: { marginTop: 6 } },
-        createElement(Badge, { tone: trust.anchorState === 'stale' ? 'warn' : 'brand' },
-          trust.anchorState === 'stale' ? '锚点失效' : '锚点有效'),
-        createElement('div', { className: 'dmo-row-sub' },
-          `${orEmpty(trust.anchor.path)}${trust.anchor.symbol === undefined ? '' : ` · ${trust.anchor.symbol}`}`))),
-
-    // 证据链
+    SectionHead({ title: '凭什么可信' }),
+    h('div', { className: 'dmo-meta-row', style: { marginTop: 0 } },
+      h('span', { className: 'dmo-meta' }, `置信：${entry.confidence === null ? '—' : entry.confidence.toFixed(1)}`),
+      h('span', { className: 'dmo-meta' }, `证据：${count(trust.evidenceCount)}`),
+      h('span', { className: 'dmo-meta' }, `最后引用：${trust.lastCitedAt ?? '从未'}`)),
     entry.evidence.length === 0
-      ? createElement('div', { className: 'dmo-note' }, '无证据条目（G1 用户直述可豁免）。')
-      : createElement('div', null,
-        createElement('div', { className: 'dmo-lane-head' }, '证据链'),
-        entry.evidence.map((item, index) => createElement('div', { key: index, className: 'dmo-evidence' },
-          createElement('div', null, orEmpty(item.excerpt)),
-          createElement('div', { className: 'dmo-evidence-src' }, `${orEmpty(item.gate)} · ${orEmpty(item.session)}`)))),
+      ? h('p', { className: 'dmo-note' }, '这条没有证据摘录——它来自你亲口说的话，不需要再举证。')
+      : entry.evidence.map((item, index) => createElement('div', { key: index, className: 'dmo-evidence' },
+          truncate(item.excerpt ?? '', 120),
+          h('div', { className: 'dmo-evidence-src' }, `${item.gate ?? ''} · ${item.session ?? ''}`))),
 
-    toast === null ? null : createElement('div', {
-      className: `dmo-toast ${toast.ok ? 'dmo-toast-ok' : 'dmo-toast-err'}`,
-      role: 'status',
-      style: { marginTop: 8 },
-    }, toast.text),
-
-    // 源码编辑
+    SectionHead({ title: '正文' }),
     editing
-      ? createElement('div', { style: { marginTop: 8 } },
-        createElement('label', { className: 'dmo-label' }, '正文源码（frontmatter 不动）'),
-        createElement('textarea', {
-          className: 'dmo-textarea',
-          value: draft,
-          style: { minHeight: 190 },
-          'aria-label': '正文源码',
-          onChange: (event: { target: { value: string } }) => { setDraft(event.target.value) },
-        }),
-        createElement('div', { className: 'dmo-card-actions' },
-          createElement(Button, {
-            variant: 'primary', disabled: busy,
-            onClick: () => {
-              run(() => call('writeBody', { path, body: draft }), '已保存')
-            },
-          }, busy ? '保存中…' : '保存'),
-          createElement(Button, { onClick: () => { setEditing(false) } }, '取消')))
-      : createElement('div', { className: 'dmo-card-body', style: { marginTop: 8, maxHeight: 260, overflowY: 'auto' } },
-        orEmpty(entry.body.trim())),
+      ? createElement('div', null,
+          createElement('textarea', {
+            className: 'dmo-textarea',
+            style: { minHeight: 190 },
+            'aria-label': '正文源码',
+            value: draft ?? entry.body,
+            onChange: (event: { target: { value: string } }) => { setDraft(event.target.value) },
+          }),
+          createElement('div', { className: 'dmo-row-actions' },
+            Primary({
+              children: busy ? '保存中…' : '保存', disabled: busy,
+              onClick: () => { run(() => call('writeBody', { path, body: draft ?? entry.body }), '已保存') },
+              attrs: { 'data-action': 'writeBody', 'data-path': path },
+            }),
+            Btn({ children: '取消', onClick: () => { setEditing(false); setDraft(null) } })))
+      : h('div', { className: 'dmo-body-block' }, entry.body.trim() === '' ? '（空）' : entry.body),
 
-    // 驳回理由输入（内联展开）
-    rejecting
-      ? createElement(RejectBox, {
-        reason,
-        onReason: setReason,
-        busy,
-        onCancel: () => { setRejecting(false); setReason('') },
-        onSubmit: () => {
-          run(() => call('reject', { path, reason }), '已驳回，30 天内不再推荐')
-        },
-      })
+    feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
+
+    createElement('div', { className: 'dmo-row-actions', style: { marginTop: 'var(--s4)' } },
+      canConfirm
+        ? Primary({
+            children: '确认这条', disabled: busy,
+            onClick: () => { run(() => call('confirm', { path }), '已确认') },
+            attrs: { 'data-action': 'confirm', 'data-path': path },
+          })
+        : Btn({ children: '编辑正文', disabled: busy, onClick: () => { setEditing(true); setDraft(entry.body) }, attrs: { 'data-action': 'edit' } })),
+    canReject || editing
+      ? createElement('div', { className: 'dmo-row-actions' },
+          canReject
+            ? Btn({
+                children: '驳回（需要写理由）', small: true, disabled: busy,
+                onClick: () => { setRejecting(value => !value) },
+                attrs: { 'data-action': 'reject', 'data-path': path },
+              })
+            : null,
+          Btn({
+            children: '再留 90 天', small: true, disabled: busy,
+            onClick: () => { run(() => call('keep', { path }), '已再留 90 天') },
+            attrs: { 'data-action': 'keep', 'data-path': path },
+          }),
+          Btn({
+            children: '归档退役', small: true, disabled: busy,
+            onClick: () => { run(() => call('archive', { path }), '已归档') },
+            attrs: { 'data-action': 'archive', 'data-path': path },
+          }),
+          h('p', { className: 'dmo-note' },
+            '驳回会静默 30 天，期间不再推荐这条。归档后仍可检索，只是不再进上下文。'))
       : null,
+    rejecting
+      ? h(RejectBox, {
+          reason: rejectReason,
+          onReason: setRejectReason,
+          busy,
+          onCancel: () => { setRejecting(false); setRejectReason('') },
+          onSubmit: () => { run(() => call('reject', { path, reason: rejectReason.trim() }), '已驳回，30 天内不再推荐') },
+        })
+      : null)
+}
 
-    // 出口
-    createElement('div', { className: 'dmo-card-actions', style: { marginTop: 10 } },
-      createElement(Button, {
-        small: true, disabled: busy,
-        onClick: () => { setDraft(entry.body); setEditing(true) },
-      }, '编辑源码'),
-      entry.status === 'stale' || entry.status === 'observed' || entry.status === 'hypothesis'
-        ? createElement(Button, {
-          small: true, variant: 'primary', disabled: busy,
-          onClick: () => { run(() => call('confirm', { path }), '已确认') },
-        }, '确认')
-        : null,
-      // 驳回：与确认**同等显眼**。只给「确认」不给「驳回」，界面就在逼人往一个方向走。
-      canReject
-        ? createElement(Button, {
-          small: true, variant: 'danger', disabled: busy,
-          onClick: () => { setRejecting(value => !value) },
-        }, rejecting ? '取消驳回' : '驳回')
-        : null,
-      canUndoReject
-        ? createElement(Button, {
-          small: true, disabled: busy,
-          onClick: () => { run(() => call('undoReject', { path }), '已撤销驳回') },
-        }, '撤销驳回')
-        : null,
-      createElement(Button, {
-        small: true, disabled: busy,
-        onClick: () => {
-          run(() => call('keep', { path }), '已再留 90 天')
-        },
-      }, '再留 90 天'),
-      createElement(Button, {
-        small: true, variant: 'danger', disabled: busy,
-        onClick: () => { run(() => call('archive', { path }), '已归档') },
-      }, '归档')))
+/** statusLabel 的本地引用（避免循环 import ui.ts 的导出顺序问题）。 */
+function statusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    hypothesis: '候选', observed: '观察中', reinforced: '已强化', confirmed: '已确认',
+    rejected: '已驳回', stale: '待复核', archived: '已归档', active: '有效', pending: '待确认',
+  }
+  return labels[status] ?? status
 }

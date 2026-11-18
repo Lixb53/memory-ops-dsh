@@ -1,8 +1,16 @@
 /**
- * 共享 UI 原语 —— 不 require 任何 @deepseek-ai/* 客户端包。
+ * UI 原语 —— 不 require 任何 @deepseek-ai/* 客户端包。
  *
  * 宿主 practice 明确：require 宿主客户端包会在它改版时静默崩掉整个 slot entry。
  * 所以按钮、徽标、空态、骨架这些都自己写，只共享 `--dsw-alias-*` token。
+ *
+ * ## v4 的分层
+ *
+ * - **v4 原语**（Tag / InlineDone / primary / textLink / lede / sectionHead …）：
+ *   服务新的 5 个任务分区，形状节奏按方向卡（签圆角 0、每屏唯一 brand 实底）。
+ * - **兼容组件**（Badge / Button / Chip / Stepper / Band / RejectBox …）：
+ *   仍被会话 tab、右侧捕获、维护面板使用；样式类保留在 styles.ts。
+ *   待这些表面后续迁移后再删。
  */
 
 import { createElement, type ReactNode } from 'react'
@@ -76,7 +84,151 @@ export function statusLabel(status: string): string {
   return STATUS_LABEL[status] ?? status
 }
 
-/** 徽标。 */
+/* ============================================================
+ * v4 原语
+ * ============================================================ */
+
+/** 状态签：圆角 0，靠文字不靠颜色（方向卡 §四：0 = 行内标记）。 */
+export function tag(text: string, tone = ''): ReactNode {
+  return h('span', {
+    className: 'dmo-tag',
+    'data-tone': tone === '' ? undefined : tone,
+  }, text)
+}
+
+/** 区块标题：hairline 上下边 + 小号字距。 */
+export function SectionHead({ title, count, action }: {
+  title: string
+  count?: string
+  action?: ReactNode
+}): ReactNode {
+  return h('div', { className: 'dmo-section-head' },
+    h('h2', { className: 'dmo-section-title' }, title),
+    count === undefined ? null : h('span', { className: 'dmo-section-count' }, count),
+    action === undefined ? null : h('span', { style: { marginLeft: 'auto' } }, action),
+  )
+}
+
+/** 主按钮：每屏唯一 brand 实底。 */
+export function Primary({ children, onClick, disabled, small, attrs }: {
+  children?: ReactNode
+  onClick?: () => void
+  disabled?: boolean
+  small?: boolean
+  attrs?: Record<string, string>
+}): ReactNode {
+  return h('button', {
+    type: 'button',
+    className: `dmo-btn dmo-btn-primary${small === true ? ' dmo-btn-sm' : ''}`,
+    onClick: disabled === true ? undefined : onClick,
+    disabled,
+    ...(attrs ?? {}),
+  }, children)
+}
+
+/** 次级按钮。 */
+export function Btn({ children, onClick, disabled, small, quiet, attrs }: {
+  children?: ReactNode
+  onClick?: () => void
+  disabled?: boolean
+  small?: boolean
+  quiet?: boolean
+  attrs?: Record<string, string>
+}): ReactNode {
+  const cls = ['dmo-btn']
+  if (small === true) cls.push('dmo-btn-sm')
+  if (quiet === true) cls.push('dmo-btn-quiet')
+  return h('button', {
+    type: 'button',
+    className: cls.join(' '),
+    onClick: disabled === true ? undefined : onClick,
+    disabled,
+    ...(attrs ?? {}),
+  }, children)
+}
+
+/** 文字链。 */
+export function TextLink({ children, onClick, attrs }: {
+  children?: ReactNode
+  onClick?: () => void
+  attrs?: Record<string, string>
+}): ReactNode {
+  return h('button', {
+    type: 'button',
+    className: 'dmo-textlink',
+    onClick,
+    ...(attrs ?? {}),
+  }, children)
+}
+
+/** 空态：标题 + 解释 + 出口（不是灰字死胡同）。 */
+export function EmptyState({ title, body, actions }: {
+  title: string
+  body: string
+  actions?: ReactNode
+}): ReactNode {
+  return h('div', { className: 'dmo-empty' },
+    h('p', { className: 'dmo-empty-title' }, title),
+    h('p', { className: 'dmo-empty-body' }, body),
+    actions === undefined ? null : h('div', { className: 'dmo-empty-actions' }, actions),
+  )
+}
+
+/** 错误态：说清怎么解决，不只报告「出错」。 */
+export function ErrorAlert({ title, body, actions }: {
+  title: string
+  body: string
+  actions?: ReactNode
+}): ReactNode {
+  return h('div', { className: 'dmo-alert', role: 'alert' },
+    h('p', { className: 'dmo-alert-title' }, title),
+    h('p', { className: 'dmo-alert-body' }, body),
+    actions === undefined ? null : h('div', { className: 'dmo-alert-actions' }, actions),
+  )
+}
+
+/** 提示条：整块浅底 + 文字，不用左侧彩边。 */
+export function Notice({ title, text, tone }: {
+  title: string
+  text: string
+  tone?: 'warn' | 'err'
+}): ReactNode {
+  return h('div', { className: 'dmo-notice', 'data-tone': tone },
+    h('p', { className: 'dmo-notice-title' }, title),
+    h('p', { className: 'dmo-notice-text' }, text),
+  )
+}
+
+/**
+ * 就地反馈：不弹 toast、不盖住内容。
+ *
+ * @param onUndo 非空时渲染一个撤销按钮。承诺可撤销就必须有按钮——
+ *   「可撤销」只是文案而没有按钮，是第 2 轮评审判过的伪造承诺。
+ */
+export function InlineDone({ ok, text, onUndo }: {
+  ok: boolean
+  text: string
+  onUndo?: () => void
+}): ReactNode {
+  return h('div', { className: 'dmo-inline-done', 'data-tone': ok ? 'ok' : 'err', role: 'status' },
+    h('span', { className: 'dmo-inline-done-text' }, text),
+    onUndo === undefined ? null : TextLink({ children: '撤销', onClick: onUndo }),
+  )
+}
+
+/** 骨架行：等高，切换不塌陷；呼吸动画，reduced-motion 时由 CSS 关闭。 */
+export function SkeletonRows({ rows = 3, height = 52 }: { rows?: number; height?: number }): ReactNode {
+  return h('div', { 'aria-busy': 'true', 'aria-live': 'polite' },
+    Array.from({ length: rows }, (_, i) =>
+      h('div', { key: i, className: 'dmo-skeleton', style: { height } })),
+  )
+}
+
+/* ============================================================
+ * 兼容组件（会话 tab / 右侧捕获 / 维护面板仍在用）
+ * ============================================================ */
+
+/** 徽标（旧面板用；新面板用 Tag）。 */
 export function Badge({ tone = 'idle', children, title }: {
   tone?: 'ok' | 'warn' | 'err' | 'idle' | 'brand'
   children?: ReactNode
@@ -85,7 +237,7 @@ export function Badge({ tone = 'idle', children, title }: {
   return h('span', { className: `dmo-badge dmo-badge-${tone}`, title }, children)
 }
 
-/** 按钮。 */
+/** 按钮（旧面板用；新面板用 Primary / Btn）。 */
 export function Button({ children, onClick, variant = 'plain', disabled = false, title, small = false }: {
   children?: ReactNode
   onClick?: () => void
@@ -106,30 +258,29 @@ export function Button({ children, onClick, variant = 'plain', disabled = false,
   }, children)
 }
 
-/** 空态：三出口，避免「死胡同」。 */
+/** 空态（旧面板用）。 */
 export function Empty({ title, children }: { title?: string; children?: ReactNode }): ReactNode {
   return h('div', { className: 'dmo-empty' },
     title === undefined ? null : h('div', { className: 'dmo-empty-title' }, title),
-    children)
+    children,
+  )
 }
 
-/** 读取失败态：明确说「这不是空」，并给重试。 */
+/** 读取失败态（旧面板用）。 */
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }): ReactNode {
   return h('div', { className: 'dmo-error', role: 'alert' },
     h('div', null, message),
     onRetry === undefined ? null : h('div', { style: { marginTop: 7 } },
-      h(Button, { onClick: onRetry, small: true }, '重试')))
+      h(Button, { onClick: onRetry, small: true }, '重试')),
+  )
 }
 
-/** 骨架：尺寸与正常行等高，切换不塌陷。 */
+/** 骨架（旧面板用）。 */
 export function Skeleton({ rows = 3, height = 52 }: { rows?: number; height?: number }): ReactNode {
-  return h('div', { 'aria-busy': 'true', 'aria-live': 'polite' },
-    Array.from({ length: rows }, (_, index) => h('div', {
-      key: index, className: 'dmo-skeleton', style: { height },
-    })))
+  return SkeletonRows({ rows, height })
 }
 
-/** KPI 格。 */
+/** KPI 格（旧面板用）。 */
 export function Kpi({ label, value, note }: {
   label: string; value: ReactNode; note?: ReactNode
 }): ReactNode {
@@ -154,7 +305,7 @@ export function Stepper({ status }: { status: string }): ReactNode {
   })))
 }
 
-/** 预算条。 */
+/** 预算条（旧面板用）。 */
 export function BudgetRow({ name, tokens, limit }: {
   name: string; tokens: number; limit: number | null
 }): ReactNode {
@@ -171,25 +322,25 @@ export function BudgetRow({ name, tokens, limit }: {
       count(tokens), limit === null ? '' : ` / ${count(limit)}`))
 }
 
-/** 分区页签。 */
+/** 分区页签（旧面板用；v4 面板用自己的 nav）。 */
 export function TabBar({ tabs, active, onChange }: {
   tabs: { id: string; label: string; badge?: number }[]
   active: string
   onChange: (id: string) => void
 }): ReactNode {
-  return h('div', { className: 'dmo-tabs', role: 'tablist' },
+  return h('div', { className: 'dmo-nav', role: 'tablist' },
     tabs.map(tab => h('button', {
       key: tab.id,
       type: 'button',
       role: 'tab',
-      className: 'dmo-tab',
+      className: 'dmo-nav-item',
       'aria-selected': tab.id === active,
       onClick: () => { onChange(tab.id) },
     },
     tab.label,
     tab.badge === undefined || tab.badge === 0
       ? null
-      : h('span', { className: 'dmo-tab-badge' }, tab.badge > 99 ? '99+' : String(tab.badge)))))
+      : h('span', { className: 'dmo-nav-count' }, tab.badge > 99 ? '99+' : String(tab.badge)))))
 }
 
 /** 侧栏面板图标（品牌无关，用「叠放的记忆卡」意象）。 */
@@ -215,11 +366,7 @@ export function MemoryIcon({ size = 18 }: { size?: number }): ReactNode {
  * 带理由的驳回块。
  *
  * 为什么必须有理由、且不给「快速驳回」：驳回会触发 30 天静默，
- * 期间这条记忆不再参与纠错。没有理由的驳回，30 天后谁也说不清当初为什么否掉它，
- * 只能原样恢复——那等于这套机制白转一圈。
- *
- * 为什么内联展开而不是弹窗：侧栏宽度有限，弹窗会盖住上下文；
- * 而驳回恰恰需要看着原文写理由。
+ * 期间这条记忆不再参与纠错。没有理由的驳回，30 天后谁也说不清当初为什么否掉它。
  */
 export function RejectBox({ reason, onReason, onCancel, onSubmit, busy }: {
   reason: string
@@ -246,12 +393,7 @@ export function RejectBox({ reason, onReason, onCancel, onSubmit, busy }: {
       empty ? h('span', { className: 'dmo-note', style: { margin: 0 } }, '理由为空不能提交') : null))
 }
 
-/**
- * 多选条：选中 N 条后出现的批量操作行。
- *
- * 抽出来是因为「记忆」与「未命中」两处的批量条结构完全一样，
- * 早先各写一份，样式与文案已经开始分叉。
- */
+/** 多选条（旧面板用）。 */
 export function SelectionBar({ count: selected, total, busy, children, onClear }: {
   count: number
   total: number
@@ -266,17 +408,7 @@ export function SelectionBar({ count: selected, total, busy, children, onClear }
     h(Button, { small: true, disabled: busy === true, onClick: onClear }, '清空选择'))
 }
 
-// ============================================================
-// v3.5 补齐设计稿里的组件
-// ============================================================
-
-/**
- * 状态筛选药丸（设计稿 `.chip`）。
- *
- * 为什么用药丸而不是下拉：这五个状态是**互斥的一次性筛选**，
- * 下拉要点两下（展开+选择），药丸点一下；而且药丸能直接带上计数，
- * 让「有多少条待确认」在不展开的情况下可见。
- */
+/** 状态筛选药丸（旧面板用）。 */
 export function Chip({ label, count: num, active, onClick }: {
   label: string
   count?: number
@@ -293,13 +425,7 @@ export function Chip({ label, count: num, active, onClick }: {
   num === undefined ? null : h('span', { className: 'dmo-chip-num' }, num))
 }
 
-/**
- * 五态计数条（设计稿 `.band`）。
- *
- * 把「观察 / 该补 / 草稿 / 验证 / 生效」并排显示，
- * 一眼能看出漏斗卡在哪一级——这是未命中工作台存在的意义。
- * 早先拆成 3 个 KPI，恰恰丢掉了「漏斗形状」这个信息。
- */
+/** 五态计数条（旧面板用）。 */
 export function Band({ cells }: {
   cells: { label: string; value: number; tone?: 'idle' | 'warn' | 'ok'; active?: boolean }[]
 }): ReactNode {
@@ -314,7 +440,7 @@ export function Band({ cells }: {
     h('div', { className: 'dmo-band-l', title: cell.label }, cell.label))))
 }
 
-/** 分组容器（设计稿 `.grp`）：标题 + 计数 + 内容。 */
+/** 分组容器（旧面板用）。 */
 export function Group({ title, count: num, children, action }: {
   title: string
   count?: number | string
@@ -329,21 +455,7 @@ export function Group({ title, count: num, children, action }: {
     children)
 }
 
-/**
- * 直角小签（设计稿 `.tag`）。
- *
- * 与 `Badge` 的区别是有意的：badge 是圆角药丸，用于状态；
- * tag 是直角细框，用于「类别 / 事实类型」这类**名词性**标注。
- * 两种形状并存，用户能一眼分出「这是状态」还是「这是分类」。
- */
-export function Tag({ tone = 'mute', children }: {
-  tone?: 'fact' | 'infer' | 'mute'
-  children?: ReactNode
-}): ReactNode {
-  return h('span', { className: `dmo-tag dmo-tag-${tone}` }, children)
-}
-
-/** 锚点状态条（设计稿 `.anchor-note`）：说清「为什么判失效」，不只是给个徽标。 */
+/** 锚点状态条（旧面板用）。 */
 export function AnchorNote({ state, children }: {
   state: 'fresh' | 'stale'
   children?: ReactNode
@@ -351,12 +463,12 @@ export function AnchorNote({ state, children }: {
   return h('div', { className: 'dmo-anchor-note', 'data-state': state, role: 'note' }, children)
 }
 
-/** 等宽文本（路径 / hash / 数字）。 */
+/** 等宽文本。 */
 export function Mono({ children }: { children?: ReactNode }): ReactNode {
   return h('span', { className: 'dmo-mono' }, children)
 }
 
-/** 证据引文：自动加「」（设计稿用 `<q>`，这里等价）。 */
+/** 证据引文：自动加「」。 */
 export function Quote({ children }: { children?: ReactNode }): ReactNode {
   return h('p', { className: 'dmo-quote' }, children)
 }

@@ -1,34 +1,44 @@
 /**
- * 表面 1：侧栏记忆面板（`sidebar.panellist` + `main`），内部 5 个分区。
+ * 表面 1：侧栏记忆面板（`sidebar.panellist` + `main`）—— v4 任务导向导航。
  *
- * 为什么用子导航而不是单屏平铺：侧栏宽度受限，但**能力必须全量对等**——
- * 不允许出现「只能记、不能管」的单向漏斗。差异只允许在承载方式上。
+ * ## 为什么从数据分区改为任务入口
+ *
+ * 旧导航是 5 个数据表名（本项目 / 记录流 / 记忆 / 未命中 / 总览）：
+ * 「本项目」与「记忆」显示同一份东西、「未命中」在 3 处出现、「总览」一页塞 8 类内容。
+ * 用户无法建立「我该去哪个页签做这件事」的心理模型。
+ *
+ * v4 按意图组织：今天（该做什么）/ 记一条 / 待办（压着的事）/ 记忆（台账）/ 库健康。
+ * 能力与 34 条路由一个不删，只是重新归位。
+ *
+ * ## brand 与 badge
+ *
+ * 「待办」的 badge 是唯一的红点式提醒（拍板 + 流转 + 补库总和）。
  */
 
 import { createElement, useEffect, useState, type ReactNode } from 'react'
 
-import { MemoryIcon, TabBar } from './ui.ts'
+import { MemoryIcon } from './ui.ts'
 import { PANEL_ID, consumePaneRequest, usePaneRequest, type PaneId } from './pane-nav.ts'
 import { scopeBody, useSessionProject, type ClientContextLike } from './session-context.ts'
-import { ProjectPane } from './panes/project.ts'
-import { StreamPane } from './panes/stream.ts'
+import { TodayPane } from './panes/today.ts'
+import { CapturePane } from './panes/capture.ts'
+import { TodoPane } from './panes/todo.ts'
 import { MemoryPane } from './panes/memory.ts'
-import { MissesPane } from './panes/misses.ts'
-import { OverviewPane } from './panes/overview.ts'
+import { HealthPane } from './panes/health.ts'
 import { useBridge } from './data.ts'
-import type { MissesView, SnapshotView } from './api.ts'
+import type { SnapshotView } from './api.ts'
 
 /** 面板 id（同时用作 sidebar.panellist 的 id 与 main 的 key）。 */
 export { PANEL_ID }
 
-/** 5 个分区。 */
-const PANES = [
-  { id: 'project', label: '本项目' },
-  { id: 'stream', label: '记录流' },
+/** v4 的 5 个任务入口。 */
+const PANES: { id: PaneId; label: string }[] = [
+  { id: 'today', label: '今天' },
+  { id: 'capture', label: '记一条' },
+  { id: 'todo', label: '待办' },
   { id: 'memory', label: '记忆' },
-  { id: 'misses', label: '未命中' },
-  { id: 'overview', label: '总览' },
-] as const satisfies readonly { id: PaneId; label: string }[]
+  { id: 'health', label: '库健康' },
+]
 
 /** 侧栏图标。 */
 export function PanelIcon({ size }: { size?: number }): ReactNode {
@@ -39,15 +49,14 @@ export function PanelIcon({ size }: { size?: number }): ReactNode {
 export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
   const ctx = (props as { ctx?: ClientContextLike }).ctx
   const { cwd, project } = useSessionProject(ctx)
-  const [pane, setPane] = useState<PaneId>('project')
+  const [pane, setPane] = useState<PaneId>('today')
   const [detailPath, setDetailPath] = useState<string | undefined>(undefined)
   const requestedPane = usePaneRequest()
 
   /**
    * 消费其它表面发来的「跳到某个分区」请求。
    *
-   * 会话记忆 tab 上的「去未命中工作台」就是靠这条通道落到「未命中」分区的——
-   * 早先面板根本没有接收侧，请求即使写下来也没人读。
+   * 会话 tab 的「去未命中工作台」在 v4 落到「待办」分区（补库段在待办页）。
    */
   useEffect(() => {
     const next = consumePaneRequest()
@@ -56,64 +65,54 @@ export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
     if (next !== 'memory') setDetailPath(undefined)
   }, [requestedPane])
 
-  // 徽标：待处理条数 + 未命中「该补了」条数
-  /**
-   * 徽标也要跟当前项目走，所以这里和「本项目」分区用同一套范围参数。
-   * 早先它只传 `project`（末段目录名），于是徽标和列表可能一个有一个没有。
-   */
+  /* badge：待办总数（拍板 + 流转 + 补库），从快照与记录流粗算 */
   const snapshot = useBridge<SnapshotView>('snapshot', scopeBody(cwd, project), [cwd, project])
-  const misses = useBridge<MissesView>('misses', {})
-  const queueBadge = snapshot.data?.queue.length ?? 0
-  const missBadge = (misses.data?.pipeline['should-fill']?.length ?? 0)
-    + (misses.data?.pipeline.drafting?.length ?? 0)
+  const queueCount = snapshot.data?.queue.length ?? 0
 
-  const tabs = PANES.map(item => ({
-    id: item.id,
-    label: item.label,
-    badge: item.id === 'overview'
-      ? queueBadge
-      : item.id === 'misses' ? missBadge : undefined,
-  }))
-
-  function openMemory(path: string): void {
-    setDetailPath(path === '' ? undefined : path)
-    setPane('memory')
+  const openDetail = (path: string | null): void => {
+    setDetailPath(path ?? undefined)
+    if (path !== null) setPane('memory')
   }
 
   let body: ReactNode
   switch (pane) {
-    case 'stream':
-      body = createElement(StreamPane, null)
+    case 'capture':
+      body = createElement(CapturePane)
+      break
+    case 'todo':
+      body = createElement(TodoPane)
       break
     case 'memory':
-      body = createElement(MemoryPane, { project, cwd, onOpenMemory: openMemory, detailPath })
+      body = createElement(MemoryPane, { ctx, detailPath, onOpenDetail: openDetail })
       break
-    case 'misses':
-      body = createElement(MissesPane, null)
-      break
-    case 'overview':
-      body = createElement(OverviewPane, { onOpenMemory: openMemory })
+    case 'health':
+      body = createElement(HealthPane, { onGotoToday: () => { setPane('today') } })
       break
     default:
-      body = createElement(ProjectPane, {
-        project,
-        cwd,
-        onOpenMemory: openMemory,
-        onGoto: (next: string) => {
-          setPane(next as PaneId)
-          setDetailPath(undefined)
-        },
-      })
+      body = createElement(TodayPane, { ctx })
   }
 
   return createElement('div', { className: 'dmo-root' },
-    createElement(TabBar, {
-      tabs,
-      active: pane,
-      onChange: (id: string) => {
-        setPane(id as PaneId)
-        if (id !== 'memory') setDetailPath(undefined)
-      },
-    }),
-    createElement('div', { className: 'dmo-body' }, body))
+    createElement('div', { className: 'dmo-head' },
+      createElement('div', { className: 'dmo-head-row' },
+        createElement('h1', { className: 'dmo-app-name' }, '记忆库'),
+        createElement('span', { className: 'dmo-scope' }, snapshot.data?.root ?? '')),
+      createElement('nav', { className: 'dmo-nav', role: 'tablist' },
+        PANES.map(item => createElement('button', {
+          key: item.id,
+          type: 'button',
+          role: 'tab',
+          className: 'dmo-nav-item',
+          'data-pane': item.id,
+          'aria-selected': pane === item.id,
+          onClick: () => {
+            setPane(item.id)
+            if (item.id !== 'memory') setDetailPath(undefined)
+          },
+        },
+        item.label,
+        item.id === 'todo' && queueCount > 0
+          ? createElement('span', { className: 'dmo-nav-count' }, String(queueCount))
+          : null)))),
+    createElement('div', { className: 'dmo-body', role: 'tabpanel' }, body))
 }

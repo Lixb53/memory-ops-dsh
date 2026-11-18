@@ -53,7 +53,7 @@ export function SessionMemoryView(props: Record<string, unknown>): ReactNode {
       onGotoMisses()
       return
     }
-    const ok = gotoPane(ctx, 'misses')
+    const ok = gotoPane(ctx, 'todo')
     if (ok) return
     /**
      * 跳不过去时必须说话。早先这里什么都不发生，用户只能反复点同一个按钮
@@ -109,7 +109,7 @@ export function SessionMemoryView(props: Record<string, unknown>): ReactNode {
     createElement('div', { className: 'dmo-session-kpis' },
       createElement('div', { className: 'dmo-session-kpi' },
         createElement('b', null, count(data.injected)),
-        createElement('span', null, '本次注入')),
+        createElement('span', null, '本次用到')),
       createElement('div', { className: 'dmo-session-kpi' },
         createElement('b', null, count(data.cited)),
         createElement('span', null, '引用')),
