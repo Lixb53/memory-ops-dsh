@@ -1,9 +1,12 @@
 /* ============================================================
- * app.css —— 记忆库 v4 原型样式
+ * app.css —— 记忆库 v5 原型样式（档案柜仪表盘）
  *
- * 规则来源：design/direction-card.md
- * 只用 var(--dsw-alias-*) 与五档字阶 / 六档间距 / 四档圆角。
- * 本文件不出现任何字面色值（rgba/hex/oklch 字面量全部禁止）。
+ * 规则来源：design/direction-card.md v5。
+ * 只用 var(--dsw-alias-*) / var(--dsw-specific-*) 与 color-mix 派生；
+ * 本文件不出现任何字面色值。
+ *
+ * v4→v5 的变化一句话：分组从「隐形 hairline」改为「可见卡片」，
+ * 强调从「近黑 brand」改为「业务蓝」，明暗两套值见 tokens.css。
  * ============================================================ */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -17,6 +20,7 @@ html, body {
   line-height: var(--t4-lh);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background var(--dur-state) var(--ease);
 }
 
 button, input, textarea, select { font: inherit; color: inherit; }
@@ -37,42 +41,28 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .sidebar {
   width: 400px;
   flex: 0 0 400px;
-  /*
-   * 真实宿主里侧栏是满高的固定容器，内部自己滚。这里照做：
-   * height 固定 + .panel-body 自己 overflow-y。
-   *
-   * ⚠️ 但截图验收时固定高度会把超出的内容截掉（headless 只渲视口），
-   * 容易误判成「布局截断」。所以加一个 .unfold 开关，
-   * 让验收者能把面板拉成完整高度看全貌 —— 它不是产品行为，
-   * 只用于截图核对。见 body[data-unfold="1"]。
-   */
   height: calc(100vh - 48px);
   min-height: 560px;
   display: flex;
   flex-direction: column;
-  background: var(--dsw-alias-bg-base);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: var(--r-container);
+  background: var(--dsw-specific-sidebar-fill);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--r-card);
   overflow: hidden;
 }
 
-/* 验收用：面板按内容撑开，不裁剪。不改变任何视觉规则，只解除高度限制。 */
-body[data-unfold="1"] .sidebar {
-  height: auto;
-  min-height: 0;
-}
-body[data-unfold="1"] .panel-body {
-  overflow-y: visible;
-}
+/* 验收用：面板按内容撑开（不改视觉规则，只解除高度限制） */
+body[data-unfold="1"] .sidebar { height: auto; min-height: 0; }
+body[data-unfold="1"] .panel-body { overflow-y: visible; }
 
-/* 原型控制面板（不属于产品界面，仅用于验收四态） */
+/* 原型控制台（不属于产品界面） */
 .harness {
   width: 260px;
   flex: 0 0 260px;
   padding: var(--s4);
-  border: 1px dashed var(--dsw-alias-border-l2);
-  border-radius: var(--r-container);
-  background: var(--dsw-alias-bg-base);
+  border: 1px dashed var(--dsw-alias-border-l3);
+  border-radius: var(--r-card);
+  background: var(--dsw-alias-card-fill);
 }
 
 .harness-title {
@@ -112,7 +102,6 @@ body[data-unfold="1"] .panel-body {
 .panel-head {
   flex: 0 0 auto;
   padding: var(--s3) var(--s3) 0;
-  /* 顶栏不能溢出：面板宽度是宿主的 400px，任何横向滚动条都会挤掉内容 */
   overflow: hidden;
 }
 
@@ -123,15 +112,6 @@ body[data-unfold="1"] .panel-body {
   margin-bottom: var(--s3);
 }
 
-/*
- * 应用外壳标签：「记忆库」。
- *
- * 它**不是内容标题**，只是告诉用户自己在哪个面板里。
- * 早先是 T3/600，与建议卡标题（T3/600）完全同级——于是「记忆库」
- * 和「有一条推断等你拍板」抢同一层，第二眼和第三眼分不出来
- * （第 1 轮评审的视觉层级 5/10 就是这条）。
- * 降为 T4 + 600 + 字距，让出 T3 给真正的内容标题。
- */
 .panel-title {
   font-size: var(--t4);
   line-height: var(--t4-lh);
@@ -148,13 +128,15 @@ body[data-unfold="1"] .panel-body {
   margin-left: auto;
 }
 
-/* 一级导航：5 个任务入口，文字签而非图标墙 */
+/* v6 导航：分段控件。轨道 = module 底 + 描边；选中 = 白底浮起。 */
 .nav {
   display: flex;
-  gap: var(--s1);
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
-  margin: 0 calc(var(--s3) * -1);
-  padding: 0 var(--s3);
+  gap: 2px;
+  background: var(--dsw-alias-bg-module-platform);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--r-container);
+  padding: 3px;
+  margin: 0 0 var(--s3);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -162,111 +144,93 @@ body[data-unfold="1"] .panel-body {
 
 .nav-item {
   appearance: none;
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
-  font-size: var(--t4);
-  line-height: var(--t4-lh);
-  /* 底部留 2px 给选中态的 2px 下划线，避免选中时文字跳动；用 s1=4px 对齐网格 */
-  padding: var(--s2) var(--s2) var(--s1);
-  border-bottom: 2px solid transparent;
+  font-size: var(--t5);
+  line-height: var(--t5-lh);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--r-control);
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--dur-state) var(--ease),
+  flex: 1 0 auto;
+  text-align: center;
+  transition: background var(--dur-state) var(--ease),
+              color var(--dur-state) var(--ease),
               border-color var(--dur-state) var(--ease);
 }
 
 .nav-item:hover { color: var(--dsw-alias-label-primary); }
-.nav-item:active { color: var(--dsw-alias-label-primary); }
+.nav-item:active { background: var(--dsw-alias-interactive-bg-hover); }
 
 .nav-item:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
-  outline-offset: 2px;
-  border-radius: var(--r-control);
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
 }
 
 .nav-item[aria-selected="true"] {
+  background: var(--dsw-alias-bg-base);
+  border-color: var(--dsw-alias-border-l3);
   color: var(--dsw-alias-label-primary);
   font-weight: 600;
-  border-bottom-color: var(--dsw-alias-label-primary);
 }
 
-/* 计数：等宽、无底色，不用圆角药丸 */
+/* 计数：蓝字（v5 的灰色在深色下几乎不可见） */
 .nav-count {
   font-family: var(--mono);
   font-size: var(--t5);
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-state-business-primary);
   margin-left: var(--s1);
-  font-weight: 400;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
+.nav-item[aria-selected="true"] .nav-count { color: var(--dsw-alias-state-business-primary); }
 
 .panel-body {
   flex: 1 1 auto;
   min-height: 0;
-  /*
-   * 内容超长时必须能滚——不能靠把父级 overflow 设成 hidden 来「藏住」。
-   * 实测过：上一版 .sidebar 加了 overflow-x: hidden，结果 .panel-body
-   * 在内容超出面板高度时被硬裁，线索行只露出半个字，而且没有滚动条。
-   * 这里显式声明纵向可滚，横向禁止（横向溢出会挤掉内容，是真缺陷）。
-   */
   overflow-y: auto;
   overflow-x: hidden;
   padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
 }
-
 /* ============================================================
  * 排版原语
  * ============================================================ */
 
-/* 一句话结论：编辑体的导语，全屏唯一 T1（每页仅 1 处） */
+/* 一句话结论：全屏唯一 T1 */
 .lede {
   font-size: var(--t1);
   line-height: var(--t1-lh);
   font-weight: 600;
-  margin: 0 0 var(--s1);
+  margin: 0;
   letter-spacing: -0.01em;
-}
-
-/*
- * 页面名。
- *
- * ⚠️ 第 3 轮评审：T1（24px）原本被「记忆 / 待办 / 库健康 / 记一条」这些
- * **导航词**占着，而上方 40px 的 nav 已用加粗+下划线标过一遍。
- * 方向卡定义 T1 = 一句话结论，所以页面名降为 T3，把 T1 让给真正的导语句。
- *
- * 没有导语句可写的页面不强行造一句——直接只用 .page-name + .lede-sub。
- */
-.page-name {
-  font-size: var(--t3);
-  line-height: var(--t3-lh);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  margin: 0 0 var(--s2);
 }
 
 .lede-sub {
   font-size: var(--t4);
   line-height: var(--t4-lh);
   color: var(--dsw-alias-label-secondary);
-  margin: 0 0 var(--s4);
+  margin: var(--s1) 0 0;
 }
 
-/*
- * 区块标题：小号 + 字距 + 上 hairline。
- *
- * 方向卡 §一-2 要求「区块标题用小号 + 字距 + 上下 hairline」，
- * 而早先只有下边线、没有字距（第 1 轮评审 P1）。
- * 上边线让每个区块读起来像「一章」，而不是一堆浮着的片段。
- */
+/* 页面名：v6 降为 T5 字距小标（导航已标过，不再抢 T3） */
+.page-name {
+  font-size: var(--t5);
+  line-height: var(--t5-lh);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--dsw-alias-label-tertiary);
+  margin: 0 0 var(--s1);
+}
+
+/* 区块标题：T4 + 字距 + 上 hairline（hairline 在卡片语境只作卡内分隔） */
 .section-head {
   display: flex;
   align-items: baseline;
   gap: var(--s2);
-  margin: var(--s5) 0 var(--s2);
-  padding-top: var(--s3);
-  padding-bottom: var(--s1);
-  border-top: 1px solid var(--dsw-alias-border-l1);
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
 .section-title {
@@ -281,15 +245,12 @@ body[data-unfold="1"] .panel-body {
   font-family: var(--mono);
   font-size: var(--t5);
   color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
-.section-action {
-  margin-left: auto;
-  font-size: var(--t5);
-  line-height: var(--t5-lh);
-}
+.section-action { margin-left: auto; font-size: var(--t5); line-height: var(--t5-lh); }
 
-/* 元信息：等宽 + 次要色，这是「第二字体身份」 */
+/* 元信息：等宽 + 次要色（第二字体身份） */
 .meta {
   font-family: var(--mono);
   font-size: var(--t5);
@@ -306,114 +267,195 @@ body[data-unfold="1"] .panel-body {
   margin-top: var(--s1);
 }
 
-/*
- * 说明句。
- *
- * ⚠️ 字阶归属被第 1 轮评审判为 P0：方向卡 §三规定 T5「仅等宽或短标签」，
- * 而 .note / .notice-text / .alert-body 承载的是整句甚至整段说明。
- * 用小字号承载长句会让用户在 400px 下读得很吃力。
- * 现改为 T4（14px）——T5 只留给 .meta / .tag / .nav-count / .capture-hint。
- */
 .note {
   font-size: var(--t4);
   line-height: var(--t4-lh);
   color: var(--dsw-alias-label-secondary);
-  margin: var(--s2) 0 0;
+  margin: 0;
 }
 
 /* ============================================================
- * 状态签：圆角 0，靠文字不靠颜色
- * ============================================================ */
-
-.tag {
-  display: inline-block;
-  font-family: var(--mono);
-  font-size: var(--t5);
-  line-height: var(--t5-lh);
-  padding: 0 var(--s1);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--r-row);
-  color: var(--dsw-alias-label-secondary);
-  white-space: nowrap;
-}
-
-.tag[data-tone="warn"] {
-  border-color: var(--dsw-alias-state-warn-primary);
-  color: var(--dsw-alias-state-warn-primary);
-}
-.tag[data-tone="ok"] {
-  border-color: var(--dsw-alias-state-success-primary);
-  color: var(--dsw-alias-state-success-primary);
-}
-.tag[data-tone="err"] {
-  border-color: var(--dsw-alias-state-error-primary);
-  color: var(--dsw-alias-state-error-primary);
-}
-.tag[data-tone="live"] {
-  border-color: var(--dsw-alias-label-primary);
-  color: var(--dsw-alias-label-primary);
-}
-
-/* ============================================================
- * 唯一建议卡：全屏只有 1 张容器，圆角 8
+ * 卡片体系（v5 核心）
  *
- * 填色刻意极浅（layer-1 而非 layer-2）：它下面紧跟着捕获框，
- * 若两者都用同一层填充，用户会把「建议」误读成「输入区」。
- * 边界靠边框而不是底色，这也符合编辑感「用线分组」的立场。
+ * 重卡 .card：card-fill 底 + border-l3 边，每屏 ≤1 张，放主操作。
+ * 静卡 .card-quiet：bg-module-platform 底 + border-l2。
+ * 两者都无阴影（方向卡 §四：阴影只给浮层）。
  * ============================================================ */
 
-.suggest {
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--r-container);
-  padding: var(--s3);
-  background: transparent;
+.card {
+  background: var(--dsw-alias-card-fill);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--r-card);
+  padding: var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
 }
 
-.suggest-label {
+.card-quiet {
+  background: var(--dsw-alias-bg-module-platform);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--r-card);
+  padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.card-label {
   font-family: var(--mono);
   font-size: var(--t5);
   line-height: var(--t5-lh);
   color: var(--dsw-alias-label-secondary);
-  margin: 0 0 var(--s1);
+  margin: 0;
 }
 
-.suggest-title {
+.card-title {
   font-size: var(--t3);
   line-height: var(--t3-lh);
   font-weight: 600;
-  margin: 0 0 var(--s2);
+  margin: 0;
   word-break: break-word;
 }
 
-/*
- * 建议卡正文。
- *
- * ⚠️ 第 1 轮评审 P1：这里原本用 label-secondary 承载约 50 字的解释，
- * 400px 下跨 4 行以上，直接触发方向卡 §二「超过一行的段落必须用 primary」。
- * 现在继承 primary；真正该弱的只有 .suggest-label（那个「建议先做这一件」小标）。
- */
-.suggest-body {
+.card-body {
   font-size: var(--t4);
   line-height: var(--t4-lh);
-  margin: 0 0 var(--s3);
+  margin: 0;
   word-break: break-word;
 }
 
-.suggest-actions {
+.card-actions {
   display: flex;
   align-items: center;
   gap: var(--s2);
   flex-wrap: wrap;
+  margin-top: var(--s1);
 }
 
 /* ============================================================
- * 按钮：一行最多 1 主按钮（direction-card §八-1）
+ * KPI 账带（v6：单条 4 格，数字等宽右对齐同一基线）
+ *
+ * 每格必须可点（方向卡 §七-6：裸数字不许上界面）。
+ * 首格 = 本页主指标，数字用业务蓝、左对齐；其余右对齐。
+ * ============================================================ */
+
+.tape {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--dsw-alias-card-fill);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.tape button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--dsw-alias-border-l1);
+  padding: var(--s2) 6px var(--s1);
+  text-align: right;
+  cursor: pointer;
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  transition: background var(--dur-state) var(--ease);
+}
+.tape button:first-child {
+  border-left: 0;
+  align-items: flex-start;
+  text-align: left;
+  padding-left: var(--s3);
+}
+.tape button:hover { background: var(--dsw-alias-card-fill-hover); }
+.tape button:active { background: var(--dsw-alias-interactive-bg-active); }
+.tape button:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
+}
+
+.tape .v {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--t2);
+  line-height: var(--t2-lh);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tape button:first-child .v { color: var(--dsw-alias-state-business-primary); }
+
+.tape .k {
+  display: block;
+  font-size: var(--t5);
+  line-height: var(--t5-lh);
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* 徽标：tint 底 + 方点 + 文字（文字一律 label-primary；v6 方点不用圆点） */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  font-family: var(--mono);
+  font-size: var(--t5);
+  line-height: var(--t5-lh);
+  padding: 0 var(--s1);
+  border-radius: var(--r-row);
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  background: var(--dsw-alias-state-idle-primary);
+}
+
+.badge[data-tone="warn"] {
+  background: var(--dsw-alias-state-warn-tertiary);
+}
+.badge[data-tone="warn"]::before { background: var(--dsw-alias-state-warn-primary); }
+
+.badge[data-tone="ok"] {
+  background: var(--dsw-alias-state-success-tertiary);
+}
+.badge[data-tone="ok"]::before { background: var(--dsw-alias-state-success-primary); }
+
+.badge[data-tone="err"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);
+}
+.badge[data-tone="err"]::before { background: var(--dsw-alias-state-error-primary); }
+
+.badge[data-tone="live"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
+}
+.badge[data-tone="live"]::before { background: var(--dsw-alias-state-business-primary); }
+
+.badge[data-tone="done"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-done-primary) 12%, transparent);
+}
+.badge[data-tone="done"]::before { background: var(--dsw-alias-state-done-primary); }
+
+/* ============================================================
+ * 按钮
+ * 主按钮 = 业务蓝实底（每屏 ≤1）；次按钮 = 描边；quiet = 无边。
  * ============================================================ */
 
 .btn {
   appearance: none;
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: transparent;
+  border: 1px solid var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
   border-radius: var(--r-control);
   padding: var(--s1) var(--s3);
@@ -424,36 +466,31 @@ body[data-unfold="1"] .panel-body {
               border-color var(--dur-state) var(--ease);
 }
 
-/*
- * hover / active 必须排除主按钮。
- *
- * ⚠️ 第 1 轮评审 P-细节：`.btn:active:not(:disabled)` 特异性 (0,3,0)
- * 高于 `.btn-primary` 的 (0,1,0)，键盘 Enter 激活主按钮时底色被刷成
- * bg-layer-2 而字色仍是 bg-base —— 浅底浅字，等于按钮内容消失。
- * 这里用 :not(.btn-primary) 把它排除，主按钮的按下态单独定义。
- */
-.btn:hover:not(:disabled):not(.btn-primary) { background: var(--dsw-alias-bg-layer-2); }
-.btn:active:not(:disabled):not(.btn-primary) { background: var(--dsw-alias-bg-layer-2); }
+.btn:hover:not(:disabled):not(.btn-primary) { background: var(--dsw-alias-card-fill-hover); }
+.btn:active:not(:disabled):not(.btn-primary) { background: var(--dsw-alias-interactive-bg-active); }
 
 .btn:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
 }
 
 .btn:disabled { opacity: 0.42; cursor: not-allowed; }
 
-/* 主按钮：每屏唯一 brand 实底。按下时压暗而不是变浅底（浅底会吃掉字色） */
 .btn-primary {
-  background: var(--dsw-alias-brand-primary);
-  border-color: var(--dsw-alias-brand-primary);
-  color: var(--dsw-alias-bg-base);
+  background: var(--dsw-alias-button-info-fill);
+  border-color: var(--dsw-alias-button-info-fill);
+  color: var(--dsw-alias-label-on-color);
   font-weight: 600;
 }
-.btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-primary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-info-hover);
+  border-color: var(--dsw-alias-button-info-hover);
+}
 .btn-primary:active:not(:disabled) { filter: brightness(0.92); }
 
 .btn-quiet {
   border-color: transparent;
+  background: transparent;
   color: var(--dsw-alias-label-secondary);
   padding-left: var(--s2);
   padding-right: var(--s2);
@@ -468,61 +505,45 @@ body[data-unfold="1"] .panel-body {
 
 .btn-sm { padding: 0 var(--s2); font-size: var(--t5); line-height: var(--t5-lh); }
 
-/* 文字链 */
+/* 文字链：宿主链接色（v4 的灰下划线太素） */
 .textlink {
   appearance: none;
   border: 0;
   background: none;
   padding: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-link);
   font-size: var(--t5);
   line-height: var(--t5-lh);
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
-  text-decoration-color: var(--dsw-alias-border-l2);
-  transition: color var(--dur-state) var(--ease),
-              text-decoration-color var(--dur-state) var(--ease);
+  text-decoration-color: color-mix(in srgb, var(--dsw-alias-link) 40%, transparent);
+  transition: text-decoration-color var(--dur-state) var(--ease);
 }
-.textlink:hover {
-  color: var(--dsw-alias-label-primary);
-  text-decoration-color: currentColor;
-}
-.textlink:active { color: var(--dsw-alias-label-primary); text-decoration-color: currentColor; }
+.textlink:hover { text-decoration-color: currentColor; }
+.textlink:active { text-decoration-color: currentColor; }
 .textlink:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
   border-radius: var(--r-control);
 }
 
 /* ============================================================
- * 输入
+ * 输入与捕获
  * ============================================================ */
 
 .capture {
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--r-container);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--r-card);
   background: var(--dsw-alias-bg-base);
   padding: var(--s2);
   transition: border-color var(--dur-state) var(--ease);
 }
-/*
- * 捕获区的三态。
- *
- * ⚠️ 顺序即优先级：三者特异性相同，后写的胜出。
- * 早先 :focus-within 写在 :hover 之前，于是鼠标点进输入框（必然同时 hover）
- * 时边框立刻退回 border-l2 —— 焦点提示在最常见的交互路径上完全失效。
- * 第 2 轮评审指出这一点，现按「focus > active > hover > 默认」排序。
- */
-.capture:hover { border-color: var(--dsw-alias-border-l2); }
+/* 顺序即优先级：focus > active > hover（同特异性，后写胜出） */
+.capture:hover { border-color: var(--dsw-alias-border-l4); }
 .capture:active { border-color: var(--dsw-alias-label-secondary); }
-.capture:focus-within { border-color: var(--dsw-alias-label-primary); }
+.capture:focus-within { border-color: var(--dsw-alias-state-business-primary); }
 
-/*
- * 捕获输入框：焦点态由外层 .capture:focus-within 承担（整块边框变深），
- * 所以内层自己不再画 outline —— 两层焦点环会看着像控件套控件。
- * 但键盘用户需要一个可见落点，所以这里给内层一个极轻的底色变化。
- */
 .capture-input {
   width: 100%;
   border: 0;
@@ -536,8 +557,8 @@ body[data-unfold="1"] .panel-body {
   border-radius: var(--r-control);
   transition: background var(--dur-state) var(--ease);
 }
-.capture-input::placeholder { color: var(--dsw-alias-label-secondary); }
-.capture-input:focus-visible { background: var(--dsw-alias-bg-layer-1); }
+.capture-input::placeholder { color: var(--dsw-alias-label-tertiary); }
+.capture-input:focus-visible { background: var(--dsw-alias-card-fill); }
 
 .capture-foot {
   display: flex;
@@ -554,47 +575,32 @@ body[data-unfold="1"] .panel-body {
 
 .input {
   width: 100%;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--dsw-alias-border-l3);
   border-radius: var(--r-control);
   background: var(--dsw-alias-bg-base);
   padding: var(--s1) var(--s2);
   font-size: var(--t4);
   line-height: var(--t4-lh);
-  transition: border-color var(--dur-state) var(--ease),
-              background var(--dur-state) var(--ease);
+  transition: border-color var(--dur-state) var(--ease);
 }
-.input:hover { border-color: var(--dsw-alias-label-secondary); }
-.input:active { background: var(--dsw-alias-bg-layer-1); }
+.input::placeholder { color: var(--dsw-alias-label-tertiary); }
+.input:hover { border-color: var(--dsw-alias-border-l4); }
 .input:focus {
-  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: -1px;
-  border-color: var(--dsw-alias-brand-primary);
+  border-color: var(--dsw-alias-state-business-primary);
 }
 
-.toolbar {
-  display: flex;
-  gap: var(--s2);
-  margin: var(--s3) 0;
-}
+.toolbar { display: flex; gap: var(--s2); }
 .toolbar > .input { flex: 1 1 auto; min-width: 0; }
 
-@media (max-width: 520px) {
-  .toolbar { flex-wrap: wrap; }
-  .toolbar > .input { flex: 1 1 100%; }
-}
-
-/* 类型选择：文字签，不用下拉（少一次点击） */
-.kindrow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s1);
-  margin-bottom: var(--s2);
-}
+/* 类型/筛选签：选中 = 蓝 tint（与 nav 同一语言） */
+.kindrow { display: flex; flex-wrap: wrap; gap: var(--s1); }
 
 .kindbtn {
   appearance: none;
   border: 1px solid var(--dsw-alias-border-l2);
-  background: transparent;
+  background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-secondary);
   border-radius: var(--r-control);
   padding: 0 var(--s2);
@@ -605,36 +611,34 @@ body[data-unfold="1"] .panel-body {
               color var(--dur-state) var(--ease),
               border-color var(--dur-state) var(--ease);
 }
-.kindbtn:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
-.kindbtn:active { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-label-primary); }
-.kindbtn:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.kindbtn:hover { background: var(--dsw-alias-card-fill-hover); color: var(--dsw-alias-label-primary); }
+.kindbtn:active { background: var(--dsw-alias-interactive-bg-active); }
+.kindbtn:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
 .kindbtn[aria-pressed="true"] {
-  border-color: var(--dsw-alias-label-primary);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 32%, transparent);
   color: var(--dsw-alias-label-primary);
   font-weight: 600;
 }
 
 /* ============================================================
- * 台账行：不是卡片。圆角 0 + hairline
+ * 台账行：卡片内部的行（行本身不再是卡；hairline 只作卡内分隔）
  * ============================================================ */
 
 .list { list-style: none; margin: 0; padding: 0; }
 
 .row {
-  padding: var(--s2) 0;
+  padding: var(--s2) var(--s3);
+  margin: 0 calc(var(--s3) * -1);
   border-bottom: 1px solid var(--dsw-alias-border-l1);
   transition: background var(--dur-state) var(--ease);
 }
 .row:last-child { border-bottom: 0; }
 
-.list-clickable .row {
-  margin: 0 calc(var(--s2) * -1);
-  padding-left: var(--s2);
-  padding-right: var(--s2);
-  /* 条目行不做圆角（方向卡 §四：0 = 行内标记） */
-  border-radius: var(--r-row);
-}
-.list-clickable .row:hover { background: var(--dsw-alias-bg-layer-1); }
+.list-clickable .row:hover { background: var(--dsw-alias-card-fill-hover); }
 
 .row-title {
   font-size: var(--t4);
@@ -657,10 +661,10 @@ body[data-unfold="1"] .panel-body {
   word-break: break-word;
   transition: color var(--dur-state) var(--ease);
 }
-.row-button:hover { text-decoration: underline; text-underline-offset: 2px; }
-.row-button:active { text-decoration: underline; text-underline-offset: 2px; }
+.row-button:hover { color: var(--dsw-alias-link); }
+.row-button:active { color: var(--dsw-alias-link); }
 .row-button:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
   border-radius: var(--r-control);
 }
@@ -677,18 +681,11 @@ body[data-unfold="1"] .panel-body {
  * 四态
  * ============================================================ */
 
-/*
- * 骨架屏：呼吸，不是位移。
- *
- * ⚠️ 第 1 轮评审 P1：早先用 background-position 扫动（位移感），
- * 而方向卡 §五 明写「骨架屏用 1.2s 呼吸，不用位移动画」。
- * 位移会把视线从内容上带走；呼吸只提示「在加载」，不抢夺注意力。
- */
 .skeleton {
-  background: var(--dsw-alias-bg-layer-1);
+  background: var(--dsw-alias-bg-skeleton);
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: var(--r-control);
   animation: breathe 1.2s ease-in-out infinite;
-  margin-bottom: var(--s2);
 }
 @keyframes breathe {
   0%, 100% { opacity: 1; }
@@ -698,60 +695,83 @@ body[data-unfold="1"] .panel-body {
 .empty {
   padding: var(--s5) var(--s3);
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  align-items: center;
 }
 .empty-title {
   font-size: var(--t4);
   line-height: var(--t4-lh);
   font-weight: 600;
-  margin: 0 0 var(--s1);
+  margin: 0;
 }
 .empty-body {
   font-size: var(--t4);
   line-height: var(--t4-lh);
   color: var(--dsw-alias-label-secondary);
-  margin: 0 0 var(--s4);
+  margin: 0;
+  max-width: 46ch;
 }
 .empty-actions {
   display: flex;
   gap: var(--s2);
   justify-content: center;
   flex-wrap: wrap;
+  margin-top: var(--s3);
 }
 
-/* 错误态：说清怎么解决，不只报告“出错” */
+/* 错误态：说清怎么解决，不只报告「出错」 */
 .alert {
-  border: 1px solid var(--dsw-alias-state-error-primary);
-  border-radius: var(--r-container);
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent);
+  border-radius: var(--r-card);
   padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
 }
 .alert-title {
   font-size: var(--t4);
   line-height: var(--t4-lh);
   font-weight: 600;
-  color: var(--dsw-alias-state-error-primary);
-  margin: 0 0 var(--s1);
+  color: var(--dsw-alias-label-primary);
+  margin: 0;
 }
 .alert-body {
   font-size: var(--t4);
   line-height: var(--t4-lh);
   color: var(--dsw-alias-label-secondary);
-  margin: 0 0 var(--s3);
+  margin: 0;
 }
-.alert-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.alert-actions { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s2); }
 
-/* 降级/提示条：整块浅底 + 文字，不用左侧彩边 */
+/* 提示条：tint 底 + 圆点信号（不用左侧彩边） */
 .notice {
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: var(--r-container);
-  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--r-card);
+  background: var(--dsw-alias-bg-module-platform);
   padding: var(--s2) var(--s3);
-  margin-bottom: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
 }
 .notice-title {
   font-size: var(--t4);
   line-height: var(--t4-lh);
   font-weight: 600;
-  margin: 0 0 var(--s1);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.notice-title::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-idle-primary);
 }
 .notice-text {
   font-size: var(--t4);
@@ -759,23 +779,18 @@ body[data-unfold="1"] .panel-body {
   color: var(--dsw-alias-label-secondary);
   margin: 0;
 }
-.notice[data-tone="warn"] { border-color: var(--dsw-alias-state-warn-primary); }
-.notice[data-tone="warn"] .notice-title { color: var(--dsw-alias-state-warn-primary); }
-.notice[data-tone="err"] { border-color: var(--dsw-alias-state-error-primary); }
-.notice[data-tone="err"] .notice-title { color: var(--dsw-alias-state-error-primary); }
+.notice[data-tone="warn"] {
+  background: var(--dsw-alias-state-warn-tertiary);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 35%, transparent);
+}
+.notice[data-tone="warn"] .notice-title::before { background: var(--dsw-alias-state-warn-primary); }
+.notice[data-tone="err"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
+}
+.notice[data-tone="err"] .notice-title::before { background: var(--dsw-alias-state-error-primary); }
 
-/*
- * 就地反馈：不盖住内容。
- *
- * ⚠️ 字阶用 T4 不是 T5（第 2 轮评审 P1）：
- * 它承载的是整句（「已确认（观察中 → 已确认）· 还剩 1 条待拍板」），
- * 400px 下会折 2 行，违反方向卡 §三「T5 禁止承载 >1 行文本」。
- *
- * 另：`[data-tone]` 的彩色只作用于**文本本身**。早先父元素设 color，
- * 而两个子节点各自写死了颜色（.inline-done-text 用 primary、.textlink 用 secondary），
- * 于是成功色/错误色从不显示——那两条是死规则。现在把色放在容器上，
- * 子节点不再覆盖，颜色才真的可见。
- */
+/* 就地反馈：文本继承容器色，成功/错误色才真的可见 */
 .inline-done {
   display: flex;
   align-items: center;
@@ -783,26 +798,20 @@ body[data-unfold="1"] .panel-body {
   flex-wrap: wrap;
   font-size: var(--t4);
   line-height: var(--t4-lh);
-  padding: var(--s2) 0;
-  border-top: 1px solid var(--dsw-alias-border-l1);
-  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-control);
+  background: var(--dsw-alias-state-success-tertiary);
+  color: var(--dsw-alias-label-primary);
   animation: fade var(--dur-state) var(--ease);
 }
+.inline-done[data-tone="err"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);
+}
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-.inline-done[data-tone="ok"] { color: var(--dsw-alias-state-success-primary); }
-.inline-done[data-tone="err"] { color: var(--dsw-alias-state-error-primary); }
-/* 文本继承容器色，不再写死 primary —— 否则上面的成功/错误色永远不显示 */
 .inline-done-text { color: inherit; }
+
 /* ============================================================
- * 全局动效降级 —— 必须在本文件
- *
- * ⚠️ 这一块曾经在 tokens.css（第 1 轮评审 P0-5），而方向卡 §零 要求
- * 移植进插件时整个 tokens.css 删除 —— 那样这条规则会在落地当天静默失效：
- * 用户在系统里开了「减少动态效果」，骨架屏照样呼吸、浮层照样淡入。
- *
- * 原则：**tokens.css 只负责「值」，任何「规则」必须写在会保留的文件里。**
- * 拆分 CSS 时本块一度被挪进 app-pages.css，也是错的——它是全局规则，
- * 必须和共享原语待在一起，不能跟着页面样式走。
+ * 全局动效降级 —— 必须留在本文件（tokens.css 落地时整段删除）
  * ============================================================ */
 
 @media (prefers-reduced-motion: reduce) {
@@ -815,7 +824,5 @@ body[data-unfold="1"] .panel-body {
 }
 
 /* ============================================================
- * 页面级样式见 app-pages.css
- * （拆出去的原因：单文件 > 1000 行违反硬约束）
+ * 页面级样式见 app-pages.css（单文件 ≤1000 行硬约束）
  * ============================================================ */
-

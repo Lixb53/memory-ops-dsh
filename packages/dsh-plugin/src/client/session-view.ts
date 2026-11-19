@@ -182,7 +182,7 @@ export function SessionMemoryView(props: Record<string, unknown>): ReactNode {
         createElement('div', { className: 'dmo-row-sub' },
           '同一个问题满 3 次会自动进「该补了」，也可以现在就补。')),
 
-    createElement('div', { className: 'dmo-row', style: { marginTop: 4 } },
+    createElement('div', { className: 'dmo-hrow', style: { marginTop: 4 } },
       createElement(Button, { small: true, onClick: reload }, '刷新'),
       createElement(Button, { small: true, onClick: () => { goMisses(true) } }, '去未命中工作台')))
 }

@@ -271,7 +271,20 @@ export function TodayPane({ ctx }: { ctx?: ClientContextLike }): ReactNode {
     : `有 ${count(todoTotal)} 件事压着，先从最上面那件开始`
   const sug = pickSuggestion(queue, fillable, openInbox, entries.length)
 
+  /* v6 顺序：KPI 账带在最前（一眼看清全局），其次建议卡（唯一重操作），
+     再次捕获条，最后才是可点的次要线索行。 */
+  const tape = createElement('div', { className: 'dmo-trail', role: 'group', 'aria-label': '全局指标' },
+    trailLine(todoTotal, '件事压着', 'todo', onGoto),
+    trailLine(misses.data?.total ?? 0, '搜不到', 'todo', onGoto),
+    trailLine(entries.length, '条记忆', 'memory', onGoto),
+    trailLine(
+      snapshot.data?.stats.layers.l0.tokens ?? 0,
+      'tokens 索引',
+      'health', onGoto))
+
   return createElement('div', null,
+    tape,
+
     h('h1', { className: 'dmo-lede' }, lede),
     h('p', { className: 'dmo-lede-sub' }, '这个面板只回答一个问题：你现在该做哪件事。其余都收在下面。'),
 
@@ -318,15 +331,5 @@ export function TodayPane({ ctx }: { ctx?: ClientContextLike }): ReactNode {
         ok: feedback.ok,
         text: feedback.text,
         onUndo: lastCapture === null ? undefined : undoCapture,
-      })),
-
-    SectionHead({ title: '其余线索' }),
-    createElement('div', { className: 'dmo-trail' },
-      trailLine(todoTotal, '件事等着你处理', 'todo', onGoto),
-      trailLine(misses.data?.total ?? 0, '个问题搜不到，先记着', 'todo', onGoto),
-      trailLine(entries.length, '条记忆在库里', 'memory', onGoto),
-      trailLine(
-        snapshot.data?.stats.layers.l0.tokens ?? 0,
-        'tokens 索引体积（每请求成本在库健康）',
-        'health', onGoto)))
+      })))
 }

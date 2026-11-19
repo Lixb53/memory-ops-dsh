@@ -1,145 +1,76 @@
 /* ============================================================
- * app-pages.css —— 页面级样式（今日 / 待办 / 库健康 / 详情 / 浮层）
+ * app-pages.css —— 页面级样式（成本表 / 详情 / 浮层 / 进度条）
  *
- * 从 app.css 拆出来的：单文件超过 1000 行违反硬约束。
- * 拆法按职责而不是按行数——这里只放「某个页面独有」的规则，
- * 共享原语（排版 / 按钮 / 输入 / 台账行 / 四态 / 动效降级）留在 app.css。
- *
- * ⚠️ 动效降级块（prefers-reduced-motion）必须留在 app.css，
- * 它是全局规则，不能跟着页面样式走。
+ * 只放「某个页面独有」的规则；共享原语在 app.css。
+ * ⚠️ prefers-reduced-motion 降级块留在 app.css，不跟页面样式走。
  * ============================================================ */
 
 /* ============================================================
- * 今日页：线索（行内，非网格）
- *
- * ⚠️ 原为 2×2 等大方格 + 格内「大数字 + 小标签」，
- * 与禁止清单判死的「固定网格功能卡」同构（第 1 轮评审创新性 6/10 的主因）。
- * 改为横排句子：数字嵌在句子里，密度由文字决定，不占等大方格。
+ * 库健康：成本行（真两列 → 数字右对齐到同一基线，v4 裁决保留）
  * ============================================================ */
-
-.trail {
-  display: flex;
-  flex-direction: column;
-  margin-top: var(--s1);
-}
-
-.trail-line {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s2);
-  padding: var(--s2) 0;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
-  text-align: left;
-  appearance: none;
-  background: transparent;
-  border-left: 0;
-  border-right: 0;
-  border-top: 0;
-  width: 100%;
-  cursor: pointer;
-  color: var(--dsw-alias-label-primary);
-  transition: background var(--dur-state) var(--ease),
-              color var(--dur-state) var(--ease);
-}
-.trail-line:last-child { border-bottom: 0; }
-.trail-line:hover { background: var(--dsw-alias-bg-layer-1); }
-.trail-line:active { background: var(--dsw-alias-bg-layer-2); }
-.trail-line:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
-  outline-offset: 2px;
-  border-radius: var(--r-control);
-}
-
-.trail-num {
-  font-family: var(--mono);
-  font-size: var(--t4);
-  line-height: var(--t4-lh);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  flex: 0 0 auto;
-  min-width: 2.5em;
-}
-
-.trail-text {
-  font-size: var(--t4);
-  line-height: var(--t4-lh);
-  color: var(--dsw-alias-label-secondary);
-}
-
-
-/* ============================================================
- * 库健康：成本两行
- * ============================================================ */
-
-.cost {
-  border-top: 1px solid var(--dsw-alias-border-l1);
-  padding-top: var(--s3);
-  margin-bottom: var(--s3);
-}
 
 .cost-row {
   display: flex;
   align-items: baseline;
   gap: var(--s2);
-  padding: var(--s1) 0;
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
+.cost-row:last-of-type { border-bottom: 0; }
 
-.cost-name {
-  font-size: var(--t4);
-  line-height: var(--t4-lh);
-}
+.cost-name { font-size: var(--t4); line-height: var(--t4-lh); }
 
 .cost-num {
   margin-left: auto;
   font-family: var(--mono);
-  font-size: var(--t3);
-  line-height: var(--t3-lh);
+  font-size: var(--t2);
+  line-height: var(--t2-lh);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * 成本解释。
- * T4 而非 T5：它承载的是整句解释（约 50 字，400px 下 2–3 行），
- * 按方向卡 §三 T5「仅等宽或短标签」不能用 T5。
- */
 .cost-note {
   font-size: var(--t4);
   line-height: var(--t4-lh);
   color: var(--dsw-alias-label-secondary);
-  margin: var(--s1) 0 0;
+  margin: 0 0 var(--s2);
 }
 
-/* 维护作业：默认收起 */
-.jobs { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
+/* 预算进度条：轨道用 bg-skeleton，填充用业务蓝（v4 用灰色填充，太素） */
+.meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--dsw-alias-bg-skeleton);
+  overflow: hidden;
+  margin: var(--s1) 0 var(--s2);
+}
+.meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--dsw-alias-state-business-primary);
+}
+.meter-fill[data-over="true"] { background: var(--dsw-alias-state-warn-primary); }
+
+/* 维护作业按钮组 */
+.jobs { display: flex; flex-wrap: wrap; gap: var(--s1); }
 
 /* ============================================================
  * 详情
  * ============================================================ */
 
-.back {
-  margin-bottom: var(--s3);
-}
+.back { margin-bottom: var(--s1); }
 
 .detail-title {
   font-size: var(--t3);
   line-height: var(--t3-lh);
   font-weight: 600;
-  margin: 0 0 var(--s1);
+  margin: 0;
   word-break: break-word;
 }
 
-/*
- * 证据摘录。
- *
- * ⚠️ 颜色用 primary 不是 secondary（第 2 轮评审 P1）：
- * 摘录可达 90 字以上，是用户要**连续读下去**的引文，
- * 方向卡 §二 的判定口径是「要连续读的一律 primary」。
- * 左侧 1px hairline 已足够表达「这是被引用的原文」，
- * 不需要再靠降低对比度来区分——那是双重弱化，会真的读不清。
- */
+/* 证据摘录：要连续读 → primary（v4 裁决保留） */
 .evidence {
-  border-left: 1px solid var(--dsw-alias-border-l2);
+  border-left: 2px solid var(--dsw-alias-border-l3);
   padding-left: var(--s2);
   margin: var(--s2) 0;
   font-size: var(--t4);
@@ -152,27 +83,19 @@
   line-height: var(--t4-lh);
   white-space: pre-wrap;
   word-break: break-word;
-  margin: var(--s2) 0;
+  margin: 0;
   max-height: 220px;
   overflow-y: auto;
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--r-control);
+  padding: var(--s2) var(--s3);
 }
 
 /*
- * 更多操作：折叠，避免一行 5 个按钮（方向卡 §八-1）。
- *
-/*
- * 收起时只留一行小字，**不带边框和 margin**——否则每个条目行底部
- * 都会多出一条假分隔线，折叠标签看起来像游离在行外的文字。
- *
- * ⚠️ 可发现性（第 2 轮评审 P1）：早先 `list-style: none` + 隐藏
- * `::-webkit-details-marker` + 12px 等宽次要色 + 无箭头，
- * 结果它和旁边的 `.meta` 长得一模一样——用户看不出这是可展开的。
- * 「不做了」看起来像第三个文字链，实际是折叠开关。
- * 修法：给一个 ▸ 箭头并在展开时旋转，这是 details 的通用心智模型。
+ * 更多操作：折叠。▸ 箭头是「可展开」的可见信号（v4 裁决保留）。
  */
-.more {
-  margin-top: var(--s2);
-}
+.more { margin-top: var(--s2); }
 .more > summary {
   cursor: pointer;
   font-family: var(--mono);
@@ -187,7 +110,6 @@
   transition: color var(--dur-state) var(--ease);
 }
 .more > summary::-webkit-details-marker { display: none; }
-/* 箭头：可展开的可见信号。展开时旋转 90°，符合通用心智模型。 */
 .more > summary::before {
   content: "▸";
   display: inline-block;
@@ -197,16 +119,22 @@
 .more[open] > summary::before { transform: rotate(90deg); }
 .more[open] > summary { margin-bottom: var(--s2); }
 .more > summary:hover { color: var(--dsw-alias-label-primary); }
-.more > summary:active { color: var(--dsw-alias-label-primary); text-decoration: underline; }
 .more > summary:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
   border-radius: var(--r-control);
 }
-.more-body { padding-top: var(--s2); display: flex; flex-direction: column; gap: var(--s2); }
+.more-body {
+  padding: var(--s2) var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  background: var(--dsw-alias-bg-module-platform);
+  border-radius: var(--r-control);
+}
 
 /* ============================================================
- * 浮层：唯一有阴影的地方
+ * 浮层：唯一允许阴影的地方（值由 mask token 派生，不写字面色）
  * ============================================================ */
 
 .overlay {
@@ -222,38 +150,111 @@
 
 .overlay-card {
   width: min(400px, calc(100vw - 32px));
-  background: var(--dsw-alias-bg-overlay);
-  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l3);
   border-radius: var(--r-overlay);
   padding: var(--s4);
   box-shadow: 0 12px 32px var(--dsw-alias-bg-mask-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
 }
 
 .overlay-title {
   font-size: var(--t3);
   line-height: var(--t3-lh);
   font-weight: 600;
-  margin: 0 0 var(--s2);
+  margin: 0;
 }
 
 .overlay-body {
   font-size: var(--t4);
   line-height: var(--t4-lh);
   color: var(--dsw-alias-label-secondary);
-  margin: 0 0 var(--s3);
+  margin: 0;
 }
 
 .overlay-actions {
   display: flex;
   gap: var(--s2);
   justify-content: flex-end;
+  margin-top: var(--s2);
 }
 
 /* ============================================================
- * 全局动效降级已移至 app.css 末尾。
- *
- * 为什么不在本文件：本文件是「页面级样式」，拆出去的理由只是行数。
- * 而 prefers-reduced-motion 是**全局规则**，它必须和共享原语待在一起，
- * 不能跟着页面样式走——否则以后有人只改页面样式就可能把它弄丢。
+ * /remember 弹窗（对应插件 .dmo-remember-*；v4 落地时 CSS 被删的回归测试）
  * ============================================================ */
 
+.remember-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dsw-alias-bg-mask-1);
+}
+
+.remember-card {
+  width: min(480px, calc(100% - 32px));
+  max-height: min(78vh, 620px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--s4);
+  border-radius: var(--r-overlay);
+  border: 1px solid var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: 0 12px 32px var(--dsw-alias-bg-mask-1);
+  gap: var(--s2);
+}
+
+.remember-head { display: flex; align-items: baseline; gap: var(--s2); }
+.remember-title { font-size: var(--t4); font-weight: 600; }
+.remember-close {
+  margin-left: auto;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 18px;
+  line-height: 1;
+  padding: var(--s1) var(--s2);
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+.remember-close:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-card-fill-hover); }
+.remember-close:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.remember-input {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--r-control);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--mono);
+  font-size: var(--t4);
+  line-height: var(--t4-lh);
+  padding: var(--s2);
+}
+.remember-input:focus {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -1px;
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.remember-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+/* 原型里的「已存入 · 可撤销」反馈复用 .inline-done（就地反馈），
+   不再单独画 remember-toast —— 插件端的 toast 由宿主语境决定，
+   原型不重复一套会漂移的样式。 */

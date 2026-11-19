@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>记忆库 v6 · 密排档案台（静态视觉稿）</title>
+<style>
+/* ============ 宿主真实 token（浅色） ============ */
+:root {
+  --bg-base:#fff; --sidebar:#f9fafb; --card:#fafafa; --card-hover:#f5f5f5;
+  --module:#f5f6f7; --mask:rgba(0,0,0,.24);
+  --l1:rgba(0,0,0,.04); --l2:rgba(0,0,0,.1); --l3:rgba(0,0,0,.12); --l4:rgba(0,0,0,.16);
+  --fg:#0f1115; --fg2:#61666b; --fg3:#81858c;
+  --blue:#4176e6; --blue-hi:#7aaafe; --on-blue:#fff;
+  --warn:#f59e0b; --warn-bg:#fef5e7; --ok:#22c55e; --ok-bg:#e6faed;
+  --err:#ec1313; --idle:#d4d4d4;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+}
+/* ============ 宿主真实 token（深色） ============ */
+.dark {
+  --bg-base:#151517; --sidebar:#1b1b1c; --card:#212123; --card-hover:#292929;
+  --module:#353638; --mask:rgba(0,0,0,.5);
+  --l1:rgba(255,255,255,.06); --l2:rgba(255,255,255,.12); --l3:rgba(255,255,255,.16); --l4:rgba(255,255,255,.2);
+  --fg:#f9fafb; --fg2:#cfd3d6; --fg3:#adb2b8;
+  --blue:#7aaafe; --blue-hi:#4176e6; --on-blue:#151517;
+  --warn:#f59e0b; --warn-bg:#272423; --ok:#22c55e; --ok-bg:#233c2c;
+  --err:#f25a5a; --idle:#545557;
+}
+
+* { box-sizing:border-box; margin:0; }
+body { font-family:var(--sans); background:#e6e8ee; padding:24px; }
+body.dark-page { background:#0e0e10; }
+
+/* ============ 面板外壳：400px，密排 ============ */
+.frame { width:400px; background:var(--sidebar); color:var(--fg);
+  border:1px solid var(--l2); border-radius:10px; overflow:hidden;
+  font-size:14px; line-height:22px; }
+.hdr { padding:10px 12px 0; }
+.hdr-row { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; }
+.app { font-size:14px; font-weight:600; letter-spacing:.02em; }
+.scope { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--fg2); }
+
+/* 分段导航：胶囊组，选中=白底描边（v6：比 tint 更档案感） */
+.seg { display:flex; gap:2px; padding:3px; margin-bottom:10px;
+  background:var(--module); border:1px solid var(--l2); border-radius:8px; }
+.seg button { flex:1; appearance:none; border:1px solid transparent; background:transparent;
+  color:var(--fg2); font:inherit; font-size:12px; line-height:18px; padding:4px 0;
+  border-radius:6px; cursor:pointer; white-space:nowrap; }
+.seg button:hover { color:var(--fg); }
+.seg button[aria-selected=true] { background:var(--bg-base); border-color:var(--l3);
+  color:var(--fg); font-weight:600; }
+.seg .n { font-family:var(--mono); font-size:11px; color:var(--blue); margin-left:2px; }
+.body { padding:12px; display:flex; flex-direction:column; gap:10px; }
+
+/* ============ 排版 ============ */
+.lede { font-size:22px; line-height:30px; font-weight:600; letter-spacing:-.01em; }
+.sub { font-size:13px; line-height:20px; color:var(--fg2); }
+.pname { font-size:12px; line-height:18px; font-weight:600; letter-spacing:.06em; color:var(--fg3); }
+
+/* ============ KPI 账带：单卡四格，数字右对齐同一基线 ============ */
+.tape { display:grid; grid-template-columns:repeat(4,1fr);
+  background:var(--card); border:1px solid var(--l3); border-radius:8px; overflow:hidden; }
+.tape button { appearance:none; background:transparent; border:0; border-left:1px solid var(--l1);
+  padding:8px 6px 7px; text-align:right; cursor:pointer; font:inherit; color:var(--fg); }
+.tape button:first-child { border-left:0; text-align:left; padding-left:10px; }
+.tape button:hover { background:var(--card-hover); }
+.tape .v { display:block; font-family:var(--mono); font-size:18px; line-height:24px; font-weight:600;
+  font-variant-numeric:tabular-nums; }
+.tape button:first-child .v { color:var(--blue); }
+.tape .k { display:block; font-size:11px; line-height:15px; color:var(--fg2); white-space:nowrap; }
+
+/* ============ 卡片 ============ */
+.card { background:var(--card); border:1px solid var(--l3); border-radius:8px; padding:12px;
+  display:flex; flex-direction:column; gap:6px; }
+.card.q { background:var(--module); border-color:var(--l2); }
+.eyebrow { font-family:var(--mono); font-size:11px; line-height:15px; color:var(--fg2); }
+.ctitle { font-size:16px; line-height:24px; font-weight:600; }
+.cbody { font-size:14px; line-height:22px; }
+.cbody .q { color:var(--fg); }
+.meta { font-family:var(--mono); font-size:11px; line-height:15px; color:var(--fg2);
+  font-variant-numeric:tabular-nums; }
+.acts { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:2px; }
+
+/* 徽标：tint 底 + 方点 + 文字（不只靠颜色） */
+.bdg { display:inline-flex; align-items:center; gap:4px; font-family:var(--mono);
+  font-size:11px; line-height:16px; padding:0 4px; color:var(--fg); background:var(--l1); }
+.bdg::before { content:""; width:6px; height:6px; background:var(--idle); }
+.bdg.w { background:var(--warn-bg); } .bdg.w::before { background:var(--warn); }
+.bdg.g { background:var(--ok-bg); }   .bdg.g::before { background:var(--ok); }
+.bdg.b { background:color-mix(in srgb,var(--blue) 12%,transparent); }
+.bdg.b::before { background:var(--blue); }
+.bdg.r { background:color-mix(in srgb,var(--err) 10%,transparent); }
+.bdg.r::before { background:var(--err); }
+
+/* 按钮 */
+.btn { appearance:none; border:1px solid var(--l3); background:var(--bg-base); color:var(--fg);
+  border-radius:6px; padding:3px 12px; font:inherit; font-size:13px; line-height:20px; cursor:pointer; }
+.btn:hover { background:var(--card-hover); }
+.btn.p { background:var(--blue); border-color:var(--blue); color:var(--on-blue); font-weight:600; }
+.btn.q { border-color:transparent; background:transparent; color:var(--fg2); padding-left:6px; }
+.btn.q:hover { color:var(--fg); }
+.lk { appearance:none; border:0; background:none; padding:0; color:var(--blue);
+  font-size:12px; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+
+/* 捕获条：单行密排 */
+.bar { display:flex; gap:8px; align-items:center; }
+.bar input { flex:1; min-width:0; border:1px solid var(--l3); border-radius:6px; background:var(--bg-base);
+  color:var(--fg); font:inherit; font-size:13px; padding:5px 10px; }
+.bar input::placeholder { color:var(--fg3); }
+.bar input:focus { outline:2px solid var(--blue); outline-offset:-1px; border-color:var(--blue); }
+
+/* 类型签 */
+.chips { display:flex; gap:4px; flex-wrap:wrap; }
+.chips button { appearance:none; border:1px solid var(--l2); background:var(--bg-base); color:var(--fg2);
+  border-radius:6px; padding:1px 8px; font-size:12px; line-height:18px; cursor:pointer; }
+.chips button[aria-pressed=true] { border-color:var(--blue); color:var(--blue); font-weight:600;
+  background:color-mix(in srgb,var(--blue) 8%,transparent); }
+
+/* ============ 台账行：36px 密排，右对齐数字列 ============ */
+.lane { border-top:1px solid var(--l2); padding-top:8px; }
+.lane-h { display:flex; align-items:baseline; gap:8px; margin-bottom:4px; }
+.lane-t { font-size:13px; font-weight:600; letter-spacing:.02em; }
+.lane-n { font-family:var(--mono); font-size:11px; color:var(--fg2); }
+.lane-x { margin-left:auto; font-size:11px; color:var(--blue); }
+.row { display:flex; align-items:center; gap:8px; min-height:36px; padding:6px 8px; margin:0 -8px;
+  border-bottom:1px solid var(--l1); }
+.row:last-child { border-bottom:0; }
+.row:hover { background:var(--card-hover); }
+.row .t { flex:1; min-width:0; font-size:13px; line-height:19px; }
+.row .t .s { display:block; font-family:var(--mono); font-size:11px; color:var(--fg2); }
+.num { font-family:var(--mono); font-size:12px; font-weight:600; font-variant-numeric:tabular-nums;
+  text-align:right; min-width:52px; }
+.chev { color:var(--fg3); font-family:var(--mono); }
+
+/* 成本行 */
+.cost { display:flex; align-items:baseline; gap:8px; padding:5px 0; }
+.cost .k { font-size:13px; } .cost .v { margin-left:auto; font-family:var(--mono); font-size:18px;
+  font-weight:600; font-variant-numeric:tabular-nums; }
+.cost .n { font-size:12px; line-height:17px; color:var(--fg2); }
+.meter { height:6px; border-radius:3px; background:var(--l1); overflow:hidden; margin:4px 0 2px; }
+.meter i { display:block; height:100%; width:17%; background:var(--blue); border-radius:3px; }
+
+/* 证据引文 */
+.ev { border-left:2px solid var(--l3); padding:2px 0 2px 8px; font-size:12px; line-height:18px;
+  font-family:var(--mono); color:var(--fg2); }
+
+/* toast / 骨架 */
+.sk { height:14px; border-radius:4px; background:var(--l1); }
+.note-amber { background:var(--warn-bg); border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);
+  border-radius:8px; padding:8px 10px; font-size:12px; line-height:18px; }
+
+.grid { display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+</style>
+</head>
+<body>
+<div class="grid" id="grid">
+
+<!-- ══════════════ 今天 ══════════════ -->
+<section class="frame" id="today">
+  <div class="hdr">
+    <div class="hdr-row"><span class="app">记忆库</span><span class="scope">~/.memory-ops</span></div>
+    <div class="seg">
+      <button aria-selected="true">今天</button><button>记一条</button><button>待办<span class="n">3</span></button><button>记忆<span class="n">3</span></button><button>库健康</button>
+    </div>
+  </div>
+  <div class="body">
+    <div class="tape">
+      <button><span class="v">3</span><span class="k">件事压着</span></button>
+      <button><span class="v">5</span><span class="k">搜不到</span></button>
+      <button><span class="v">3</span><span class="k">条记忆</span></button>
+      <button><span class="v">171</span><span class="k">tok/请求</span></button>
+    </div>
+    <div class="card">
+      <span class="eyebrow">建议先做这一件</span>
+      <span class="ctitle">有一条推断等你拍板</span>
+      <span class="cbody">「dsh-config 仓库：个人 skill/preset/profile 的唯一真相源与安装方式」——从对话总结的，置信度 0.5。确认后参与后续会话。</span>
+      <div class="acts"><span class="bdg w">观察中</span><span class="meta">519 tokens · G3</span></div>
+      <div class="acts"><button class="btn p">确认这条</button><button class="btn q">先看全文</button></div>
+    </div>
+    <div class="card q">
+      <div class="bar">
+        <input placeholder="一句话赶紧存了…  Ctrl+Enter">
+        <button class="btn">存进去</button>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-h"><span class="lane-t">其余线索</span><span class="lane-n">点行直达</span></div>
+      <div class="row"><span class="t">件事等着你处理<span class="s">拍板 1 · 流转 2 · 补库 0</span></span><span class="chev">›</span></div>
+      <div class="row"><span class="t">个问题搜不到，先记着<span class="s">均未到 3 次阈值</span></span><span class="chev">›</span></div>
+      <div class="row"><span class="t">条记忆在库里<span class="s">共 811 tokens</span></span><span class="chev">›</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 记一条 ══════════════ -->
+<section class="frame" id="capture">
+  <div class="hdr">
+    <div class="hdr-row"><span class="app">记忆库</span><span class="scope">~/.memory-ops</span></div>
+    <div class="seg">
+      <button>今天</button><button aria-selected="true">记一条</button><button>待办<span class="n">3</span></button><button>记忆<span class="n">3</span></button><button>库健康</button>
+    </div>
+  </div>
+  <div class="body">
+    <div><span class="pname">记一条</span>
+      <div class="lede" style="margin-top:2px">先存下来，之后在「待办」里整理。</div>
+      <div class="sub">不需要想清楚怎么写；多行会逐条拆开。</div></div>
+    <div class="card">
+      <div class="chips">
+        <button aria-pressed="true">想法</button><button>计划</button><button>问题</button><button>待办</button><button>决策</button>
+      </div>
+      <div style="border:1px solid var(--l3);border-radius:6px;background:var(--bg-base);padding:8px 10px;min-height:76px">
+        <span class="meta" style="color:var(--fg3)">想到什么写什么…</span>
+      </div>
+      <div class="acts"><button class="btn p">存进去</button><span class="meta">Ctrl / ⌘ + Enter · 存前查密钥</span></div>
+    </div>
+    <div class="lane">
+      <div class="lane-h"><span class="lane-t">最近记的</span><span class="lane-n">3 条</span></div>
+      <div class="row"><span class="t">所有会话的思考过程和结果全都使用中文<span class="s">11-16 · 决策 · → personal/principles.md</span></span><span class="bdg g">已完成</span></div>
+      <div class="row"><span class="t">测试写入：验证 memory_write 流程通畅<span class="s">11-16 · 想法</span></span><span class="bdg w">未开始</span></div>
+      <div class="row"><span class="t">打开的弹窗，在 windows 系统中位置在最下方且被遮挡<span class="s">11-16 · 问题</span></span><span class="bdg w">未开始</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 待办 ══════════════ -->
+<section class="frame" id="todo">
+  <div class="hdr">
+    <div class="hdr-row"><span class="app">记忆库</span><span class="scope">~/.memory-ops</span></div>
+    <div class="seg">
+      <button>今天</button><button>记一条</button><button aria-selected="true">待办<span class="n">3</span></button><button>记忆<span class="n">3</span></button><button>库健康</button>
+    </div>
+  </div>
+  <div class="body">
+    <div><span class="pname">待办</span>
+      <div class="lede" style="margin-top:2px">共 3 件，分三类。</div></div>
+    <div class="card">
+      <div class="lane-h"><span class="lane-t">要我拍板的</span><span class="lane-n">1</span></div>
+      <div class="row" style="border-bottom:0;align-items:flex-start">
+        <span class="t">dsh-config 仓库：个人 skill/preset/profile 的唯一真相源与安装方式
+          <span class="s" style="margin-top:4px"><span class="bdg w">观察中</span>&nbsp; 从对话总结 · 置信 0.5</span>
+          <span class="ev" style="margin-top:6px">实测：plugin_manager install_bundle 用 git+https:… 返回 applied</span>
+          <span class="s" style="margin-top:6px"><button class="btn p">确认</button>&nbsp;<button class="lk">看全文</button>&nbsp;<button class="lk">驳回…</button></span>
+        </span>
+      </div>
+    </div>
+    <div class="card q">
+      <div class="lane-h"><span class="lane-t">要我流转的</span><span class="lane-n">2</span><span class="lane-x">全部标完成</span></div>
+      <div class="row"><span class="t">测试写入：验证 memory_write 流程通畅<span class="s">11-16 · 想法 · 未开始</span></span><button class="btn">完成</button></div>
+      <div class="row"><span class="t">打开的弹窗在 windows 下被遮挡<span class="s">11-16 · 问题 · 未开始</span></span><button class="btn">完成</button></div>
+    </div>
+    <div class="card q">
+      <div class="lane-h"><span class="lane-t">要我补的</span><span class="lane-n">0</span></div>
+      <div class="note-amber"><b>还没到该补的时候。</b>5 个问题各被搜过 1 次，再到 3 次会自动出现在这里。现在补也行——只是还没证据说明它值得占位。</div>
+      <div class="acts"><button class="btn">仍然补一条</button><span class="meta">会从上面 5 个问题里挑</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 记忆 ══════════════ -->
+<section class="frame" id="memory">
+  <div class="hdr">
+    <div class="hdr-row"><span class="app">记忆库</span><span class="scope">~/.memory-ops</span></div>
+    <div class="seg">
+      <button>今天</button><button>记一条</button><button>待办<span class="n">3</span></button><button aria-selected="true">记忆<span class="n">3</span></button><button>库健康</button>
+    </div>
+  </div>
+  <div class="body">
+    <div><span class="pname">记忆 · 全库台账</span>
+      <div class="lede" style="margin-top:2px">3 条，811 tokens</div></div>
+    <div class="card q">
+      <div class="bar"><input placeholder="搜标题或域…"><button class="btn p">搜</button></div>
+      <div class="chips">
+        <button aria-pressed="true">全部 3</button><button>要我拍板 1</button><button>待复核 0</button><button>已确认 2</button>
+        <button aria-pressed="true">全库</button><button>个人 2</button><button>dsh-config 1</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row" style="border-bottom:1px solid var(--l2);min-height:24px">
+        <span class="t" style="font-family:var(--mono);font-size:11px;color:var(--fg2)">条目</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--fg2);min-width:52px;text-align:right">TOKENS</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--fg2);min-width:36px;text-align:right">引用</span>
+      </div>
+      <div class="row"><span class="t">dsh-config 仓库：唯一真相源与安装方式<span class="s"><span class="bdg w">观察中</span>&nbsp; dsh-config</span></span><span class="num">519</span><span class="num" style="min-width:36px">0</span></div>
+      <div class="row"><span class="t">所有会话的思考过程和结果全都使用中文<span class="s"><span class="bdg g">已确认</span>&nbsp; 个人</span></span><span class="num">114</span><span class="num" style="min-width:36px">1</span></div>
+      <div class="row"><span class="t">INBOX<span class="s"><span class="bdg">有效</span>&nbsp; 个人</span></span><span class="num">178</span><span class="num" style="min-width:36px">1</span></div>
+    </div>
+    <div class="card">
+      <div class="lane-h"><span class="lane-t">详情 · 中文优先</span><span class="lane-n">personal/principles.md</span></div>
+      <div class="acts"><span class="bdg g">已确认</span><span class="meta">你亲口说的 · G1 · 置信 0.9 · 114 tokens · 19 行</span></div>
+      <div class="ev">所有会话的思考过程和结果全都使用中文</div>
+      <div class="acts"><button class="btn p">确认这条</button><button class="btn q">编辑正文</button><button class="lk">更多操作 ▸</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 库健康 ══════════════ -->
+<section class="frame" id="health">
+  <div class="hdr">
+    <div class="hdr-row"><span class="app">记忆库</span><span class="scope">~/.memory-ops</span></div>
+    <div class="seg">
+      <button>今天</button><button>记一条</button><button>待办<span class="n">3</span></button><button>记忆<span class="n">3</span></button><button aria-selected="true">库健康</button>
+    </div>
+  </div>
+  <div class="body">
+    <div><span class="pname">库健康</span>
+      <div class="lede" style="margin-top:2px">两种成本，别优化错对象</div></div>
+    <div class="card">
+      <div class="cost"><span class="k">每请求成本</span><span class="v">171</span></div>
+      <div class="meter"><i></i></div>
+      <div class="cost"><span class="n">tokens/请求 · 预算 1024（17%）。本机没装 memory 类 skill，只剩目录框架；装了会到 361。这是唯一每请求都付的钱。</span></div>
+      <div class="cost" style="border-top:1px solid var(--l1);margin-top:6px;padding-top:8px"><span class="k">索引体积</span><span class="v">0</span></div>
+      <div class="cost"><span class="n">所有 l0 索引文件之和。这个数大不代表贵——只在被读时才进上下文。</span></div>
+      <div class="cost" style="border-top:1px solid var(--l1);margin-top:6px;padding-top:8px"><span class="k">全库体积</span><span class="v">811</span></div>
+      <div class="cost"><span class="n">3 条记忆正文合计。对照：弃用的 knowledge 曾占 4,120。</span></div>
+    </div>
+    <div class="card q">
+      <div class="lane-h"><span class="lane-t">维护</span><span class="lane-n">先预览，点了才执行</span></div>
+      <div class="chips">
+        <button>补元数据</button><button>查锚点</button><button>压空行</button><button>升可信度</button><button>本周小结</button>
+      </div>
+    </div>
+    <div class="card q">
+      <div class="lane-h"><span class="lane-t">导出</span></div>
+      <div class="acts"><button class="btn">全部 Markdown</button><button class="btn">仅个人域</button><button class="btn">仅工作域</button></div>
+    </div>
+    <div class="acts"><button class="btn p">回今天，看该做什么</button></div>
+  </div>
+</section>
+
+</div>
+
+<script>
+/* 每个面板自动复制一份深色孪生帧（id + '-dark'），供逐帧截图。 */
+(function () {
+  var grid = document.getElementById('grid');
+  Array.prototype.slice.call(grid.querySelectorAll('.frame')).forEach(function (f) {
+    var d = f.cloneNode(true);
+    d.id = f.id + '-dark';
+    d.classList.add('dark');
+    grid.appendChild(d);
+  });
+  var hash = location.hash.replace('#', '');
+  if (hash) {
+    Array.prototype.slice.call(document.querySelectorAll('.frame')).forEach(function (f) {
+      f.style.display = (f.id === hash) ? '' : 'none';
+    });
+    document.body.style.background = hash.indexOf('-dark') >= 0 ? '#0e0e10' : '#e6e8ee';
+    document.body.style.padding = '16px';
+  }
+})();
+</script>
+</body>
+</html>

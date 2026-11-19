@@ -18,3 +18,6 @@ lib/
 !packages/dsh-plugin/lib/index.js
 !packages/dsh-plugin/lib/client.js
 !packages/dsh-plugin/lib/client-logic.mjs
+
+# 一次性诊断产物（asar 抽取、临时脚本输出），不入库
+.tmp/

@@ -309,7 +309,7 @@ function RememberOverlay(props: Record<string, unknown>): ReactNode {
   const foot = createElement('div', { className: 'dmo-remember-foot' },
     createElement('span', { className: 'dmo-row-sub', style: { marginTop: 0 } },
       '存入后可在浮层里 30 秒内撤销'),
-    createElement('div', { className: 'dmo-row', style: { flex: '0 0 auto' } },
+    createElement('div', { className: 'dmo-hrow', style: { flex: '0 0 auto' } },
       createElement(Button, { onClick: close }, '取消'),
       createElement(Button, {
         variant: 'primary',
@@ -334,7 +334,7 @@ function RememberOverlay(props: Record<string, unknown>): ReactNode {
         }, '填入脱敏文本')))
 
   const body = createElement('div', { className: 'dmo-remember-body' },
-    createElement('div', { className: 'dmo-row' },
+    createElement('div', { className: 'dmo-hrow' },
       createElement('select', {
         className: 'dmo-select',
         value: kind,

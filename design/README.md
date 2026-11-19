@@ -1,5 +1,12 @@
-# 记忆库 v4 · 重新规划交付说明
+# 记忆库 · 设计交付说明（当前 v6）
 
+> **v6（2026-11-19）**：视觉方向改为「密排档案台」（Data-Dense Ledger）并落地到插件；
+> 信息架构不变（沿用 v4 的 5 任务入口与四态）。唯一契约 = `direction-card.md`（v6）。
+> 预览图：`prototype/shots-v6/`（5 分区 × 亮/暗 + /remember 弹窗 2 张）、
+> `design/shots-v6/`（v6 静态视觉稿）。历史版本契约在 `design/archive/`。
+>
+> 以下为 v4（2026-11-17）原始交付说明，保留作透明记录。
+>
 > 本次任务：重新分析产品，解决「用起来很奇怪、不知道要干嘛、怎么用」，给出改进。
 > 交付时间：2026-11-17。
 
@@ -12,12 +19,11 @@
 | **为什么现在难用**（五条根因，带代码取证） | [`design/information-architecture.md` §一](information-architecture.md) |
 | **改成什么样**（5 个任务入口 + 术语对照 + 四态） | [`design/information-architecture.md` §二–§五](information-architecture.md) |
 | **长什么样、怎么点**（可运行原型） | 双击 [`prototype/index.html`](../prototype/index.html) |
-| **视觉规则**（唯一契约，改不动） | [`design/direction-card.md`](direction-card.md) |
+| **视觉规则**（唯一契约，v6） | [`design/direction-card.md`](direction-card.md) |
 | **代码怎么改**（文件级改动清单 + 验收标准） | [`design/implementation-plan.md`](implementation-plan.md) |
 | **合规自检** | [`review/5a-self-check.md`](../review/5a-self-check.md) |
-| **独立评审（第 1 轮，不通过 → 修 5 P0 + 13 P1）** | [`review/5b-round-1.md`](../review/5b-round-1.md) |
-| **独立评审（第 2 轮，不通过 → 修 3 P0 + 15 P1）** | [`review/5b-round-2.md`](../review/5b-round-2.md) |
-| **独立评审（第 3 轮，不通过 → 修 4 P0，未复评）** | [`review/5b-round-3.md`](../review/5b-round-3.md) |
+| **独立评审（v4 三轮，均未通过）** | [`review/5b-round-1.md`](../review/5b-round-1.md) … [`5b-round-3.md`](../review/5b-round-3.md)（v4 历史，见 git） |
+| **独立评审（v6 门禁轮）** | `review/5b-v6-round-1.md`（本轮结果落盘后填写） |
 | **系统架构评估（另一个问题域）** | [`docs/architecture-review.md`](../docs/architecture-review.md) |
 
 ---

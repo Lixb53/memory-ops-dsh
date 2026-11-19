@@ -301,7 +301,7 @@ function RememberOverlay(props) {
     ),
     createElement(
       "div",
-      { className: "dmo-row", style: { flex: "0 0 auto" } },
+      { className: "dmo-hrow", style: { flex: "0 0 auto" } },
       createElement(Button, { onClick: close }, "\u53D6\u6D88"),
       createElement(Button, {
         variant: "primary",
@@ -333,7 +333,7 @@ function RememberOverlay(props) {
     { className: "dmo-remember-body" },
     createElement(
       "div",
-      { className: "dmo-row" },
+      { className: "dmo-hrow" },
       createElement("select", {
         className: "dmo-select",
         value: kind,

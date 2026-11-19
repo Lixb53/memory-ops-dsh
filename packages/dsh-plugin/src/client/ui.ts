@@ -402,7 +402,7 @@ export function SelectionBar({ count: selected, total, busy, children, onClear }
   onClear: () => void
 }): ReactNode {
   if (selected === 0) return null
-  return h('div', { className: 'dmo-row', style: { marginBottom: 8, flexWrap: 'wrap' } },
+  return h('div', { className: 'dmo-hrow', style: { marginBottom: 8, flexWrap: 'wrap' } },
     h('span', { className: 'dmo-note', style: { margin: 0 } }, `已选 ${selected} / ${total} 条`),
     children,
     h(Button, { small: true, disabled: busy === true, onClick: onClear }, '清空选择'))
