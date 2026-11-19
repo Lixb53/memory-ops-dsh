@@ -25,6 +25,9 @@ import { createElement, useState, type ReactNode } from 'react'
 
 import { call, type InboxView, type MissesView, type SnapshotView } from '../api.ts'
 import { useBridge } from '../data.ts'
+// v6 评审 P0-1：待办在面板内部，跳转用 requestPane 即可——
+// 面板订阅同一个 store（usePaneRequest），写请求就会切分区，不需要 layout 服务。
+import { requestPane } from '../pane-nav.ts'
 import {
   Btn, EmptyState, ErrorAlert, InlineDone, Notice, Primary, RejectBox, SectionHead, SkeletonRows,
   TextLink, h, tag, truncate,
@@ -35,7 +38,10 @@ const INBOX_STATE_LABEL: Record<string, string> = {
 }
 
 /** 「待办」分区。 */
-export function TodoPane(): ReactNode {
+export function TodoPane({ onOpenDetail }: {
+  /** 打开某条记忆的详情（面板传入；缺省退化为跳「记忆」分区）。 */
+  onOpenDetail?: (path: string) => void
+}): ReactNode {
   const snapshot = useBridge<SnapshotView>('snapshot', {})
   const inbox = useBridge<InboxView>('inbox', { domain: 'personal' })
   const misses = useBridge<MissesView>('misses', {})
@@ -113,13 +119,13 @@ export function TodoPane(): ReactNode {
 
   /* —— 整页错误：三段共用一次快照读取，失败时如实说，不谎称「互不影响」 —— */
   if (snapshot.phase === 'error') {
-    return createElement('div', null, head,
+    return createElement('div', { className: 'dmo-pane' }, head,
       h(ErrorAlert, {
         title: '读不到待办',
         body: '这次读取整体失败，所以三段都没出来。库文件没有丢——先重试，还不行就去「记忆」直接看条目。',
         actions: [
           Primary({ children: '重试', onClick: snapshot.reload, attrs: { 'data-action': 'retry' } }),
-          Btn({ children: '去记忆', onClick: () => { setFeedback(null) }, attrs: { 'data-action': 'goto', 'data-pane': 'memory' } }),
+          Btn({ children: '去记忆', onClick: () => { requestPane('memory') }, attrs: { 'data-action': 'goto', 'data-pane': 'memory' } }),
         ],
       }))
   }
@@ -127,16 +133,18 @@ export function TodoPane(): ReactNode {
   if (snapshot.phase === 'loading') return SkeletonRows({ rows: 3, height: 64 })
 
   if (todoTotal === 0) {
-    return createElement('div', null, head,
-      h(EmptyState, {
-        title: '清空了',
-        body: '下次 agent 搜不到东西、或者我从对话里总结出新的推断时，这里会自动出现。现在不用管它。',
-        actions: [
-          Primary({ children: '记一条', onClick: () => { setFeedback(null) }, attrs: { 'data-action': 'goto', 'data-pane': 'capture' } }),
-          Btn({ children: '去记忆', attrs: { 'data-action': 'goto', 'data-pane': 'memory' } }),
-        ],
-      }),
-      feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }))
+    /* 空屏装进唯一重卡：空态不是灰字，是一个有容器的动作（IA §5.3） */
+    return createElement('div', { className: 'dmo-pane' }, head,
+      createElement('section', { className: 'dmo-card-heavy' },
+        h(EmptyState, {
+          title: '清空了',
+          body: '下次 agent 搜不到东西、或者我从对话里总结出新的推断时，这里会自动出现。现在不用管它。',
+          actions: [
+            Primary({ children: '记一条', onClick: () => { requestPane('capture') }, attrs: { 'data-action': 'goto', 'data-pane': 'capture' } }),
+            Btn({ children: '去记忆', onClick: () => { requestPane('memory') }, attrs: { 'data-action': 'goto', 'data-pane': 'memory' } }),
+          ],
+        }),
+        feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text })))
   }
 
   /* —— brand 名额：按优先级分配，整页只有一个 —— */
@@ -181,7 +189,12 @@ export function TodoPane(): ReactNode {
               : (usePrimary
                   ? Primary({ children: '确认', small: true, disabled: busy, onClick: () => { confirmEntry(item.path) }, attrs: { 'data-action': 'confirm', 'data-path': item.id } })
                   : Btn({ children: '确认', small: true, disabled: busy, onClick: () => { confirmEntry(item.path) }, attrs: { 'data-action': 'confirm', 'data-path': item.id } }))),
-        TextLink({ children: '看全文', attrs: { 'data-action': 'open-detail', 'data-path': item.id } })),
+        TextLink({
+          children: '看全文',
+          // v6 评审 P0-1：早先只有 attrs 没有 onClick——点了没反应。
+          onClick: () => { (onOpenDetail ?? (() => { requestPane('memory') }))(item.path) },
+          attrs: { 'data-action': 'open-detail', 'data-path': item.id },
+        })),
       rejecting === item.id
         ? h(RejectBox, {
             reason: rejectReason,
@@ -235,7 +248,9 @@ export function TodoPane(): ReactNode {
             onChange: (event: { target: { value: string } }) => { setDraftText(event.target.value) },
           }),
           createElement('div', { className: 'dmo-row-actions' },
-            Primary({
+            Btn({
+              // v6 评审 P1-2：内联编辑提交降为次按钮——流转段永远不持有
+              // 整页主按钮名额，这里再用 Primary 就会与拍板段同屏 2 处蓝实底。
               children: '保存', small: true, disabled: busy || draftText.trim() === '',
               onClick: () => {
                 run(
@@ -294,7 +309,9 @@ export function TodoPane(): ReactNode {
                   onChange: (event: { target: { value: string } }) => { setDraftText(event.target.value) },
                 }),
                 createElement('div', { className: 'dmo-row-actions' },
-                  Primary({
+                  Btn({
+                    // v6 评审 P1-2：同上——草稿提交降次按钮，
+                    // 该行可能同时显示条件主按钮「写结论」，不许 2 处蓝实底。
                     children: '确认落库', small: true, disabled: busy || draftText.trim() === '',
                     onClick: () => {
                       run(
@@ -308,7 +325,7 @@ export function TodoPane(): ReactNode {
                   Btn({ children: '取消', small: true, onClick: () => { setDrafting(null) } })))
             : null)
       })
-      return [
+      return createElement('section', { className: 'dmo-card-quiet' },
         SectionHead({
           title: '要我补的', count: String(fillable.length),
           /*
@@ -328,8 +345,7 @@ export function TodoPane(): ReactNode {
               })
             : undefined,
         }),
-        createElement('ul', { className: 'dmo-list' }, rows),
-      ]
+        createElement('ul', { className: 'dmo-list', role: 'list' }, rows))
     }
 
     /*
@@ -342,7 +358,7 @@ export function TodoPane(): ReactNode {
     const fillBtn = usePrimary
       ? Primary({ children: '仍然补一条', onClick: () => { setDrafting(''); setDraftText('') }, attrs: { 'data-action': 'miss-write' } })
       : Btn({ children: '仍然补一条', small: true, attrs: { 'data-action': 'miss-write' } })
-    return [
+    return createElement('section', { className: 'dmo-card-quiet' },
       SectionHead({ title: '要我补的', count: '0' }),
       Notice({
         title: '还没有到该补的时候',
@@ -353,40 +369,46 @@ export function TodoPane(): ReactNode {
       }),
       createElement('div', { className: 'dmo-row-actions' },
         fillBtn,
-        h('span', { className: 'dmo-note', style: { margin: 0 } }, `会从上面 ${missTotal} 个问题里挑一个开始`)),
-    ]
+        h('span', { className: 'dmo-note', style: { margin: 0 } }, `会从上面 ${missTotal} 个问题里挑一个开始`)))
   })()
 
-  return createElement('div', null, head,
+  return createElement('div', { className: 'dmo-pane' }, head,
     /*
      * 拍板段的反馈落在段首（动作来源是这一段），不塞到页面末尾——
      * 三段齐全时页面末尾在视口之外，「就地反馈」会变成看不见的反馈。
+     *
+     * v6 评审 P0-1：三段各自装进容器。拍板段 = 本页唯一重卡
+     * （card-fill + l3 + 主操作所在）；流转与补库 = 静卡。
+     * 行分隔的 border-l1 从此只在卡内出现。
      */
     suggestFeedback === null ? null : InlineDone({ ok: suggestFeedback.ok, text: suggestFeedback.text }),
-    SectionHead({ title: '要我拍板的', count: String(queue.length) }),
-    createElement('ul', { className: 'dmo-list' }, decisionRows),
-    SectionHead({
-      title: '要我流转的', count: String(openRows.length),
-      /* 超过 1 条才给批量——单条时逐行点更快，批量按钮只是噪音 */
-      action: openRows.length > 1
-        ? Btn({
-            children: '全部标完成', small: true, disabled: busy,
-            onClick: () => {
-              run(
-                () => call('batchInboxState', {
-                  domain: 'personal',
-                  lineIndexes: openRows.map(row => row.lineIndex),
-                  state: 'done',
-                }),
-                `已标完成 ${openRows.length} 条`,
-              )
-            },
-            attrs: { 'data-action': 'batchInboxState' },
-          })
-        : undefined,
-    }),
-    createElement('ul', { className: 'dmo-list' }, flowRows),
-    ...(Array.isArray(fillSection) ? fillSection : [fillSection]),
+    queue.length === 0 ? null : createElement('section', { className: 'dmo-card-heavy' },
+      SectionHead({ title: '要我拍板的', count: String(queue.length) }),
+      createElement('ul', { className: 'dmo-list', role: 'list' }, decisionRows)),
+    openRows.length === 0 ? null : createElement('section', { className: 'dmo-card-quiet' },
+      SectionHead({
+        title: '要我流转的', count: String(openRows.length),
+        /* 超过 1 条才给批量——单条时逐行点更快，批量按钮只是噪音 */
+        action: openRows.length > 1
+          ? Btn({
+              children: '全部标完成', small: true, disabled: busy,
+              onClick: () => {
+                run(
+                  () => call('batchInboxState', {
+                    domain: 'personal',
+                    lineIndexes: openRows.map(row => row.lineIndex),
+                    state: 'done',
+                  }),
+                  `已标完成 ${openRows.length} 条`,
+                )
+              },
+              attrs: { 'data-action': 'batchInboxState' },
+            })
+          : undefined,
+      }),
+      createElement('ul', { className: 'dmo-list', role: 'list' }, flowRows)),
+    /* 补库段自己带容器（静卡），未达阈值时是说明卡，missTotal=0 时是 null */
+    fillSection,
     feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
     busy ? h('p', { className: 'dmo-note' }, '处理中…') : null)
 }

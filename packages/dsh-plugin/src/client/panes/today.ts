@@ -73,8 +73,10 @@ function pickSuggestion(
       body: `「${truncate(first.title, 24)}」——置信度 ${conf}。`
         + '确认后它会参与后续会话；不确定就驳回，并写一句为什么。',
       primaryText: '确认这条',
-      primary: { action: 'confirm', path: first.id },
-      secondary: { action: 'open-detail', path: first.id, text: '先看全文' },
+      // v6 修复：core 的 confirm/detail 要的是 path（personal/principles.md），
+      // 不是点分 id（personal.principles）——早先前传 first.id，点了必 ENOENT。
+      primary: { action: 'confirm', path: first.path },
+      secondary: { action: 'open-detail', path: first.path, text: '先看全文' },
     }
   }
   if (fillable > 0) {
@@ -120,7 +122,11 @@ function trailLine(value: string | number, text: string, pane: string, onGoto: (
 }
 
 /** 「今天」分区。 */
-export function TodayPane({ ctx }: { ctx?: ClientContextLike }): ReactNode {
+export function TodayPane({ ctx, onOpenDetail }: {
+  ctx?: ClientContextLike
+  /** 打开某条记忆的详情（面板传入；缺省时退化为跳「记忆」分区）。 */
+  onOpenDetail?: (path: string) => void
+}): ReactNode {
   const { cwd, project } = useSessionProject(ctx)
   const snapshot = useBridge<SnapshotView>('snapshot', scopeBody(cwd, project), [cwd, project])
   const inbox = useBridge<InboxView>('inbox', { domain: 'personal' })
@@ -230,7 +236,7 @@ export function TodayPane({ ctx }: { ctx?: ClientContextLike }): ReactNode {
 
   /* 空库：唯一出路是写下第一条，捕获框用主按钮 */
   if (isEmpty) {
-    return createElement('div', null,
+    return createElement('div', { className: 'dmo-pane' },
       h('h1', { className: 'dmo-lede' }, '这是你的第一条记忆'),
       h('p', { className: 'dmo-lede-sub' }, '写一句你今天想记住的话，agent 下次就会用上它。'),
       createElement('div', { className: 'dmo-capture' },
@@ -282,7 +288,7 @@ export function TodayPane({ ctx }: { ctx?: ClientContextLike }): ReactNode {
       'tokens 索引',
       'health', onGoto))
 
-  return createElement('div', null,
+  return createElement('div', { className: 'dmo-pane' },
     tape,
 
     h('h1', { className: 'dmo-lede' }, lede),
@@ -302,10 +308,24 @@ export function TodayPane({ ctx }: { ctx?: ClientContextLike }): ReactNode {
           disabled: busy,
           attrs: { 'data-action': sug.primary.action === 'confirm' ? 'suggest-confirm' : 'goto', 'data-path': sug.primary.path ?? '' },
         }),
-        sug.secondary === undefined ? null
-          : sug.secondary.action === 'open-detail'
-            ? Btn({ children: sug.secondary.text, quiet: true, attrs: { 'data-action': 'open-detail', 'data-path': sug.secondary.path } })
-            : Btn({ children: sug.secondary.text, quiet: true, attrs: { 'data-action': 'goto', 'data-pane': sug.secondary.pane } })),
+        (() => {
+          const sec = sug.secondary
+          if (sec === undefined) return null
+          // v6 评审 P0-1：早先只带 attrs 测试钩子没有 onClick——点了没反应。
+          // 详情走面板传入的 onOpenDetail；缺省（面板改版/独立渲染）退化为跳「记忆」。
+          if (sec.action === 'open-detail') {
+            return Btn({
+              children: sec.text, quiet: true,
+              onClick: () => { (onOpenDetail ?? (() => { onGoto('memory') }))(sec.path) },
+              attrs: { 'data-action': 'open-detail', 'data-path': sec.path },
+            })
+          }
+          return Btn({
+            children: sec.text, quiet: true,
+            onClick: () => { onGoto(sec.pane) },
+            attrs: { 'data-action': 'goto', 'data-pane': sec.pane },
+          })
+        })()),
       suggestFeedback === null ? null : InlineDone({ ok: suggestFeedback.ok, text: suggestFeedback.text })),
 
     SectionHead({ title: '随手记一条', count: '1 步' }),

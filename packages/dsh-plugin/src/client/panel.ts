@@ -80,7 +80,7 @@ export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
       body = createElement(CapturePane)
       break
     case 'todo':
-      body = createElement(TodoPane)
+      body = createElement(TodoPane, { onOpenDetail: openDetail })
       break
     case 'memory':
       body = createElement(MemoryPane, { ctx, detailPath, onOpenDetail: openDetail })
@@ -89,7 +89,7 @@ export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
       body = createElement(HealthPane, { onGotoToday: () => { setPane('today') } })
       break
     default:
-      body = createElement(TodayPane, { ctx })
+      body = createElement(TodayPane, { ctx, onOpenDetail: openDetail })
   }
 
   return createElement('div', { className: 'dmo-root' },
@@ -105,6 +105,7 @@ export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
           className: 'dmo-nav-item',
           'data-pane': item.id,
           'aria-selected': pane === item.id,
+          'aria-controls': 'memory-ops-tabpanel',
           onClick: () => {
             setPane(item.id)
             if (item.id !== 'memory') setDetailPath(undefined)
@@ -114,5 +115,5 @@ export function MemoryOpsPage(props: Record<string, unknown>): ReactNode {
         item.id === 'todo' && queueCount > 0
           ? createElement('span', { className: 'dmo-nav-count' }, String(queueCount))
           : null)))),
-    createElement('div', { className: 'dmo-body', role: 'tabpanel' }, body))
+    createElement('div', { className: 'dmo-body', role: 'tabpanel', id: 'memory-ops-tabpanel' }, body))
 }

@@ -29,8 +29,14 @@ const STYLE_ID = 'dsh-memory-ops-style'
 
 /** 插件样式表。 */
 const CSS = `
-/* —— 设计令牌：尺寸本地定义，颜色一律用宿主 token —— */
-.dmo-root {
+/* —— 设计令牌：尺寸本地定义，颜色一律用宿主 token ——
+ *
+ * ⚠️ 令牌必须挂在**所有插件根**上，不能只挂 .dmo-root：
+ * 会话 tab（.dmo-session）与 /remember 浮层（portal 到 document.body）
+ * 都不在 .dmo-root 子树里，只挂 .dmo-root 时那些树里的 var(--s4)、
+ * var(--accent)、var(--r-overlay) 全部解析失败——弹窗即便类名补回来了，
+ * 内边距与圆角也是坏的。:where() 零特异性，自定义属性靠继承生效。 */
+:where(.dmo-root, .dmo-session, .dmo-capture-pane, .dmo-overlay, .dmo-remember-backdrop, .dmo-remember-toast) {
   --t1: 24px;  --t1-lh: 32px;
   --t2: 20px;  --t2-lh: 28px;
   --t3: 16px;  --t3-lh: 24px;
@@ -49,7 +55,9 @@ const CSS = `
   --accent: var(--dsw-alias-state-business-primary);
   --accent-soft: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
   --accent-line: color-mix(in srgb, var(--dsw-alias-state-business-primary) 32%, transparent);
+}
 
+.dmo-root {
   display: flex; flex-direction: column; height: 100%; min-height: 0;
   font-size: var(--t4); line-height: var(--t4-lh);
   color: var(--dsw-alias-label-primary);
@@ -74,11 +82,11 @@ const CSS = `
 /* v6 导航：分段控件。轨道 = module 底 + 描边；选中 = 白底浮起 + 加粗。
    计数用蓝字（v4 的灰字在深色下几乎不可见）。 */
 .dmo-nav {
-  display: flex; gap: 2px;
+  display: flex; gap: var(--s1);
   background: var(--dsw-alias-bg-module-platform, var(--dsw-alias-bg-layer-1));
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: var(--r-container);
-  padding: 3px; margin-bottom: var(--s3);
+  padding: var(--s1); margin-bottom: var(--s3);
   overflow-x: auto; scrollbar-width: none;
 }
 .dmo-nav::-webkit-scrollbar { display: none; }
@@ -94,7 +102,7 @@ const CSS = `
 }
 .dmo-nav-item:hover { color: var(--dsw-alias-label-primary); }
 .dmo-nav-item:active { background: var(--dsw-alias-interactive-bg-hover); }
-.dmo-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dmo-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dmo-nav-item[aria-selected="true"] {
   background: var(--dsw-alias-bg-base);
   border-color: var(--dsw-alias-border-l3);
@@ -107,6 +115,10 @@ const CSS = `
 }
 
 .dmo-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
+
+/* 分区根：面板体是 flex，但各分区返回单个 wrapper div——
+   没有这个类的话 s3 间距传不进去，区块会挤成一坨（评审 P0-1 的排版半边）。 */
+.dmo-pane { display: flex; flex-direction: column; gap: var(--s3); }
 
 /* ============ 排版原语 ============ */
 .dmo-lede {
@@ -193,14 +205,17 @@ const CSS = `
 .dmo-btn-primary {
   background: var(--dsw-alias-button-info-fill, var(--accent));
   border-color: var(--dsw-alias-button-info-fill, var(--accent));
-  color: var(--dsw-alias-label-on-color, var(--dsw-alias-bg-base));
+  /* v6 评审 P1-4：label-on-color 两套主题都是白色（宿主实测），
+     深色下白字 on deepseek-400 只有 ≈2.3:1。文字改用 bg-base——
+     浅=白（on deepseek-500 ≈4.6:1），深=近黑（on deepseek-400 ≈9:1）。 */
+  color: var(--dsw-alias-bg-base);
   font-weight: 600;
 }
 .dmo-btn-primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-info-hover, var(--accent));
-  border-color: var(--dsw-alias-button-info-hover, var(--accent));
+  /* 不切 info-hover（浅色下它更亮，白字对比反而跌）；按动作压暗，两主题对比只升不降 */
+  filter: brightness(0.92);
 }
-.dmo-btn-primary:active:not(:disabled) { filter: brightness(0.92); }
+.dmo-btn-primary:active:not(:disabled) { filter: brightness(0.86); }
 .dmo-btn-sm { padding: 0 var(--s2); font-size: var(--t5); line-height: var(--t5-lh); }
 .dmo-btn-quiet {
   border-color: transparent; background: transparent;
@@ -234,7 +249,12 @@ const CSS = `
   background: var(--dsw-alias-bg-base); padding: var(--s2);
   transition: border-color var(--dur) var(--ease);
 }
-/* 顺序即优先级：focus > active > hover（同特异性，后写胜出） */
+/* 顺序即优先级：focus > active > hover（同特异性，后写胜出）。
+   焦点环豁免（方向卡 §七-1 输入类例外）：整块是输入区时，
+   焦点由容器边框变蓝表达（accent 实色边，非 2px outline——两层环会
+   看着像控件套控件），内层给一层浅底色作为落点。v6 评审 Quick-win 2
+   质疑过这里没有 outline；裁决：边框变蓝 + 内层底色即满足
+   「键盘用户有可见落点」，不补第二层环。 */
 .dmo-capture:hover { border-color: var(--dsw-alias-border-l4); }
 .dmo-capture:active { border-color: var(--dsw-alias-label-secondary); }
 .dmo-capture:focus-within { border-color: var(--accent); }
@@ -373,7 +393,7 @@ const CSS = `
 }
 .dmo-trail-line {
   display: flex; flex-direction: column; align-items: flex-end; gap: 0;
-  padding: var(--s2) 6px var(--s1);
+  padding: var(--s2) var(--s1);
   border: 0; border-left: 1px solid var(--dsw-alias-border-l1);
   appearance: none; background: transparent;
   cursor: pointer; color: var(--dsw-alias-label-primary);
@@ -501,12 +521,12 @@ const CSS = `
 .dmo-remember-title { font-size: var(--t4); font-weight: 600; }
 .dmo-remember-close {
   margin-left: auto; appearance: none; border: 0; background: transparent;
-  color: var(--dsw-alias-label-secondary); font-size: 18px; line-height: 1;
+  color: var(--dsw-alias-label-secondary); font-size: var(--t3); line-height: 1;
   padding: var(--s1) var(--s2); border-radius: var(--r-control); cursor: pointer;
   font-family: inherit;
 }
 .dmo-remember-close:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-card-fill-hover, var(--dsw-alias-bg-layer-2)); }
-.dmo-remember-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dmo-remember-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dmo-remember-body { display: flex; flex-direction: column; gap: var(--s2); min-height: 0; overflow-y: auto; }
 .dmo-remember-input { min-height: 96px; }
 .dmo-remember-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
@@ -531,7 +551,7 @@ const CSS = `
 .dmo-remember-dismiss {
   appearance: none; border: 0; background: transparent;
   color: var(--dsw-alias-label-secondary); cursor: pointer;
-  font-size: 15px; line-height: 1; padding: 0 var(--s1); font-family: inherit;
+  font-size: var(--t4); line-height: 1; padding: 0 var(--s1); font-family: inherit;
 }
 .dmo-remember-dismiss:hover { color: var(--dsw-alias-label-primary); }
 
@@ -690,6 +710,27 @@ const CSS = `
   padding: var(--s2) var(--s3); margin-bottom: var(--s2);
   background: var(--dsw-alias-card-fill, var(--dsw-alias-bg-layer-1));
 }
+
+/* ============ v6 容器（评审 P0-1） ============
+   插件端曾把台账裸铺在面板底上，行间只靠 border-l1（浅色 4% 黑，肉眼不可见）
+   分隔——这正是方向卡 §零点名的 v5「太素」根因，而且让已通过截图评审的
+   原型与实际交付的插件变成两套界面。规则：列表/成本区必须装进容器，
+   border-l1 只允许出现在容器内部。
+   .dmo-card-heavy = 重卡（card-fill + l3），每屏 ≤1；.dmo-card-quiet = 静卡。 */
+.dmo-card-heavy {
+  background: var(--dsw-alias-card-fill, var(--dsw-alias-bg-layer-1));
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--r-container);
+  padding: var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+.dmo-card-quiet {
+  background: var(--dsw-alias-bg-module-platform, var(--dsw-alias-bg-layer-1));
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--r-container);
+  padding: var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
 .dmo-card-title { font-size: var(--t4); line-height: var(--t4-lh); font-weight: 600; word-break: break-word; }
 .dmo-card-meta { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-top: var(--s1); font-size: var(--t5); line-height: var(--t5-lh); color: var(--dsw-alias-label-secondary); font-family: var(--mono); }
 .dmo-card-body { margin-top: var(--s2); font-size: var(--t4); line-height: var(--t4-lh); white-space: pre-wrap; word-break: break-word; }
@@ -702,8 +743,12 @@ const CSS = `
 .dmo-recent-count { font-size: var(--t5); line-height: var(--t5-lh); color: var(--dsw-alias-label-secondary); font-family: var(--mono); }
 .dmo-icon { display: block; }
 
+/* v6 评审 P1-1：/remember 浮层 portal 到 document.body，不在 .dmo-root 子树里，
+   只写 .dmo-root * 会漏掉它。降级范围必须覆盖全部插件根。 */
 @media (prefers-reduced-motion: reduce) {
-  .dmo-root *, .dmo-root *::before, .dmo-root *::after {
+  .dmo-root *, .dmo-root *::before, .dmo-root *::after,
+  .dmo-remember-backdrop, .dmo-remember-backdrop *,
+  .dmo-remember-toast, .dmo-overlay, .dmo-overlay * {
     animation: none !important; transition: none !important;
   }
 }

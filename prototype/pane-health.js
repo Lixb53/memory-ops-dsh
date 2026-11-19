@@ -127,8 +127,9 @@
         <p class="note">导出含 frontmatter 与证据链。库根目录：${esc('C:\\Users\\51967\\.memory-ops')}</p>
       `)}
 
-      <!-- 本页是只读诊断页，但用户不该走进死路：给一个前进方向（v4 裁决保留）。 -->
-      ${MO.card(`
+      <!-- 本页是只读诊断页，但用户不该走进死路：给一个前进方向（v4 裁决保留）。
+           v6 评审 P1-3：本页唯一重卡是成本卡，这张前进卡降为静卡（§八-1）。 -->
+      ${MO.cardQuiet(`
         <p class="card-body">看完了。现在该做的事在「今天」。</p>
         <div class="card-actions">
           ${MO.primary('回今天，看该做什么', 'data-action="goto" data-pane="today"')}

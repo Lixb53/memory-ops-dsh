@@ -56,7 +56,7 @@
 
     return MO.card(`
       ${MO.sectionHead('要我拍板的', String(data.pendingDecisions.length))}
-      <ul class="list list-clickable">${rows}</ul>
+      <ul class="list list-clickable" role="list">${rows}</ul>
     `);
   }
 
@@ -87,7 +87,7 @@
 
     return MO.cardQuiet(`
       ${MO.sectionHead('要我流转的', String(openRows.length))}
-      <ul class="list">${rows}</ul>
+      <ul class="list" role="list">${rows}</ul>
     `);
   }
 
@@ -114,7 +114,7 @@
       }).join('');
       return MO.cardQuiet(`
         ${MO.sectionHead('要我补的', String(data.fillable.length))}
-        <ul class="list">${rows}</ul>
+        <ul class="list" role="list">${rows}</ul>
       `);
     }
 

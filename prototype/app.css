@@ -47,7 +47,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   flex-direction: column;
   background: var(--dsw-specific-sidebar-fill);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--r-card);
+  border-radius: var(--r-container);
   overflow: hidden;
 }
 
@@ -61,7 +61,7 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
   flex: 0 0 260px;
   padding: var(--s4);
   border: 1px dashed var(--dsw-alias-border-l3);
-  border-radius: var(--r-card);
+  border-radius: var(--r-container);
   background: var(--dsw-alias-card-fill);
 }
 
@@ -165,7 +165,8 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
 
 .nav-item:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
-  outline-offset: 1px;
+  /* v6 评审 Quick-win 3：§七-1 统一 offset 2px（1px 是漂移） */
+  outline-offset: 2px;
 }
 
 .nav-item[aria-selected="true"] {
@@ -285,8 +286,9 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
 .card {
   background: var(--dsw-alias-card-fill);
   border: 1px solid var(--dsw-alias-border-l3);
-  border-radius: var(--r-card);
-  padding: var(--s4);
+  border-radius: var(--r-container);
+  /* v6 §四：重卡内边距 12（v5 的 16 是漂移，评审 P1-4） */
+  padding: var(--s3);
   display: flex;
   flex-direction: column;
   gap: var(--s2);
@@ -295,7 +297,7 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
 .card-quiet {
   background: var(--dsw-alias-bg-module-platform);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--r-card);
+  border-radius: var(--r-container);
   padding: var(--s3);
   display: flex;
   flex-direction: column;
@@ -345,7 +347,7 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
   grid-template-columns: repeat(4, 1fr);
   background: var(--dsw-alias-card-fill);
   border: 1px solid var(--dsw-alias-border-l3);
-  border-radius: var(--r-card);
+  border-radius: var(--r-container);
   overflow: hidden;
 }
 
@@ -354,7 +356,8 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
   background: transparent;
   border: 0;
   border-left: 1px solid var(--dsw-alias-border-l1);
-  padding: var(--s2) 6px var(--s1);
+  /* v6 评审 Quick-win 1：6px 不在 4 倍数六档，归到 s1=4 */
+  padding: var(--s2) var(--s1) var(--s1);
   text-align: right;
   cursor: pointer;
   font: inherit;
@@ -479,14 +482,14 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
 .btn-primary {
   background: var(--dsw-alias-button-info-fill);
   border-color: var(--dsw-alias-button-info-fill);
-  color: var(--dsw-alias-label-on-color);
+  /* v6 评审 P1-4：label-on-color 两套主题都是白色，深色下白字 on
+     deepseek-400 只有 ≈2.3:1。文字改用 bg-base：浅=白（≈4.6:1）、
+     深=近黑（≈9:1）。与插件端 styles.ts 同一裁决。 */
+  color: var(--dsw-alias-bg-base);
   font-weight: 600;
 }
-.btn-primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-info-hover);
-  border-color: var(--dsw-alias-button-info-hover);
-}
-.btn-primary:active:not(:disabled) { filter: brightness(0.92); }
+.btn-primary:hover:not(:disabled) { filter: brightness(0.92); }
+.btn-primary:active:not(:disabled) { filter: brightness(0.86); }
 
 .btn-quiet {
   border-color: transparent;
@@ -534,7 +537,7 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
 
 .capture {
   border: 1px solid var(--dsw-alias-border-l3);
-  border-radius: var(--r-card);
+  border-radius: var(--r-container);
   background: var(--dsw-alias-bg-base);
   padding: var(--s2);
   transition: border-color var(--dur-state) var(--ease);
@@ -634,6 +637,8 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
   padding: var(--s2) var(--s3);
   margin: 0 calc(var(--s3) * -1);
   border-bottom: 1px solid var(--dsw-alias-border-l1);
+  /* v6 核心节奏：36px 定高行（与插件 .dmo-row 一致，评审 P1-2） */
+  min-height: 36px;
   transition: background var(--dur-state) var(--ease);
 }
 .row:last-child { border-bottom: 0; }
@@ -725,7 +730,7 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
 .alert {
   border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
   background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent);
-  border-radius: var(--r-card);
+  border-radius: var(--r-container);
   padding: var(--s3);
   display: flex;
   flex-direction: column;
@@ -749,7 +754,7 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
 /* 提示条：tint 底 + 圆点信号（不用左侧彩边） */
 .notice {
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--r-card);
+  border-radius: var(--r-container);
   background: var(--dsw-alias-bg-module-platform);
   padding: var(--s2) var(--s3);
   display: flex;
@@ -768,9 +773,9 @@ body[data-unfold="1"] .panel-body { overflow-y: visible; }
 .notice-title::before {
   content: "";
   flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  /* v6 评审 Quick-win 4：与徽标同一语言——6px 方点，不是 8px 圆点 */
+  width: 6px;
+  height: 6px;
   background: var(--dsw-alias-state-idle-primary);
 }
 .notice-text {

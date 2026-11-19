@@ -312,12 +312,15 @@
   }
 
   function syncFocus() {
-    const overlay = document.querySelector('.overlay');
+    // v6 评审 P1-5：/remember 弹窗与隐私浮层走同一套焦点规则
+    //（§七-5：打开移焦、关闭回焦）。早先只管 .overlay。
+    const overlay = document.querySelector('.overlay') ?? document.querySelector('.remember-backdrop');
 
     if (overlay !== null && lastFocusSelector === null) {
       lastFocusSelector = selectorOf(document.activeElement) ?? '';
-      const firstButton = overlay.querySelector('button');
-      if (firstButton !== null) firstButton.focus();
+      // 弹窗里第一个可输入元素优先（textarea），否则第一个按钮
+      const first = overlay.querySelector('textarea') ?? overlay.querySelector('button');
+      if (first !== null) first.focus();
       return;
     }
 
@@ -571,6 +574,9 @@
   document.addEventListener('click', (event) => {
     const el = event.target.closest('[data-action]');
     if (el === null) return;
+    // 弹窗卡片容器：它存在的唯一目的是挡住遮罩的「点外面关闭」。
+    // 这里不能 preventDefault——否则卡片内 textarea 的点击行为会被吃掉。
+    if (el.dataset.action === 'noop-stop') return;
     event.preventDefault();
     act(el.dataset.action, el);
   });

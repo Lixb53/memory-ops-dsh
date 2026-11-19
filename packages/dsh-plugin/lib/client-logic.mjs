@@ -205,9 +205,10 @@ function RememberOverlay(props) {
   }, [state2.open, state2.content]);
   useEffect(() => {
     if (state2.toast === null) return void 0;
+    const lingerMs = state2.toast.savedContent === void 0 ? 5e3 : 3e4;
     const timer = setTimeout(() => {
       setRememberToast(sessionId, null);
-    }, 5e3);
+    }, lingerMs);
     return () => {
       clearTimeout(timer);
     };

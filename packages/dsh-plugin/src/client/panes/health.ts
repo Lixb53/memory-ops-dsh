@@ -61,14 +61,27 @@ export function HealthPane({ onGotoToday }: { onGotoToday: () => void }): ReactN
       }))
   }
   const data = overview.data
-  if (data === undefined) return null
+  // v6 评审 Quick-win 5：早先这里 return null——读不到时整页空白，
+  // 正是本仓 §13.1「失败伪装成正常」的同型。空屏必须说话。
+  if (data === undefined) {
+    return createElement('div', null,
+      h(ErrorAlert, {
+        title: '没读到成本数据',
+        body: '不是「都是零」，是这次没读到——两者不一样。先重试；如果一直空白，去「今天」看库根目录还在不在。',
+        actions: [Primary({ children: '重试', onClick: overview.reload, attrs: { 'data-action': 'retry' } })],
+      }))
+  }
 
-  return createElement('div', null,
+  return createElement('div', { className: 'dmo-pane' },
     h('h1', { className: 'dmo-page-name' }, '库健康'),
     h('p', { className: 'dmo-lede' }, '每请求都付的钱，和只在被读时才付的钱'),
     h('p', { className: 'dmo-lede-sub' }, '混在一起看会优化错东西——按它优化索引文件，每请求成本一分不省。'),
 
-    createElement('div', { className: 'dmo-cost' },
+    /* v6 评审 P0-1：成本区 = 本页唯一重卡；维护/导出 = 静卡。
+       行分隔的 border-l1 从此只在卡内出现。 */
+    createElement('section', { className: 'dmo-card-heavy' },
+      h('p', { className: 'dmo-suggest-label' }, '成本构成'),
+      createElement('div', { className: 'dmo-cost' },
       CostRow({
         name: '每请求成本',
         value: count(data.kpi.residentTokens),
@@ -94,22 +107,28 @@ export function HealthPane({ onGotoToday }: { onGotoToday: () => void }): ReactN
         h('span', { className: 'dmo-meta' }, `命中率 ${data.rates.hitRate === null ? '—' : `${Math.round(data.rates.hitRate * 100)}%`}`),
         h('span', { className: 'dmo-meta' }, `确认率 ${data.rates.confirmRate === null ? '—' : `${Math.round(data.rates.confirmRate * 100)}%`}`),
         h('span', { className: 'dmo-meta' }, `待拍板 ${count(data.kpi.pending)}`),
-        h('span', { className: 'dmo-meta' }, '「—」= 分母为 0，不是 0%'))),
+        h('span', { className: 'dmo-meta' }, '「—」= 分母为 0，不是 0%')))),
 
-    SectionHead({ title: '维护', count: '按需跑' }),
-    h('p', { className: 'dmo-note', style: { marginTop: 0 } },
-      '这些都会改记忆的内容或可信度，所以一律先给预览、你点了才执行。'),
-    createElement(MaintenancePanel, { onOpenMemory: () => {} }),
+    createElement('section', { className: 'dmo-card-quiet' },
+      SectionHead({ title: '维护', count: '按需跑' }),
+      h('p', { className: 'dmo-note', style: { marginTop: 0 } },
+        '这些都会改记忆的内容或可信度，所以一律先给预览、你点了才执行。'),
+      createElement(MaintenancePanel, { onOpenMemory: () => {} })),
 
-    SectionHead({ title: '导出' }),
-    createElement('div', { className: 'dmo-row-actions', style: { marginTop: 0 } },
-      Btn({ children: '全部 Markdown', small: true, disabled: exporting, onClick: () => { doExport('markdown') }, attrs: { 'data-action': 'export' } }),
-      Btn({ children: '仅个人域', small: true, disabled: exporting, onClick: () => { doExport('markdown', 'personal') }, attrs: { 'data-action': 'export' } }),
-      Btn({ children: '仅工作域', small: true, disabled: exporting, onClick: () => { doExport('markdown', 'work') }, attrs: { 'data-action': 'export' } })),
-    feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
+    createElement('section', { className: 'dmo-card-quiet' },
+      SectionHead({ title: '导出' }),
+      createElement('div', { className: 'dmo-row-actions', style: { marginTop: 0 } },
+        Btn({ children: '全部 Markdown', small: true, disabled: exporting, onClick: () => { doExport('markdown') }, attrs: { 'data-action': 'export' } }),
+        Btn({ children: '仅个人域', small: true, disabled: exporting, onClick: () => { doExport('markdown', 'personal') }, attrs: { 'data-action': 'export' } }),
+        Btn({ children: '仅工作域', small: true, disabled: exporting, onClick: () => { doExport('markdown', 'work') }, attrs: { 'data-action': 'export' } })),
+      feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text })),
 
-    createElement('div', { className: 'dmo-row-actions', style: { marginTop: 'var(--s4)' } },
-      Primary({ children: '回今天，看该做什么', onClick: onGotoToday, attrs: { 'data-action': 'goto', 'data-pane': 'today' } })))
+    /* 前进方向：只读诊断页不该走死路（v4 裁决保留）。
+       v6 评审 P1-3：本页唯一重卡是成本卡，这张前进卡降为静卡。 */
+    createElement('section', { className: 'dmo-card-quiet' },
+      h('p', { className: 'dmo-note', style: { marginTop: 0 } }, '看完了。现在该做的事在「今天」。'),
+      createElement('div', { className: 'dmo-row-actions' },
+        Primary({ children: '回今天，看该做什么', onClick: onGotoToday, attrs: { 'data-action': 'goto', 'data-pane': 'today' } }))))
 }
 
 /** 供测试断言的导出域标签（保持与旧 overview 的「仅个人域」一致）。 */

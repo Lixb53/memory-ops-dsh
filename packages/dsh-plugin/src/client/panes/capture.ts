@@ -123,6 +123,10 @@ export function CapturePane(): ReactNode {
     h('h1', { className: 'dmo-page-name' }, '记一条'),
     h('p', { className: 'dmo-lede' }, '先存下来，之后在「待办」里整理'),
     h('p', { className: 'dmo-lede-sub' }, '不需要想清楚怎么写。多行会逐条拆开。'),
+  ]
+
+  /* v6 评审 P0-1：类型签 + 捕获框 + 隐私说明装进本页唯一重卡（主操作所在） */
+  const captureCard = createElement('section', { className: 'dmo-card-heavy' },
     createElement('div', { className: 'dmo-kindrow', role: 'group', 'aria-label': '记录类型' },
       KINDS.map(item => createElement('button', {
         key: item,
@@ -162,11 +166,12 @@ export function CapturePane(): ReactNode {
         onUndo: lastLines !== null && lastLines.length > 0 ? undo : undefined,
       })),
     h('p', { className: 'dmo-note' },
-      '存之前会检查有没有密钥、私钥、身份证号、内网 IP——有就拒写，并给出脱敏版本。'),
-  ]
+      '存之前会检查有没有密钥、私钥、身份证号、内网 IP——有就拒写，并给出脱敏版本。'))
 
   if (inbox.phase === 'loading') {
-    return createElement('div', null, head, SectionHead({ title: '最近记的' }), SkeletonRows({ rows: 3, height: 40 }))
+    return createElement('div', { className: 'dmo-pane' }, head, captureCard,
+      createElement('section', { className: 'dmo-card-quiet' },
+        SectionHead({ title: '最近记的' }), SkeletonRows({ rows: 3, height: 40 })))
   }
 
   /*
@@ -175,7 +180,7 @@ export function CapturePane(): ReactNode {
    * 「重试」是次按钮：这一相位的主操作仍是「存进去」。
    */
   if (inbox.phase === 'error') {
-    return createElement('div', null, head,
+    return createElement('div', { className: 'dmo-pane' }, head, captureCard,
       h(ErrorAlert, {
         title: '读不到历史记录',
         body: '写入仍然可用——上面那个输入框不受影响。这里只是「最近记的」列表读不出来。',
@@ -184,12 +189,13 @@ export function CapturePane(): ReactNode {
   }
 
   if (inbox.data === undefined || inbox.data.entries.length === 0) {
-    return createElement('div', null, head,
-      SectionHead({ title: '最近记的' }),
-      h(EmptyState, {
-        title: '还没有记过',
-        body: '这里会列出你刚存下的每一条。存完立刻能看到，也会出现在「待办」里。',
-      }))
+    return createElement('div', { className: 'dmo-pane' }, head, captureCard,
+      createElement('section', { className: 'dmo-card-quiet' },
+        SectionHead({ title: '最近记的' }),
+        h(EmptyState, {
+          title: '还没有记过',
+          body: '这里会列出你刚存下的每一条。存完立刻能看到，也会出现在「待办」里。',
+        })))
   }
 
   const rows = inbox.data.entries.map(row => createElement('li', { key: row.lineIndex, className: 'dmo-row' },
@@ -204,7 +210,8 @@ export function CapturePane(): ReactNode {
     row.kindValid ? null : tag('类型非法', 'err'),
     row.stateValid ? null : tag('状态非法', 'err')))
 
-  return createElement('div', null, head,
-    SectionHead({ title: '最近记的', count: `${inbox.data.entries.length} 条` }),
-    createElement('ul', { className: 'dmo-list' }, rows))
+  return createElement('div', { className: 'dmo-pane' }, head, captureCard,
+    createElement('section', { className: 'dmo-card-quiet' },
+      SectionHead({ title: '最近记的', count: `${inbox.data.entries.length} 条` }),
+      createElement('ul', { className: 'dmo-list', role: 'list' }, rows)))
 }

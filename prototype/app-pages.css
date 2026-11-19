@@ -217,7 +217,8 @@
   border: 0;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
-  font-size: 18px;
+  /* v6 评审 Quick-win 2：18px 不在字阶里，归 T3 */
+  font-size: var(--t3);
   line-height: 1;
   padding: var(--s1) var(--s2);
   border-radius: var(--r-control);
@@ -226,7 +227,7 @@
 .remember-close:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-card-fill-hover); }
 .remember-close:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 .remember-input {

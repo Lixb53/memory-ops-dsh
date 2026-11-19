@@ -260,6 +260,61 @@ describe('布局与样式契约', () => {
     assert.equal(/`/.test(body), false, 'styles.ts 的 CSS 里出现了反引号：会提前闭合模板字符串')
   })
 
+  /*
+   * v6 评审 P0-3：方向卡 §八-3 把「类名审计 0 缺失」写成硬要求，
+   * 而这条护栏当时只存在于 scripts/class-audit.mjs（手动跑的脚本）。
+   * /remember 弹窗在 v4 就是因为样式重写时整段删掉 .dmo-remember-*
+   * 而「挂载了但不可见」——没有机器闸门，同一个事故必然复发。
+   * 现在它是测试：源码引用了、样式里没有的类 = 直接红。
+   */
+  it('客户端引用的每个 dmo-* 类都在 styles.ts 里有定义（0 缺失）', async () => {
+    const styles = await fsp.readFile(path.join(CLIENT_DIR, 'styles.ts'), 'utf8')
+    const cssBody = styles.slice(styles.indexOf('const CSS = `') + 13, styles.lastIndexOf('`'))
+    const defined = new Set([...cssBody.matchAll(/\.(dmo-[a-z0-9-]+)/g)].map(m => m[1]))
+
+    const sources = await clientSource()
+    const missing = new Map()
+    for (const { file, text } of sources) {
+      if (file.endsWith('styles.ts')) continue
+      for (const m of text.matchAll(/dmo-[a-z0-9-]+/g)) {
+        const cls = m[0]
+        // 模板串前缀（`dmo-badge-${tone}`）匹配到的是残缺名，不是缺失
+        if (cls === 'dmo-badge-') continue
+        if (!defined.has(cls)) missing.set(cls, file.split('/').pop())
+      }
+    }
+    assert.equal(
+      missing.size === 0, true,
+      `这些类被界面引用但 styles.ts 没有定义（弹窗/浮层会「挂载了但不可见」）：\n`
+      + [...missing].map(([c, f]) => `  ${c}  <- ${f}`).join('\n'),
+    )
+  })
+
+  it('/remember 浮层的 11 个类必须全在（v4 删光导致弹窗不可见的回归锚点）', async () => {
+    const styles = await fsp.readFile(path.join(CLIENT_DIR, 'styles.ts'), 'utf8')
+    const required = [
+      'dmo-remember-backdrop', 'dmo-remember-card', 'dmo-remember-head',
+      'dmo-remember-title', 'dmo-remember-close', 'dmo-remember-body',
+      'dmo-remember-input', 'dmo-remember-foot', 'dmo-remember-toast',
+      'dmo-remember-undo', 'dmo-remember-dismiss',
+    ]
+    const absent = required.filter(cls => !styles.includes(`.${cls}`))
+    assert.deepEqual(absent, [], `.dmo-remember-* 缺失：${absent.join(', ')}`)
+    // 遮罩必须是 fixed 全屏——否则 portal 到 body 也只是贴在文档流末尾
+    assert.match(styles, /\.dmo-remember-backdrop \{[\s\S]*position: fixed;[\s\S]*inset: 0/, '遮罩必须 fixed + inset:0')
+  })
+
+  /*
+   * v6 评审 P1-1：尺寸令牌只挂 .dmo-root 时，会话 tab 与 portal 浮层
+   * 拿不到 var(--s4)/var(--accent)——弹窗即便类名在，内边距与圆角也是坏的。
+   */
+  it('尺寸令牌挂在所有插件根上（含 portal 浮层与会话 tab）', async () => {
+    const styles = await fsp.readFile(path.join(CLIENT_DIR, 'styles.ts'), 'utf8')
+    const tokenBlock = styles.slice(styles.indexOf(':where('), styles.indexOf('.dmo-root {'))
+    assert.equal(tokenBlock.includes('.dmo-session'), true, '会话 tab 必须能拿到尺寸令牌')
+    assert.equal(tokenBlock.includes('.dmo-remember-backdrop'), true, 'portal 浮层必须能拿到尺寸令牌')
+  })
+
   it('v4 令牌在 .dmo-root 上定义（颜色用宿主 token，尺寸本地）', async () => {
     const text = await fsp.readFile(path.join(CLIENT_DIR, 'styles.ts'), 'utf8')
     for (const token of ['--t1', '--t4', '--s1', '--r-control', '--r-overlay']) {

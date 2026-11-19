@@ -200,12 +200,20 @@ function RememberOverlay(props: Record<string, unknown>): ReactNode {
     return () => { clearTimeout(timer) }
   }, [state.open, state.content])
 
-  // 提示 5 秒后自动消失
+  /*
+   * 提示自动消失：可撤销的那条必须活满 30 秒。
+   *
+   * ⚠️ v6 评审 P1-3：早先一律 5 秒清掉，而卡片里写着
+   * 「存入后可在浮层里 30 秒内撤销」——撤销按钮随 toast 一起消失，
+   * 承诺了不存在的时间窗。这是本仓定性过的「伪造承诺」同型。
+   * 现在：带 savedContent（可撤销）的 toast 活 30s，其余 5s。
+   */
   useEffect(() => {
     if (state.toast === null) return undefined
+    const lingerMs = state.toast.savedContent === undefined ? 5000 : 30000
     const timer = setTimeout(() => {
       setRememberToast(sessionId, null)
-    }, 5000)
+    }, lingerMs)
     return () => { clearTimeout(timer) }
   }, [state.toast, sessionId])
 

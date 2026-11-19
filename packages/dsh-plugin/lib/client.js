@@ -241,7 +241,7 @@ function ErrorState({ message, onRetry }) {
     h("div", null, message),
     onRetry === void 0 ? null : h(
       "div",
-      { style: { marginTop: 7 } },
+      { style: { marginTop: "var(--s2)" } },
       h(Button, { onClick: onRetry, small: true }, "\u91CD\u8BD5")
     )
   );
@@ -273,7 +273,7 @@ function RejectBox({ reason, onReason, onCancel, onSubmit, busy }) {
   const empty = reason.trim() === "";
   return h(
     "div",
-    { style: { marginTop: 7 } },
+    { style: { marginTop: "var(--s2)" } },
     h("label", { className: "dmo-label" }, "\u9A73\u56DE\u7406\u7531\uFF08\u5FC5\u586B\uFF0C30 \u5929\u540E\u53EF\u590D\u67E5\uFF09"),
     h("textarea", {
       className: "dmo-textarea",
@@ -485,8 +485,10 @@ function pickSuggestion(queue, fillable, openInbox, entryCount) {
       title: "\u6709\u4E00\u6761\u63A8\u65AD\u7B49\u4F60\u62CD\u677F",
       body: `\u300C${truncate(first.title, 24)}\u300D\u2014\u2014\u7F6E\u4FE1\u5EA6 ${conf}\u3002\u786E\u8BA4\u540E\u5B83\u4F1A\u53C2\u4E0E\u540E\u7EED\u4F1A\u8BDD\uFF1B\u4E0D\u786E\u5B9A\u5C31\u9A73\u56DE\uFF0C\u5E76\u5199\u4E00\u53E5\u4E3A\u4EC0\u4E48\u3002`,
       primaryText: "\u786E\u8BA4\u8FD9\u6761",
-      primary: { action: "confirm", path: first.id },
-      secondary: { action: "open-detail", path: first.id, text: "\u5148\u770B\u5168\u6587" }
+      // v6 修复：core 的 confirm/detail 要的是 path（personal/principles.md），
+      // 不是点分 id（personal.principles）——早先前传 first.id，点了必 ENOENT。
+      primary: { action: "confirm", path: first.path },
+      secondary: { action: "open-detail", path: first.path, text: "\u5148\u770B\u5168\u6587" }
     };
   }
   if (fillable > 0) {
@@ -533,7 +535,7 @@ function trailLine(value, text, pane, onGoto) {
     h("span", { className: "dmo-trail-text" }, text)
   );
 }
-function TodayPane({ ctx }) {
+function TodayPane({ ctx, onOpenDetail }) {
   const { cwd, project } = useSessionProject(ctx);
   const snapshot = useBridge("snapshot", scopeBody(cwd, project), [cwd, project]);
   const inbox = useBridge("inbox", { domain: "personal" });
@@ -635,7 +637,7 @@ function TodayPane({ ctx }) {
   if (isEmpty) {
     return (0, import_react5.createElement)(
       "div",
-      null,
+      { className: "dmo-pane" },
       h("h1", { className: "dmo-lede" }, "\u8FD9\u662F\u4F60\u7684\u7B2C\u4E00\u6761\u8BB0\u5FC6"),
       h("p", { className: "dmo-lede-sub" }, "\u5199\u4E00\u53E5\u4F60\u4ECA\u5929\u60F3\u8BB0\u4F4F\u7684\u8BDD\uFF0Cagent \u4E0B\u6B21\u5C31\u4F1A\u7528\u4E0A\u5B83\u3002"),
       (0, import_react5.createElement)(
@@ -698,7 +700,7 @@ function TodayPane({ ctx }) {
   );
   return (0, import_react5.createElement)(
     "div",
-    null,
+    { className: "dmo-pane" },
     tape,
     h("h1", { className: "dmo-lede" }, lede),
     h("p", { className: "dmo-lede-sub" }, "\u8FD9\u4E2A\u9762\u677F\u53EA\u56DE\u7B54\u4E00\u4E2A\u95EE\u9898\uFF1A\u4F60\u73B0\u5728\u8BE5\u505A\u54EA\u4EF6\u4E8B\u3002\u5176\u4F59\u90FD\u6536\u5728\u4E0B\u9762\u3002"),
@@ -720,7 +722,30 @@ function TodayPane({ ctx }) {
           disabled: busy,
           attrs: { "data-action": sug.primary.action === "confirm" ? "suggest-confirm" : "goto", "data-path": sug.primary.path ?? "" }
         }),
-        sug.secondary === void 0 ? null : sug.secondary.action === "open-detail" ? Btn({ children: sug.secondary.text, quiet: true, attrs: { "data-action": "open-detail", "data-path": sug.secondary.path } }) : Btn({ children: sug.secondary.text, quiet: true, attrs: { "data-action": "goto", "data-pane": sug.secondary.pane } })
+        (() => {
+          const sec = sug.secondary;
+          if (sec === void 0) return null;
+          if (sec.action === "open-detail") {
+            return Btn({
+              children: sec.text,
+              quiet: true,
+              onClick: () => {
+                (onOpenDetail ?? (() => {
+                  onGoto("memory");
+                }))(sec.path);
+              },
+              attrs: { "data-action": "open-detail", "data-path": sec.path }
+            });
+          }
+          return Btn({
+            children: sec.text,
+            quiet: true,
+            onClick: () => {
+              onGoto(sec.pane);
+            },
+            attrs: { "data-action": "goto", "data-pane": sec.pane }
+          });
+        })()
       ),
       suggestFeedback === null ? null : InlineDone({ ok: suggestFeedback.ok, text: suggestFeedback.text })
     ),
@@ -839,7 +864,11 @@ function CapturePane() {
   const head = [
     h("h1", { className: "dmo-page-name" }, "\u8BB0\u4E00\u6761"),
     h("p", { className: "dmo-lede" }, "\u5148\u5B58\u4E0B\u6765\uFF0C\u4E4B\u540E\u5728\u300C\u5F85\u529E\u300D\u91CC\u6574\u7406"),
-    h("p", { className: "dmo-lede-sub" }, "\u4E0D\u9700\u8981\u60F3\u6E05\u695A\u600E\u4E48\u5199\u3002\u591A\u884C\u4F1A\u9010\u6761\u62C6\u5F00\u3002"),
+    h("p", { className: "dmo-lede-sub" }, "\u4E0D\u9700\u8981\u60F3\u6E05\u695A\u600E\u4E48\u5199\u3002\u591A\u884C\u4F1A\u9010\u6761\u62C6\u5F00\u3002")
+  ];
+  const captureCard = (0, import_react6.createElement)(
+    "section",
+    { className: "dmo-card-heavy" },
     (0, import_react6.createElement)(
       "div",
       { className: "dmo-kindrow", role: "group", "aria-label": "\u8BB0\u5F55\u7C7B\u578B" },
@@ -896,15 +925,27 @@ function CapturePane() {
       { className: "dmo-note" },
       "\u5B58\u4E4B\u524D\u4F1A\u68C0\u67E5\u6709\u6CA1\u6709\u5BC6\u94A5\u3001\u79C1\u94A5\u3001\u8EAB\u4EFD\u8BC1\u53F7\u3001\u5185\u7F51 IP\u2014\u2014\u6709\u5C31\u62D2\u5199\uFF0C\u5E76\u7ED9\u51FA\u8131\u654F\u7248\u672C\u3002"
     )
-  ];
+  );
   if (inbox.phase === "loading") {
-    return (0, import_react6.createElement)("div", null, head, SectionHead({ title: "\u6700\u8FD1\u8BB0\u7684" }), SkeletonRows({ rows: 3, height: 40 }));
+    return (0, import_react6.createElement)(
+      "div",
+      { className: "dmo-pane" },
+      head,
+      captureCard,
+      (0, import_react6.createElement)(
+        "section",
+        { className: "dmo-card-quiet" },
+        SectionHead({ title: "\u6700\u8FD1\u8BB0\u7684" }),
+        SkeletonRows({ rows: 3, height: 40 })
+      )
+    );
   }
   if (inbox.phase === "error") {
     return (0, import_react6.createElement)(
       "div",
-      null,
+      { className: "dmo-pane" },
       head,
+      captureCard,
       h(ErrorAlert, {
         title: "\u8BFB\u4E0D\u5230\u5386\u53F2\u8BB0\u5F55",
         body: "\u5199\u5165\u4ECD\u7136\u53EF\u7528\u2014\u2014\u4E0A\u9762\u90A3\u4E2A\u8F93\u5165\u6846\u4E0D\u53D7\u5F71\u54CD\u3002\u8FD9\u91CC\u53EA\u662F\u300C\u6700\u8FD1\u8BB0\u7684\u300D\u5217\u8868\u8BFB\u4E0D\u51FA\u6765\u3002",
@@ -915,13 +956,18 @@ function CapturePane() {
   if (inbox.data === void 0 || inbox.data.entries.length === 0) {
     return (0, import_react6.createElement)(
       "div",
-      null,
+      { className: "dmo-pane" },
       head,
-      SectionHead({ title: "\u6700\u8FD1\u8BB0\u7684" }),
-      h(EmptyState, {
-        title: "\u8FD8\u6CA1\u6709\u8BB0\u8FC7",
-        body: "\u8FD9\u91CC\u4F1A\u5217\u51FA\u4F60\u521A\u5B58\u4E0B\u7684\u6BCF\u4E00\u6761\u3002\u5B58\u5B8C\u7ACB\u523B\u80FD\u770B\u5230\uFF0C\u4E5F\u4F1A\u51FA\u73B0\u5728\u300C\u5F85\u529E\u300D\u91CC\u3002"
-      })
+      captureCard,
+      (0, import_react6.createElement)(
+        "section",
+        { className: "dmo-card-quiet" },
+        SectionHead({ title: "\u6700\u8FD1\u8BB0\u7684" }),
+        h(EmptyState, {
+          title: "\u8FD8\u6CA1\u6709\u8BB0\u8FC7",
+          body: "\u8FD9\u91CC\u4F1A\u5217\u51FA\u4F60\u521A\u5B58\u4E0B\u7684\u6BCF\u4E00\u6761\u3002\u5B58\u5B8C\u7ACB\u523B\u80FD\u770B\u5230\uFF0C\u4E5F\u4F1A\u51FA\u73B0\u5728\u300C\u5F85\u529E\u300D\u91CC\u3002"
+        })
+      )
     );
   }
   const rows = inbox.data.entries.map((row) => (0, import_react6.createElement)(
@@ -941,10 +987,15 @@ function CapturePane() {
   ));
   return (0, import_react6.createElement)(
     "div",
-    null,
+    { className: "dmo-pane" },
     head,
-    SectionHead({ title: "\u6700\u8FD1\u8BB0\u7684", count: `${inbox.data.entries.length} \u6761` }),
-    (0, import_react6.createElement)("ul", { className: "dmo-list" }, rows)
+    captureCard,
+    (0, import_react6.createElement)(
+      "section",
+      { className: "dmo-card-quiet" },
+      SectionHead({ title: "\u6700\u8FD1\u8BB0\u7684", count: `${inbox.data.entries.length} \u6761` }),
+      (0, import_react6.createElement)("ul", { className: "dmo-list", role: "list" }, rows)
+    )
   );
 }
 
@@ -956,7 +1007,7 @@ var INBOX_STATE_LABEL2 = {
   done: "\u5DF2\u5B8C\u6210",
   dropped: "\u5DF2\u4E22\u5F03"
 };
-function TodoPane() {
+function TodoPane({ onOpenDetail }) {
   const snapshot = useBridge("snapshot", {});
   const inbox = useBridge("inbox", { domain: "personal" });
   const misses = useBridge("misses", {});
@@ -1019,7 +1070,7 @@ function TodoPane() {
   if (snapshot.phase === "error") {
     return (0, import_react7.createElement)(
       "div",
-      null,
+      { className: "dmo-pane" },
       head,
       h(ErrorAlert, {
         title: "\u8BFB\u4E0D\u5230\u5F85\u529E",
@@ -1027,7 +1078,7 @@ function TodoPane() {
         actions: [
           Primary({ children: "\u91CD\u8BD5", onClick: snapshot.reload, attrs: { "data-action": "retry" } }),
           Btn({ children: "\u53BB\u8BB0\u5FC6", onClick: () => {
-            setFeedback(null);
+            requestPane("memory");
           }, attrs: { "data-action": "goto", "data-pane": "memory" } })
         ]
       })
@@ -1037,19 +1088,25 @@ function TodoPane() {
   if (todoTotal === 0) {
     return (0, import_react7.createElement)(
       "div",
-      null,
+      { className: "dmo-pane" },
       head,
-      h(EmptyState, {
-        title: "\u6E05\u7A7A\u4E86",
-        body: "\u4E0B\u6B21 agent \u641C\u4E0D\u5230\u4E1C\u897F\u3001\u6216\u8005\u6211\u4ECE\u5BF9\u8BDD\u91CC\u603B\u7ED3\u51FA\u65B0\u7684\u63A8\u65AD\u65F6\uFF0C\u8FD9\u91CC\u4F1A\u81EA\u52A8\u51FA\u73B0\u3002\u73B0\u5728\u4E0D\u7528\u7BA1\u5B83\u3002",
-        actions: [
-          Primary({ children: "\u8BB0\u4E00\u6761", onClick: () => {
-            setFeedback(null);
-          }, attrs: { "data-action": "goto", "data-pane": "capture" } }),
-          Btn({ children: "\u53BB\u8BB0\u5FC6", attrs: { "data-action": "goto", "data-pane": "memory" } })
-        ]
-      }),
-      feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text })
+      (0, import_react7.createElement)(
+        "section",
+        { className: "dmo-card-heavy" },
+        h(EmptyState, {
+          title: "\u6E05\u7A7A\u4E86",
+          body: "\u4E0B\u6B21 agent \u641C\u4E0D\u5230\u4E1C\u897F\u3001\u6216\u8005\u6211\u4ECE\u5BF9\u8BDD\u91CC\u603B\u7ED3\u51FA\u65B0\u7684\u63A8\u65AD\u65F6\uFF0C\u8FD9\u91CC\u4F1A\u81EA\u52A8\u51FA\u73B0\u3002\u73B0\u5728\u4E0D\u7528\u7BA1\u5B83\u3002",
+          actions: [
+            Primary({ children: "\u8BB0\u4E00\u6761", onClick: () => {
+              requestPane("capture");
+            }, attrs: { "data-action": "goto", "data-pane": "capture" } }),
+            Btn({ children: "\u53BB\u8BB0\u5FC6", onClick: () => {
+              requestPane("memory");
+            }, attrs: { "data-action": "goto", "data-pane": "memory" } })
+          ]
+        }),
+        feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text })
+      )
     );
   }
   const firstSection = queue.length > 0 ? "decisions" : fillable.length > 0 ? "fill" : "fill-notice";
@@ -1102,7 +1159,16 @@ function TodoPane() {
         }, attrs: { "data-action": "confirm", "data-path": item.id } }) : Btn({ children: "\u786E\u8BA4", small: true, disabled: busy, onClick: () => {
           confirmEntry(item.path);
         }, attrs: { "data-action": "confirm", "data-path": item.id } }),
-        TextLink({ children: "\u770B\u5168\u6587", attrs: { "data-action": "open-detail", "data-path": item.id } })
+        TextLink({
+          children: "\u770B\u5168\u6587",
+          // v6 评审 P0-1：早先只有 attrs 没有 onClick——点了没反应。
+          onClick: () => {
+            (onOpenDetail ?? (() => {
+              requestPane("memory");
+            }))(item.path);
+          },
+          attrs: { "data-action": "open-detail", "data-path": item.id }
+        })
       ),
       rejecting === item.id ? h(RejectBox, {
         reason: rejectReason,
@@ -1186,7 +1252,9 @@ function TodoPane() {
       (0, import_react7.createElement)(
         "div",
         { className: "dmo-row-actions" },
-        Primary({
+        Btn({
+          // v6 评审 P1-2：内联编辑提交降为次按钮——流转段永远不持有
+          // 整页主按钮名额，这里再用 Primary 就会与拍板段同屏 2 处蓝实底。
           children: "\u4FDD\u5B58",
           small: true,
           disabled: busy || draftText.trim() === "",
@@ -1281,7 +1349,9 @@ function TodoPane() {
             (0, import_react7.createElement)(
               "div",
               { className: "dmo-row-actions" },
-              Primary({
+              Btn({
+                // v6 评审 P1-2：同上——草稿提交降次按钮，
+                // 该行可能同时显示条件主按钮「写结论」，不许 2 处蓝实底。
                 children: "\u786E\u8BA4\u843D\u5E93",
                 small: true,
                 disabled: busy || draftText.trim() === "",
@@ -1301,7 +1371,9 @@ function TodoPane() {
           ) : null
         );
       });
-      return [
+      return (0, import_react7.createElement)(
+        "section",
+        { className: "dmo-card-quiet" },
         SectionHead({
           title: "\u8981\u6211\u8865\u7684",
           count: String(fillable.length),
@@ -1322,8 +1394,8 @@ function TodoPane() {
             attrs: { "data-action": "missBatchDraft" }
           }) : void 0
         }),
-        (0, import_react7.createElement)("ul", { className: "dmo-list" }, rows)
-      ];
+        (0, import_react7.createElement)("ul", { className: "dmo-list", role: "list" }, rows)
+      );
     }
     const missTotal = misses.data?.total ?? 0;
     if (missTotal === 0) return [];
@@ -1332,7 +1404,9 @@ function TodoPane() {
       setDrafting("");
       setDraftText("");
     }, attrs: { "data-action": "miss-write" } }) : Btn({ children: "\u4ECD\u7136\u8865\u4E00\u6761", small: true, attrs: { "data-action": "miss-write" } });
-    return [
+    return (0, import_react7.createElement)(
+      "section",
+      { className: "dmo-card-quiet" },
       SectionHead({ title: "\u8981\u6211\u8865\u7684", count: "0" }),
       Notice({
         title: "\u8FD8\u6CA1\u6709\u5230\u8BE5\u8865\u7684\u65F6\u5019",
@@ -1345,42 +1419,55 @@ function TodoPane() {
         fillBtn,
         h("span", { className: "dmo-note", style: { margin: 0 } }, `\u4F1A\u4ECE\u4E0A\u9762 ${missTotal} \u4E2A\u95EE\u9898\u91CC\u6311\u4E00\u4E2A\u5F00\u59CB`)
       )
-    ];
+    );
   })();
   return (0, import_react7.createElement)(
     "div",
-    null,
+    { className: "dmo-pane" },
     head,
     /*
      * 拍板段的反馈落在段首（动作来源是这一段），不塞到页面末尾——
      * 三段齐全时页面末尾在视口之外，「就地反馈」会变成看不见的反馈。
+     *
+     * v6 评审 P0-1：三段各自装进容器。拍板段 = 本页唯一重卡
+     * （card-fill + l3 + 主操作所在）；流转与补库 = 静卡。
+     * 行分隔的 border-l1 从此只在卡内出现。
      */
     suggestFeedback === null ? null : InlineDone({ ok: suggestFeedback.ok, text: suggestFeedback.text }),
-    SectionHead({ title: "\u8981\u6211\u62CD\u677F\u7684", count: String(queue.length) }),
-    (0, import_react7.createElement)("ul", { className: "dmo-list" }, decisionRows),
-    SectionHead({
-      title: "\u8981\u6211\u6D41\u8F6C\u7684",
-      count: String(openRows.length),
-      /* 超过 1 条才给批量——单条时逐行点更快，批量按钮只是噪音 */
-      action: openRows.length > 1 ? Btn({
-        children: "\u5168\u90E8\u6807\u5B8C\u6210",
-        small: true,
-        disabled: busy,
-        onClick: () => {
-          run(
-            () => call("batchInboxState", {
-              domain: "personal",
-              lineIndexes: openRows.map((row) => row.lineIndex),
-              state: "done"
-            }),
-            `\u5DF2\u6807\u5B8C\u6210 ${openRows.length} \u6761`
-          );
-        },
-        attrs: { "data-action": "batchInboxState" }
-      }) : void 0
-    }),
-    (0, import_react7.createElement)("ul", { className: "dmo-list" }, flowRows),
-    ...Array.isArray(fillSection) ? fillSection : [fillSection],
+    queue.length === 0 ? null : (0, import_react7.createElement)(
+      "section",
+      { className: "dmo-card-heavy" },
+      SectionHead({ title: "\u8981\u6211\u62CD\u677F\u7684", count: String(queue.length) }),
+      (0, import_react7.createElement)("ul", { className: "dmo-list", role: "list" }, decisionRows)
+    ),
+    openRows.length === 0 ? null : (0, import_react7.createElement)(
+      "section",
+      { className: "dmo-card-quiet" },
+      SectionHead({
+        title: "\u8981\u6211\u6D41\u8F6C\u7684",
+        count: String(openRows.length),
+        /* 超过 1 条才给批量——单条时逐行点更快，批量按钮只是噪音 */
+        action: openRows.length > 1 ? Btn({
+          children: "\u5168\u90E8\u6807\u5B8C\u6210",
+          small: true,
+          disabled: busy,
+          onClick: () => {
+            run(
+              () => call("batchInboxState", {
+                domain: "personal",
+                lineIndexes: openRows.map((row) => row.lineIndex),
+                state: "done"
+              }),
+              `\u5DF2\u6807\u5B8C\u6210 ${openRows.length} \u6761`
+            );
+          },
+          attrs: { "data-action": "batchInboxState" }
+        }) : void 0
+      }),
+      (0, import_react7.createElement)("ul", { className: "dmo-list", role: "list" }, flowRows)
+    ),
+    /* 补库段自己带容器（静卡），未达阈值时是说明卡，missTotal=0 时是 null */
+    fillSection,
     feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
     busy ? h("p", { className: "dmo-note" }, "\u5904\u7406\u4E2D\u2026") : null
   );
@@ -1476,10 +1563,14 @@ function MemoryList({ ctx, onOpenDetail }) {
       "p",
       { className: "dmo-lede-sub" },
       snapshot.data === void 0 ? "" : `\u6700\u91CD\u7684\u4E00\u6761\u5360 ${count(Math.max(...entries.map((e) => e.tokens), 0))} tokens\uFF1B\u8D85 80 \u884C ${count(snapshot.data.stats.overLimit)} \u7BC7\u3002`
-    ),
+    )
+  ];
+  const filterCard = (0, import_react8.createElement)(
+    "section",
+    { className: "dmo-card-quiet" },
     (0, import_react8.createElement)(
       "div",
-      { className: "dmo-toolbar", style: { marginTop: 0 } },
+      { className: "dmo-toolbar" },
       (0, import_react8.createElement)("input", {
         className: "dmo-input",
         "data-field": "query",
@@ -1550,12 +1641,12 @@ function MemoryList({ ctx, onOpenDetail }) {
         }
       }, name))
     )
-  ];
+  );
   if (snapshot.phase === "loading") return SkeletonRows({ rows: 4, height: 56 });
   if (snapshot.phase === "error") {
     return (0, import_react8.createElement)(
       "div",
-      null,
+      { className: "dmo-pane" },
       head,
       h(ErrorAlert, {
         title: "\u8BFB\u4E0D\u5230\u8BB0\u5FC6",
@@ -1572,12 +1663,17 @@ function MemoryList({ ctx, onOpenDetail }) {
         setQuery("");
         setSubmitted("");
       }, attrs: { "data-action": "clear-search" } }),
-      Btn({ children: "\u53BB\u5F85\u529E\u770B", attrs: { "data-action": "goto", "data-pane": "todo" } })
+      // v6 评审 P0-1：导航出口必须真的跳，不能只带测试钩子
+      Btn({ children: "\u53BB\u5F85\u529E\u770B", onClick: () => {
+        gotoPane(ctx, "todo");
+      }, attrs: { "data-action": "goto", "data-pane": "todo" } })
     ]
   }) : entries.length === 0 ? h(EmptyState, {
     title: "\u5E93\u662F\u7A7A\u7684",
     body: "\u8FD8\u6CA1\u6709\u4EFB\u4F55\u8BB0\u5FC6\u3002\u8BB0\u4E00\u6761\uFF0C\u5B83\u5C31\u4F1A\u51FA\u73B0\u5728\u8FD9\u91CC\u3002",
-    actions: [Primary({ children: "\u8BB0\u4E00\u6761", attrs: { "data-action": "goto", "data-pane": "capture" } })]
+    actions: [Primary({ children: "\u8BB0\u4E00\u6761", onClick: () => {
+      gotoPane(ctx, "capture");
+    }, attrs: { "data-action": "goto", "data-pane": "capture" } })]
   }) : h(EmptyState, {
     title: "\u8FD9\u4E2A\u7B5B\u9009\u4E0B\u6CA1\u6709",
     body: "\u6362\u4E2A\u7B5B\u9009\uFF0C\u6216\u8005\u6E05\u7A7A\u7B5B\u9009\u770B\u5168\u90E8\u3002",
@@ -1587,7 +1683,9 @@ function MemoryList({ ctx, onOpenDetail }) {
         setDomainFilter("");
         setScope("all");
       }, attrs: { "data-action": "clear-filter" } }),
-      Btn({ children: "\u8BB0\u4E00\u6761", attrs: { "data-action": "goto", "data-pane": "capture" } })
+      Btn({ children: "\u8BB0\u4E00\u6761", onClick: () => {
+        gotoPane(ctx, "capture");
+      }, attrs: { "data-action": "goto", "data-pane": "capture" } })
     ]
   });
   const rows = list.map((entry) => (0, import_react8.createElement)(
@@ -1630,8 +1728,9 @@ function MemoryList({ ctx, onOpenDetail }) {
   ));
   return (0, import_react8.createElement)(
     "div",
-    null,
+    { className: "dmo-pane" },
     head,
+    filterCard,
     selected.length === 0 ? null : (0, import_react8.createElement)(
       "div",
       { className: "dmo-bulk" },
@@ -1649,13 +1748,18 @@ function MemoryList({ ctx, onOpenDetail }) {
         setSelected([]);
       } })
     ),
-    SectionHead({ title: searching ? "\u68C0\u7D22\u7ED3\u679C" : "\u5168\u90E8\u8BB0\u5FC6", count: `${list.length} \u6761` }),
-    searching && search.phase === "loading" ? SkeletonRows({ rows: 2, height: 44 }) : listEmpty ? emptyBlock : (0, import_react8.createElement)("ul", { className: "dmo-list dmo-list-clickable" }, rows),
-    searching && search.phase === "ready" && search.data !== void 0 && !listEmpty ? h(
-      "p",
-      { className: "dmo-note" },
-      `\u547D\u4E2D ${count(search.data.total)} \u6761 \xB7 \u672C\u6B21\u8BFB\u53D6\u7EA6 ${count(search.data.cost)} tokens\uFF08\u5DF2\u8BB0\u8D26\uFF09`
-    ) : null,
+    /* v6 评审 P0-1：台账装进本页唯一重卡；空态出口也留在卡内（空屏不许是灰字） */
+    (0, import_react8.createElement)(
+      "section",
+      { className: "dmo-card-heavy" },
+      SectionHead({ title: searching ? "\u68C0\u7D22\u7ED3\u679C" : "\u5168\u90E8\u8BB0\u5FC6", count: `${list.length} \u6761` }),
+      searching && search.phase === "loading" ? SkeletonRows({ rows: 2, height: 44 }) : listEmpty ? emptyBlock : (0, import_react8.createElement)("ul", { className: "dmo-list dmo-list-clickable", role: "list" }, rows),
+      searching && search.phase === "ready" && search.data !== void 0 && !listEmpty ? h(
+        "p",
+        { className: "dmo-note" },
+        `\u547D\u4E2D ${count(search.data.total)} \u6761 \xB7 \u672C\u6B21\u8BFB\u53D6\u7EA6 ${count(search.data.cost)} tokens\uFF08\u5DF2\u8BB0\u8D26\uFF09`
+      ) : null
+    ),
     feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text })
   );
 }
@@ -1699,139 +1803,161 @@ function MemoryDetail({ path, onBack }) {
     );
   }
   const data = detail.data;
-  if (data === void 0) return null;
+  if (data === void 0) {
+    return (0, import_react8.createElement)(
+      "div",
+      { className: "dmo-pane" },
+      (0, import_react8.createElement)(
+        "div",
+        { className: "dmo-back" },
+        TextLink({ children: "\u2190 \u8FD4\u56DE\u5217\u8868", onClick: onBack, attrs: { "data-action": "back-to-list" } })
+      ),
+      h(ErrorAlert, {
+        title: "\u6CA1\u8BFB\u5230\u8FD9\u6761\u8BB0\u5FC6",
+        body: "\u4E0D\u662F\u5B83\u6CA1\u4E86\uFF0C\u662F\u8FD9\u6B21\u6CA1\u8BFB\u5230\u2014\u2014\u4E24\u8005\u4E0D\u4E00\u6837\u3002\u5148\u91CD\u8BD5\uFF0C\u6216\u8FD4\u56DE\u5217\u8868\u91CD\u65B0\u627E\u3002",
+        actions: [
+          Primary({ children: "\u91CD\u8BD5", onClick: detail.reload, attrs: { "data-action": "retry" } }),
+          Btn({ children: "\u8FD4\u56DE\u5217\u8868", onClick: onBack, attrs: { "data-action": "back-to-list" } })
+        ]
+      })
+    );
+  }
   const { entry, trust } = data;
   const canConfirm = entry.status === "stale" || entry.status === "observed" || entry.status === "hypothesis";
   const canReject = entry.status !== "rejected";
   return (0, import_react8.createElement)(
     "div",
-    null,
+    { className: "dmo-pane" },
     (0, import_react8.createElement)(
       "div",
       { className: "dmo-back" },
       TextLink({ children: "\u2190 \u8FD4\u56DE\u5217\u8868", onClick: onBack, attrs: { "data-action": "back-to-list" } })
     ),
-    h("h1", { className: "dmo-detail-title" }, entry.title),
-    h(
-      "div",
-      { className: "dmo-meta-row", style: { marginTop: 0 } },
-      tag(
-        statusLabel(entry.status),
-        entry.status === "confirmed" || entry.status === "active" ? "ok" : entry.status === "rejected" ? "err" : entry.status === "stale" || entry.status === "observed" || entry.status === "hypothesis" ? "warn" : ""
+    (0, import_react8.createElement)(
+      "section",
+      { className: "dmo-card-heavy" },
+      h("h1", { className: "dmo-detail-title" }, entry.title),
+      h(
+        "div",
+        { className: "dmo-meta-row", style: { marginTop: 0 } },
+        tag(
+          statusLabel(entry.status),
+          entry.status === "confirmed" || entry.status === "active" ? "ok" : entry.status === "rejected" ? "err" : entry.status === "stale" || entry.status === "observed" || entry.status === "hypothesis" ? "warn" : ""
+        ),
+        h("span", { className: "dmo-meta" }, entry.domainLabel),
+        h("span", { className: "dmo-meta" }, `${entry.tokens} tokens`),
+        h("span", { className: "dmo-meta" }, `${entry.lines} \u884C`),
+        h("span", { className: "dmo-meta" }, `\u5F15\u7528 ${count(trust.citeCount)} \u6B21`)
       ),
-      h("span", { className: "dmo-meta" }, entry.domainLabel),
-      h("span", { className: "dmo-meta" }, `${entry.tokens} tokens`),
-      h("span", { className: "dmo-meta" }, `${entry.lines} \u884C`),
-      h("span", { className: "dmo-meta" }, `\u5F15\u7528 ${count(trust.citeCount)} \u6B21`)
-    ),
-    SectionHead({ title: "\u51ED\u4EC0\u4E48\u53EF\u4FE1" }),
-    h(
-      "div",
-      { className: "dmo-meta-row", style: { marginTop: 0 } },
-      h("span", { className: "dmo-meta" }, `\u7F6E\u4FE1\uFF1A${entry.confidence === null ? "\u2014" : entry.confidence.toFixed(1)}`),
-      h("span", { className: "dmo-meta" }, `\u8BC1\u636E\uFF1A${count(trust.evidenceCount)}`),
-      h("span", { className: "dmo-meta" }, `\u6700\u540E\u5F15\u7528\uFF1A${trust.lastCitedAt ?? "\u4ECE\u672A"}`)
-    ),
-    entry.evidence.length === 0 ? h("p", { className: "dmo-note" }, "\u8FD9\u6761\u6CA1\u6709\u8BC1\u636E\u6458\u5F55\u2014\u2014\u5B83\u6765\u81EA\u4F60\u4EB2\u53E3\u8BF4\u7684\u8BDD\uFF0C\u4E0D\u9700\u8981\u518D\u4E3E\u8BC1\u3002") : entry.evidence.map((item, index) => (0, import_react8.createElement)(
-      "div",
-      { key: index, className: "dmo-evidence" },
-      truncate(item.excerpt ?? "", 120),
-      h("div", { className: "dmo-evidence-src" }, `${item.gate ?? ""} \xB7 ${item.session ?? ""}`)
-    )),
-    SectionHead({ title: "\u6B63\u6587" }),
-    editing ? (0, import_react8.createElement)(
-      "div",
-      null,
-      (0, import_react8.createElement)("textarea", {
-        className: "dmo-textarea",
-        style: { minHeight: 190 },
-        "aria-label": "\u6B63\u6587\u6E90\u7801",
-        value: draft ?? entry.body,
-        onChange: (event) => {
-          setDraft(event.target.value);
-        }
-      }),
+      SectionHead({ title: "\u51ED\u4EC0\u4E48\u53EF\u4FE1" }),
+      h(
+        "div",
+        { className: "dmo-meta-row", style: { marginTop: 0 } },
+        h("span", { className: "dmo-meta" }, `\u7F6E\u4FE1\uFF1A${entry.confidence === null ? "\u2014" : entry.confidence.toFixed(1)}`),
+        h("span", { className: "dmo-meta" }, `\u8BC1\u636E\uFF1A${count(trust.evidenceCount)}`),
+        h("span", { className: "dmo-meta" }, `\u6700\u540E\u5F15\u7528\uFF1A${trust.lastCitedAt ?? "\u4ECE\u672A"}`)
+      ),
+      entry.evidence.length === 0 ? h("p", { className: "dmo-note" }, "\u8FD9\u6761\u6CA1\u6709\u8BC1\u636E\u6458\u5F55\u2014\u2014\u5B83\u6765\u81EA\u4F60\u4EB2\u53E3\u8BF4\u7684\u8BDD\uFF0C\u4E0D\u9700\u8981\u518D\u4E3E\u8BC1\u3002") : entry.evidence.map((item, index) => (0, import_react8.createElement)(
+        "div",
+        { key: index, className: "dmo-evidence" },
+        truncate(item.excerpt ?? "", 120),
+        h("div", { className: "dmo-evidence-src" }, `${item.gate ?? ""} \xB7 ${item.session ?? ""}`)
+      )),
+      SectionHead({ title: "\u6B63\u6587" }),
+      editing ? (0, import_react8.createElement)(
+        "div",
+        null,
+        (0, import_react8.createElement)("textarea", {
+          className: "dmo-textarea",
+          style: { minHeight: 190 },
+          "aria-label": "\u6B63\u6587\u6E90\u7801",
+          value: draft ?? entry.body,
+          onChange: (event) => {
+            setDraft(event.target.value);
+          }
+        }),
+        (0, import_react8.createElement)(
+          "div",
+          { className: "dmo-row-actions" },
+          Primary({
+            children: busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58",
+            disabled: busy,
+            onClick: () => {
+              run(() => call("writeBody", { path, body: draft ?? entry.body }), "\u5DF2\u4FDD\u5B58");
+            },
+            attrs: { "data-action": "writeBody", "data-path": path }
+          }),
+          Btn({ children: "\u53D6\u6D88", onClick: () => {
+            setEditing(false);
+            setDraft(null);
+          } })
+        )
+      ) : h("div", { className: "dmo-body-block" }, entry.body.trim() === "" ? "\uFF08\u7A7A\uFF09" : entry.body),
+      feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
       (0, import_react8.createElement)(
         "div",
         { className: "dmo-row-actions" },
-        Primary({
-          children: busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58",
+        canConfirm && !editing ? Primary({
+          children: "\u786E\u8BA4\u8FD9\u6761",
           disabled: busy,
           onClick: () => {
-            run(() => call("writeBody", { path, body: draft ?? entry.body }), "\u5DF2\u4FDD\u5B58");
+            run(() => call("confirm", { path }), "\u5DF2\u786E\u8BA4");
           },
-          attrs: { "data-action": "writeBody", "data-path": path }
+          attrs: { "data-action": "confirm", "data-path": path }
+        }) : Btn({ children: "\u7F16\u8F91\u6B63\u6587", disabled: busy || editing, onClick: () => {
+          setEditing(true);
+          setDraft(entry.body);
+        }, attrs: { "data-action": "edit" } })
+      ),
+      canReject || editing ? (0, import_react8.createElement)(
+        "div",
+        { className: "dmo-row-actions" },
+        canReject ? Btn({
+          children: "\u9A73\u56DE\uFF08\u9700\u8981\u5199\u7406\u7531\uFF09",
+          small: true,
+          disabled: busy,
+          onClick: () => {
+            setRejecting((value) => !value);
+          },
+          attrs: { "data-action": "reject", "data-path": path }
+        }) : null,
+        Btn({
+          children: "\u518D\u7559 90 \u5929",
+          small: true,
+          disabled: busy,
+          onClick: () => {
+            run(() => call("keep", { path }), "\u5DF2\u518D\u7559 90 \u5929");
+          },
+          attrs: { "data-action": "keep", "data-path": path }
         }),
-        Btn({ children: "\u53D6\u6D88", onClick: () => {
-          setEditing(false);
-          setDraft(null);
-        } })
-      )
-    ) : h("div", { className: "dmo-body-block" }, entry.body.trim() === "" ? "\uFF08\u7A7A\uFF09" : entry.body),
-    feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
-    (0, import_react8.createElement)(
-      "div",
-      { className: "dmo-row-actions", style: { marginTop: "var(--s4)" } },
-      canConfirm ? Primary({
-        children: "\u786E\u8BA4\u8FD9\u6761",
-        disabled: busy,
-        onClick: () => {
-          run(() => call("confirm", { path }), "\u5DF2\u786E\u8BA4");
+        Btn({
+          children: "\u5F52\u6863\u9000\u5F79",
+          small: true,
+          disabled: busy,
+          onClick: () => {
+            run(() => call("archive", { path }), "\u5DF2\u5F52\u6863");
+          },
+          attrs: { "data-action": "archive", "data-path": path }
+        }),
+        h(
+          "p",
+          { className: "dmo-note" },
+          "\u9A73\u56DE\u4F1A\u9759\u9ED8 30 \u5929\uFF0C\u671F\u95F4\u4E0D\u518D\u63A8\u8350\u8FD9\u6761\u3002\u5F52\u6863\u540E\u4ECD\u53EF\u68C0\u7D22\uFF0C\u53EA\u662F\u4E0D\u518D\u8FDB\u4E0A\u4E0B\u6587\u3002"
+        )
+      ) : null,
+      rejecting ? h(RejectBox, {
+        reason: rejectReason,
+        onReason: setRejectReason,
+        busy,
+        onCancel: () => {
+          setRejecting(false);
+          setRejectReason("");
         },
-        attrs: { "data-action": "confirm", "data-path": path }
-      }) : Btn({ children: "\u7F16\u8F91\u6B63\u6587", disabled: busy, onClick: () => {
-        setEditing(true);
-        setDraft(entry.body);
-      }, attrs: { "data-action": "edit" } })
-    ),
-    canReject || editing ? (0, import_react8.createElement)(
-      "div",
-      { className: "dmo-row-actions" },
-      canReject ? Btn({
-        children: "\u9A73\u56DE\uFF08\u9700\u8981\u5199\u7406\u7531\uFF09",
-        small: true,
-        disabled: busy,
-        onClick: () => {
-          setRejecting((value) => !value);
-        },
-        attrs: { "data-action": "reject", "data-path": path }
-      }) : null,
-      Btn({
-        children: "\u518D\u7559 90 \u5929",
-        small: true,
-        disabled: busy,
-        onClick: () => {
-          run(() => call("keep", { path }), "\u5DF2\u518D\u7559 90 \u5929");
-        },
-        attrs: { "data-action": "keep", "data-path": path }
-      }),
-      Btn({
-        children: "\u5F52\u6863\u9000\u5F79",
-        small: true,
-        disabled: busy,
-        onClick: () => {
-          run(() => call("archive", { path }), "\u5DF2\u5F52\u6863");
-        },
-        attrs: { "data-action": "archive", "data-path": path }
-      }),
-      h(
-        "p",
-        { className: "dmo-note" },
-        "\u9A73\u56DE\u4F1A\u9759\u9ED8 30 \u5929\uFF0C\u671F\u95F4\u4E0D\u518D\u63A8\u8350\u8FD9\u6761\u3002\u5F52\u6863\u540E\u4ECD\u53EF\u68C0\u7D22\uFF0C\u53EA\u662F\u4E0D\u518D\u8FDB\u4E0A\u4E0B\u6587\u3002"
-      )
-    ) : null,
-    rejecting ? h(RejectBox, {
-      reason: rejectReason,
-      onReason: setRejectReason,
-      busy,
-      onCancel: () => {
-        setRejecting(false);
-        setRejectReason("");
-      },
-      onSubmit: () => {
-        run(() => call("reject", { path, reason: rejectReason.trim() }), "\u5DF2\u9A73\u56DE\uFF0C30 \u5929\u5185\u4E0D\u518D\u63A8\u8350");
-      }
-    }) : null
+        onSubmit: () => {
+          run(() => call("reject", { path, reason: rejectReason.trim() }), "\u5DF2\u9A73\u56DE\uFF0C30 \u5929\u5185\u4E0D\u518D\u63A8\u8350");
+        }
+      }) : null
+    )
   );
 }
 function statusLabel(status) {
@@ -2344,70 +2470,102 @@ function HealthPane({ onGotoToday }) {
     );
   }
   const data = overview.data;
-  if (data === void 0) return null;
+  if (data === void 0) {
+    return (0, import_react10.createElement)(
+      "div",
+      null,
+      h(ErrorAlert, {
+        title: "\u6CA1\u8BFB\u5230\u6210\u672C\u6570\u636E",
+        body: "\u4E0D\u662F\u300C\u90FD\u662F\u96F6\u300D\uFF0C\u662F\u8FD9\u6B21\u6CA1\u8BFB\u5230\u2014\u2014\u4E24\u8005\u4E0D\u4E00\u6837\u3002\u5148\u91CD\u8BD5\uFF1B\u5982\u679C\u4E00\u76F4\u7A7A\u767D\uFF0C\u53BB\u300C\u4ECA\u5929\u300D\u770B\u5E93\u6839\u76EE\u5F55\u8FD8\u5728\u4E0D\u5728\u3002",
+        actions: [Primary({ children: "\u91CD\u8BD5", onClick: overview.reload, attrs: { "data-action": "retry" } })]
+      })
+    );
+  }
   return (0, import_react10.createElement)(
     "div",
-    null,
+    { className: "dmo-pane" },
     h("h1", { className: "dmo-page-name" }, "\u5E93\u5065\u5EB7"),
     h("p", { className: "dmo-lede" }, "\u6BCF\u8BF7\u6C42\u90FD\u4ED8\u7684\u94B1\uFF0C\u548C\u53EA\u5728\u88AB\u8BFB\u65F6\u624D\u4ED8\u7684\u94B1"),
     h("p", { className: "dmo-lede-sub" }, "\u6DF7\u5728\u4E00\u8D77\u770B\u4F1A\u4F18\u5316\u9519\u4E1C\u897F\u2014\u2014\u6309\u5B83\u4F18\u5316\u7D22\u5F15\u6587\u4EF6\uFF0C\u6BCF\u8BF7\u6C42\u6210\u672C\u4E00\u5206\u4E0D\u7701\u3002"),
+    /* v6 评审 P0-1：成本区 = 本页唯一重卡；维护/导出 = 静卡。
+       行分隔的 border-l1 从此只在卡内出现。 */
     (0, import_react10.createElement)(
-      "div",
-      { className: "dmo-cost" },
-      CostRow({
-        name: "\u6BCF\u8BF7\u6C42\u6210\u672C",
-        value: count(data.kpi.residentTokens),
-        note: `tokens / \u8BF7\u6C42\uFF0C\u9884\u7B97 ${count(data.kpi.residentBudget)}\u3002\u8FD9\u662F\u552F\u4E00\u6BCF\u8BF7\u6C42\u90FD\u4ED8\u7684\u94B1\uFF1Askill description + \u76EE\u5F55\u6846\u67B6\u3002\u8D85\u4E86\u8981\u538B\u7F29 skill description\uFF0C\u6539\u7D22\u5F15\u6587\u4EF6\u4E00\u5206\u4E0D\u7701\u3002`
-      }),
-      CostRow({
-        name: "\u7D22\u5F15\u4F53\u79EF",
-        value: count(data.kpi.indexTokens),
-        note: "\u6240\u6709 layer: l0 \u6587\u4EF6\u4E4B\u548C\uFF0C\u53EA\u5728\u88AB read \u65F6\u624D\u8FDB\u4E0A\u4E0B\u6587\u3002\u8FD9\u4E2A\u6570\u5927\u4E0D\u4EE3\u8868\u8D35\u3002"
-      }),
-      CostRow({
-        name: "\u5168\u5E93\u4F53\u79EF",
-        value: count(data.tokens),
-        note: `${count(data.files)} \u6761\u8BB0\u5FC6\u7684\u6B63\u6587\u5408\u8BA1\uFF0C\u542B frontmatter \u4E0E\u8BC1\u636E\u94FE\u3002`
-      }),
+      "section",
+      { className: "dmo-card-heavy" },
+      h("p", { className: "dmo-suggest-label" }, "\u6210\u672C\u6784\u6210"),
       (0, import_react10.createElement)(
         "div",
-        { className: "dmo-meta-row" },
-        h("span", { className: "dmo-meta" }, `\u9A73\u56DE\u9759\u9ED8 ${count(health.data?.silenced.length ?? 0)} \u6761`),
-        h("span", { className: "dmo-meta" }, `\u5F85\u590D\u6838 ${count(health.data?.stale.length ?? 0)} \u6761`),
-        h("span", { className: "dmo-meta" }, `\u8D85 80 \u884C ${count(health.data?.overLimit ?? 0)} \u7BC7`),
-        h("span", { className: "dmo-meta" }, `\u547D\u4E2D\u7387 ${data.rates.hitRate === null ? "\u2014" : `${Math.round(data.rates.hitRate * 100)}%`}`),
-        h("span", { className: "dmo-meta" }, `\u786E\u8BA4\u7387 ${data.rates.confirmRate === null ? "\u2014" : `${Math.round(data.rates.confirmRate * 100)}%`}`),
-        h("span", { className: "dmo-meta" }, `\u5F85\u62CD\u677F ${count(data.kpi.pending)}`),
-        h("span", { className: "dmo-meta" }, "\u300C\u2014\u300D= \u5206\u6BCD\u4E3A 0\uFF0C\u4E0D\u662F 0%")
+        { className: "dmo-cost" },
+        CostRow({
+          name: "\u6BCF\u8BF7\u6C42\u6210\u672C",
+          value: count(data.kpi.residentTokens),
+          note: `tokens / \u8BF7\u6C42\uFF0C\u9884\u7B97 ${count(data.kpi.residentBudget)}\u3002\u8FD9\u662F\u552F\u4E00\u6BCF\u8BF7\u6C42\u90FD\u4ED8\u7684\u94B1\uFF1Askill description + \u76EE\u5F55\u6846\u67B6\u3002\u8D85\u4E86\u8981\u538B\u7F29 skill description\uFF0C\u6539\u7D22\u5F15\u6587\u4EF6\u4E00\u5206\u4E0D\u7701\u3002`
+        }),
+        CostRow({
+          name: "\u7D22\u5F15\u4F53\u79EF",
+          value: count(data.kpi.indexTokens),
+          note: "\u6240\u6709 layer: l0 \u6587\u4EF6\u4E4B\u548C\uFF0C\u53EA\u5728\u88AB read \u65F6\u624D\u8FDB\u4E0A\u4E0B\u6587\u3002\u8FD9\u4E2A\u6570\u5927\u4E0D\u4EE3\u8868\u8D35\u3002"
+        }),
+        CostRow({
+          name: "\u5168\u5E93\u4F53\u79EF",
+          value: count(data.tokens),
+          note: `${count(data.files)} \u6761\u8BB0\u5FC6\u7684\u6B63\u6587\u5408\u8BA1\uFF0C\u542B frontmatter \u4E0E\u8BC1\u636E\u94FE\u3002`
+        }),
+        (0, import_react10.createElement)(
+          "div",
+          { className: "dmo-meta-row" },
+          h("span", { className: "dmo-meta" }, `\u9A73\u56DE\u9759\u9ED8 ${count(health.data?.silenced.length ?? 0)} \u6761`),
+          h("span", { className: "dmo-meta" }, `\u5F85\u590D\u6838 ${count(health.data?.stale.length ?? 0)} \u6761`),
+          h("span", { className: "dmo-meta" }, `\u8D85 80 \u884C ${count(health.data?.overLimit ?? 0)} \u7BC7`),
+          h("span", { className: "dmo-meta" }, `\u547D\u4E2D\u7387 ${data.rates.hitRate === null ? "\u2014" : `${Math.round(data.rates.hitRate * 100)}%`}`),
+          h("span", { className: "dmo-meta" }, `\u786E\u8BA4\u7387 ${data.rates.confirmRate === null ? "\u2014" : `${Math.round(data.rates.confirmRate * 100)}%`}`),
+          h("span", { className: "dmo-meta" }, `\u5F85\u62CD\u677F ${count(data.kpi.pending)}`),
+          h("span", { className: "dmo-meta" }, "\u300C\u2014\u300D= \u5206\u6BCD\u4E3A 0\uFF0C\u4E0D\u662F 0%")
+        )
       )
     ),
-    SectionHead({ title: "\u7EF4\u62A4", count: "\u6309\u9700\u8DD1" }),
-    h(
-      "p",
-      { className: "dmo-note", style: { marginTop: 0 } },
-      "\u8FD9\u4E9B\u90FD\u4F1A\u6539\u8BB0\u5FC6\u7684\u5185\u5BB9\u6216\u53EF\u4FE1\u5EA6\uFF0C\u6240\u4EE5\u4E00\u5F8B\u5148\u7ED9\u9884\u89C8\u3001\u4F60\u70B9\u4E86\u624D\u6267\u884C\u3002"
-    ),
-    (0, import_react10.createElement)(MaintenancePanel, { onOpenMemory: () => {
-    } }),
-    SectionHead({ title: "\u5BFC\u51FA" }),
     (0, import_react10.createElement)(
-      "div",
-      { className: "dmo-row-actions", style: { marginTop: 0 } },
-      Btn({ children: "\u5168\u90E8 Markdown", small: true, disabled: exporting, onClick: () => {
-        doExport("markdown");
-      }, attrs: { "data-action": "export" } }),
-      Btn({ children: "\u4EC5\u4E2A\u4EBA\u57DF", small: true, disabled: exporting, onClick: () => {
-        doExport("markdown", "personal");
-      }, attrs: { "data-action": "export" } }),
-      Btn({ children: "\u4EC5\u5DE5\u4F5C\u57DF", small: true, disabled: exporting, onClick: () => {
-        doExport("markdown", "work");
-      }, attrs: { "data-action": "export" } })
+      "section",
+      { className: "dmo-card-quiet" },
+      SectionHead({ title: "\u7EF4\u62A4", count: "\u6309\u9700\u8DD1" }),
+      h(
+        "p",
+        { className: "dmo-note", style: { marginTop: 0 } },
+        "\u8FD9\u4E9B\u90FD\u4F1A\u6539\u8BB0\u5FC6\u7684\u5185\u5BB9\u6216\u53EF\u4FE1\u5EA6\uFF0C\u6240\u4EE5\u4E00\u5F8B\u5148\u7ED9\u9884\u89C8\u3001\u4F60\u70B9\u4E86\u624D\u6267\u884C\u3002"
+      ),
+      (0, import_react10.createElement)(MaintenancePanel, { onOpenMemory: () => {
+      } })
     ),
-    feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
     (0, import_react10.createElement)(
-      "div",
-      { className: "dmo-row-actions", style: { marginTop: "var(--s4)" } },
-      Primary({ children: "\u56DE\u4ECA\u5929\uFF0C\u770B\u8BE5\u505A\u4EC0\u4E48", onClick: onGotoToday, attrs: { "data-action": "goto", "data-pane": "today" } })
+      "section",
+      { className: "dmo-card-quiet" },
+      SectionHead({ title: "\u5BFC\u51FA" }),
+      (0, import_react10.createElement)(
+        "div",
+        { className: "dmo-row-actions", style: { marginTop: 0 } },
+        Btn({ children: "\u5168\u90E8 Markdown", small: true, disabled: exporting, onClick: () => {
+          doExport("markdown");
+        }, attrs: { "data-action": "export" } }),
+        Btn({ children: "\u4EC5\u4E2A\u4EBA\u57DF", small: true, disabled: exporting, onClick: () => {
+          doExport("markdown", "personal");
+        }, attrs: { "data-action": "export" } }),
+        Btn({ children: "\u4EC5\u5DE5\u4F5C\u57DF", small: true, disabled: exporting, onClick: () => {
+          doExport("markdown", "work");
+        }, attrs: { "data-action": "export" } })
+      ),
+      feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text })
+    ),
+    /* 前进方向：只读诊断页不该走死路（v4 裁决保留）。
+       v6 评审 P1-3：本页唯一重卡是成本卡，这张前进卡降为静卡。 */
+    (0, import_react10.createElement)(
+      "section",
+      { className: "dmo-card-quiet" },
+      h("p", { className: "dmo-note", style: { marginTop: 0 } }, "\u770B\u5B8C\u4E86\u3002\u73B0\u5728\u8BE5\u505A\u7684\u4E8B\u5728\u300C\u4ECA\u5929\u300D\u3002"),
+      (0, import_react10.createElement)(
+        "div",
+        { className: "dmo-row-actions" },
+        Primary({ children: "\u56DE\u4ECA\u5929\uFF0C\u770B\u8BE5\u505A\u4EC0\u4E48", onClick: onGotoToday, attrs: { "data-action": "goto", "data-pane": "today" } })
+      )
     )
   );
 }
@@ -2447,7 +2605,7 @@ function MemoryOpsPage(props) {
       body = (0, import_react11.createElement)(CapturePane);
       break;
     case "todo":
-      body = (0, import_react11.createElement)(TodoPane);
+      body = (0, import_react11.createElement)(TodoPane, { onOpenDetail: openDetail });
       break;
     case "memory":
       body = (0, import_react11.createElement)(MemoryPane, { ctx, detailPath, onOpenDetail: openDetail });
@@ -2458,7 +2616,7 @@ function MemoryOpsPage(props) {
       } });
       break;
     default:
-      body = (0, import_react11.createElement)(TodayPane, { ctx });
+      body = (0, import_react11.createElement)(TodayPane, { ctx, onOpenDetail: openDetail });
   }
   return (0, import_react11.createElement)(
     "div",
@@ -2484,6 +2642,7 @@ function MemoryOpsPage(props) {
             className: "dmo-nav-item",
             "data-pane": item.id,
             "aria-selected": pane === item.id,
+            "aria-controls": "memory-ops-tabpanel",
             onClick: () => {
               setPane(item.id);
               if (item.id !== "memory") setDetailPath(void 0);
@@ -2494,7 +2653,7 @@ function MemoryOpsPage(props) {
         ))
       )
     ),
-    (0, import_react11.createElement)("div", { className: "dmo-body", role: "tabpanel" }, body)
+    (0, import_react11.createElement)("div", { className: "dmo-body", role: "tabpanel", id: "memory-ops-tabpanel" }, body)
   );
 }
 
@@ -3025,9 +3184,10 @@ function RememberOverlay(props) {
   }, [state2.open, state2.content]);
   (0, import_react14.useEffect)(() => {
     if (state2.toast === null) return void 0;
+    const lingerMs = state2.toast.savedContent === void 0 ? 5e3 : 3e4;
     const timer = setTimeout(() => {
       setRememberToast(sessionId, null);
-    }, 5e3);
+    }, lingerMs);
     return () => {
       clearTimeout(timer);
     };
@@ -3315,8 +3475,14 @@ function registerRememberCommand(ctx) {
 // src/client/styles.ts
 var STYLE_ID = "dsh-memory-ops-style";
 var CSS = `
-/* \u2014\u2014 \u8BBE\u8BA1\u4EE4\u724C\uFF1A\u5C3A\u5BF8\u672C\u5730\u5B9A\u4E49\uFF0C\u989C\u8272\u4E00\u5F8B\u7528\u5BBF\u4E3B token \u2014\u2014 */
-.dmo-root {
+/* \u2014\u2014 \u8BBE\u8BA1\u4EE4\u724C\uFF1A\u5C3A\u5BF8\u672C\u5730\u5B9A\u4E49\uFF0C\u989C\u8272\u4E00\u5F8B\u7528\u5BBF\u4E3B token \u2014\u2014
+ *
+ * \u26A0\uFE0F \u4EE4\u724C\u5FC5\u987B\u6302\u5728**\u6240\u6709\u63D2\u4EF6\u6839**\u4E0A\uFF0C\u4E0D\u80FD\u53EA\u6302 .dmo-root\uFF1A
+ * \u4F1A\u8BDD tab\uFF08.dmo-session\uFF09\u4E0E /remember \u6D6E\u5C42\uFF08portal \u5230 document.body\uFF09
+ * \u90FD\u4E0D\u5728 .dmo-root \u5B50\u6811\u91CC\uFF0C\u53EA\u6302 .dmo-root \u65F6\u90A3\u4E9B\u6811\u91CC\u7684 var(--s4)\u3001
+ * var(--accent)\u3001var(--r-overlay) \u5168\u90E8\u89E3\u6790\u5931\u8D25\u2014\u2014\u5F39\u7A97\u5373\u4FBF\u7C7B\u540D\u8865\u56DE\u6765\u4E86\uFF0C
+ * \u5185\u8FB9\u8DDD\u4E0E\u5706\u89D2\u4E5F\u662F\u574F\u7684\u3002:where() \u96F6\u7279\u5F02\u6027\uFF0C\u81EA\u5B9A\u4E49\u5C5E\u6027\u9760\u7EE7\u627F\u751F\u6548\u3002 */
+:where(.dmo-root, .dmo-session, .dmo-capture-pane, .dmo-overlay, .dmo-remember-backdrop, .dmo-remember-toast) {
   --t1: 24px;  --t1-lh: 32px;
   --t2: 20px;  --t2-lh: 28px;
   --t3: 16px;  --t3-lh: 24px;
@@ -3335,7 +3501,9 @@ var CSS = `
   --accent: var(--dsw-alias-state-business-primary);
   --accent-soft: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
   --accent-line: color-mix(in srgb, var(--dsw-alias-state-business-primary) 32%, transparent);
+}
 
+.dmo-root {
   display: flex; flex-direction: column; height: 100%; min-height: 0;
   font-size: var(--t4); line-height: var(--t4-lh);
   color: var(--dsw-alias-label-primary);
@@ -3360,11 +3528,11 @@ var CSS = `
 /* v6 \u5BFC\u822A\uFF1A\u5206\u6BB5\u63A7\u4EF6\u3002\u8F68\u9053 = module \u5E95 + \u63CF\u8FB9\uFF1B\u9009\u4E2D = \u767D\u5E95\u6D6E\u8D77 + \u52A0\u7C97\u3002
    \u8BA1\u6570\u7528\u84DD\u5B57\uFF08v4 \u7684\u7070\u5B57\u5728\u6DF1\u8272\u4E0B\u51E0\u4E4E\u4E0D\u53EF\u89C1\uFF09\u3002 */
 .dmo-nav {
-  display: flex; gap: 2px;
+  display: flex; gap: var(--s1);
   background: var(--dsw-alias-bg-module-platform, var(--dsw-alias-bg-layer-1));
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: var(--r-container);
-  padding: 3px; margin-bottom: var(--s3);
+  padding: var(--s1); margin-bottom: var(--s3);
   overflow-x: auto; scrollbar-width: none;
 }
 .dmo-nav::-webkit-scrollbar { display: none; }
@@ -3380,7 +3548,7 @@ var CSS = `
 }
 .dmo-nav-item:hover { color: var(--dsw-alias-label-primary); }
 .dmo-nav-item:active { background: var(--dsw-alias-interactive-bg-hover); }
-.dmo-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dmo-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dmo-nav-item[aria-selected="true"] {
   background: var(--dsw-alias-bg-base);
   border-color: var(--dsw-alias-border-l3);
@@ -3393,6 +3561,10 @@ var CSS = `
 }
 
 .dmo-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
+
+/* \u5206\u533A\u6839\uFF1A\u9762\u677F\u4F53\u662F flex\uFF0C\u4F46\u5404\u5206\u533A\u8FD4\u56DE\u5355\u4E2A wrapper div\u2014\u2014
+   \u6CA1\u6709\u8FD9\u4E2A\u7C7B\u7684\u8BDD s3 \u95F4\u8DDD\u4F20\u4E0D\u8FDB\u53BB\uFF0C\u533A\u5757\u4F1A\u6324\u6210\u4E00\u5768\uFF08\u8BC4\u5BA1 P0-1 \u7684\u6392\u7248\u534A\u8FB9\uFF09\u3002 */
+.dmo-pane { display: flex; flex-direction: column; gap: var(--s3); }
 
 /* ============ \u6392\u7248\u539F\u8BED ============ */
 .dmo-lede {
@@ -3479,14 +3651,17 @@ var CSS = `
 .dmo-btn-primary {
   background: var(--dsw-alias-button-info-fill, var(--accent));
   border-color: var(--dsw-alias-button-info-fill, var(--accent));
-  color: var(--dsw-alias-label-on-color, var(--dsw-alias-bg-base));
+  /* v6 \u8BC4\u5BA1 P1-4\uFF1Alabel-on-color \u4E24\u5957\u4E3B\u9898\u90FD\u662F\u767D\u8272\uFF08\u5BBF\u4E3B\u5B9E\u6D4B\uFF09\uFF0C
+     \u6DF1\u8272\u4E0B\u767D\u5B57 on deepseek-400 \u53EA\u6709 \u22482.3:1\u3002\u6587\u5B57\u6539\u7528 bg-base\u2014\u2014
+     \u6D45=\u767D\uFF08on deepseek-500 \u22484.6:1\uFF09\uFF0C\u6DF1=\u8FD1\u9ED1\uFF08on deepseek-400 \u22489:1\uFF09\u3002 */
+  color: var(--dsw-alias-bg-base);
   font-weight: 600;
 }
 .dmo-btn-primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-info-hover, var(--accent));
-  border-color: var(--dsw-alias-button-info-hover, var(--accent));
+  /* \u4E0D\u5207 info-hover\uFF08\u6D45\u8272\u4E0B\u5B83\u66F4\u4EAE\uFF0C\u767D\u5B57\u5BF9\u6BD4\u53CD\u800C\u8DCC\uFF09\uFF1B\u6309\u52A8\u4F5C\u538B\u6697\uFF0C\u4E24\u4E3B\u9898\u5BF9\u6BD4\u53EA\u5347\u4E0D\u964D */
+  filter: brightness(0.92);
 }
-.dmo-btn-primary:active:not(:disabled) { filter: brightness(0.92); }
+.dmo-btn-primary:active:not(:disabled) { filter: brightness(0.86); }
 .dmo-btn-sm { padding: 0 var(--s2); font-size: var(--t5); line-height: var(--t5-lh); }
 .dmo-btn-quiet {
   border-color: transparent; background: transparent;
@@ -3520,7 +3695,12 @@ var CSS = `
   background: var(--dsw-alias-bg-base); padding: var(--s2);
   transition: border-color var(--dur) var(--ease);
 }
-/* \u987A\u5E8F\u5373\u4F18\u5148\u7EA7\uFF1Afocus > active > hover\uFF08\u540C\u7279\u5F02\u6027\uFF0C\u540E\u5199\u80DC\u51FA\uFF09 */
+/* \u987A\u5E8F\u5373\u4F18\u5148\u7EA7\uFF1Afocus > active > hover\uFF08\u540C\u7279\u5F02\u6027\uFF0C\u540E\u5199\u80DC\u51FA\uFF09\u3002
+   \u7126\u70B9\u73AF\u8C41\u514D\uFF08\u65B9\u5411\u5361 \xA7\u4E03-1 \u8F93\u5165\u7C7B\u4F8B\u5916\uFF09\uFF1A\u6574\u5757\u662F\u8F93\u5165\u533A\u65F6\uFF0C
+   \u7126\u70B9\u7531\u5BB9\u5668\u8FB9\u6846\u53D8\u84DD\u8868\u8FBE\uFF08accent \u5B9E\u8272\u8FB9\uFF0C\u975E 2px outline\u2014\u2014\u4E24\u5C42\u73AF\u4F1A
+   \u770B\u7740\u50CF\u63A7\u4EF6\u5957\u63A7\u4EF6\uFF09\uFF0C\u5185\u5C42\u7ED9\u4E00\u5C42\u6D45\u5E95\u8272\u4F5C\u4E3A\u843D\u70B9\u3002v6 \u8BC4\u5BA1 Quick-win 2
+   \u8D28\u7591\u8FC7\u8FD9\u91CC\u6CA1\u6709 outline\uFF1B\u88C1\u51B3\uFF1A\u8FB9\u6846\u53D8\u84DD + \u5185\u5C42\u5E95\u8272\u5373\u6EE1\u8DB3
+   \u300C\u952E\u76D8\u7528\u6237\u6709\u53EF\u89C1\u843D\u70B9\u300D\uFF0C\u4E0D\u8865\u7B2C\u4E8C\u5C42\u73AF\u3002 */
 .dmo-capture:hover { border-color: var(--dsw-alias-border-l4); }
 .dmo-capture:active { border-color: var(--dsw-alias-label-secondary); }
 .dmo-capture:focus-within { border-color: var(--accent); }
@@ -3659,7 +3839,7 @@ var CSS = `
 }
 .dmo-trail-line {
   display: flex; flex-direction: column; align-items: flex-end; gap: 0;
-  padding: var(--s2) 6px var(--s1);
+  padding: var(--s2) var(--s1);
   border: 0; border-left: 1px solid var(--dsw-alias-border-l1);
   appearance: none; background: transparent;
   cursor: pointer; color: var(--dsw-alias-label-primary);
@@ -3787,12 +3967,12 @@ var CSS = `
 .dmo-remember-title { font-size: var(--t4); font-weight: 600; }
 .dmo-remember-close {
   margin-left: auto; appearance: none; border: 0; background: transparent;
-  color: var(--dsw-alias-label-secondary); font-size: 18px; line-height: 1;
+  color: var(--dsw-alias-label-secondary); font-size: var(--t3); line-height: 1;
   padding: var(--s1) var(--s2); border-radius: var(--r-control); cursor: pointer;
   font-family: inherit;
 }
 .dmo-remember-close:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-card-fill-hover, var(--dsw-alias-bg-layer-2)); }
-.dmo-remember-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dmo-remember-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dmo-remember-body { display: flex; flex-direction: column; gap: var(--s2); min-height: 0; overflow-y: auto; }
 .dmo-remember-input { min-height: 96px; }
 .dmo-remember-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
@@ -3817,7 +3997,7 @@ var CSS = `
 .dmo-remember-dismiss {
   appearance: none; border: 0; background: transparent;
   color: var(--dsw-alias-label-secondary); cursor: pointer;
-  font-size: 15px; line-height: 1; padding: 0 var(--s1); font-family: inherit;
+  font-size: var(--t4); line-height: 1; padding: 0 var(--s1); font-family: inherit;
 }
 .dmo-remember-dismiss:hover { color: var(--dsw-alias-label-primary); }
 
@@ -3976,6 +4156,27 @@ var CSS = `
   padding: var(--s2) var(--s3); margin-bottom: var(--s2);
   background: var(--dsw-alias-card-fill, var(--dsw-alias-bg-layer-1));
 }
+
+/* ============ v6 \u5BB9\u5668\uFF08\u8BC4\u5BA1 P0-1\uFF09 ============
+   \u63D2\u4EF6\u7AEF\u66FE\u628A\u53F0\u8D26\u88F8\u94FA\u5728\u9762\u677F\u5E95\u4E0A\uFF0C\u884C\u95F4\u53EA\u9760 border-l1\uFF08\u6D45\u8272 4% \u9ED1\uFF0C\u8089\u773C\u4E0D\u53EF\u89C1\uFF09
+   \u5206\u9694\u2014\u2014\u8FD9\u6B63\u662F\u65B9\u5411\u5361 \xA7\u96F6\u70B9\u540D\u7684 v5\u300C\u592A\u7D20\u300D\u6839\u56E0\uFF0C\u800C\u4E14\u8BA9\u5DF2\u901A\u8FC7\u622A\u56FE\u8BC4\u5BA1\u7684
+   \u539F\u578B\u4E0E\u5B9E\u9645\u4EA4\u4ED8\u7684\u63D2\u4EF6\u53D8\u6210\u4E24\u5957\u754C\u9762\u3002\u89C4\u5219\uFF1A\u5217\u8868/\u6210\u672C\u533A\u5FC5\u987B\u88C5\u8FDB\u5BB9\u5668\uFF0C
+   border-l1 \u53EA\u5141\u8BB8\u51FA\u73B0\u5728\u5BB9\u5668\u5185\u90E8\u3002
+   .dmo-card-heavy = \u91CD\u5361\uFF08card-fill + l3\uFF09\uFF0C\u6BCF\u5C4F \u22641\uFF1B.dmo-card-quiet = \u9759\u5361\u3002 */
+.dmo-card-heavy {
+  background: var(--dsw-alias-card-fill, var(--dsw-alias-bg-layer-1));
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--r-container);
+  padding: var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+.dmo-card-quiet {
+  background: var(--dsw-alias-bg-module-platform, var(--dsw-alias-bg-layer-1));
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--r-container);
+  padding: var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
 .dmo-card-title { font-size: var(--t4); line-height: var(--t4-lh); font-weight: 600; word-break: break-word; }
 .dmo-card-meta { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-top: var(--s1); font-size: var(--t5); line-height: var(--t5-lh); color: var(--dsw-alias-label-secondary); font-family: var(--mono); }
 .dmo-card-body { margin-top: var(--s2); font-size: var(--t4); line-height: var(--t4-lh); white-space: pre-wrap; word-break: break-word; }
@@ -3988,8 +4189,12 @@ var CSS = `
 .dmo-recent-count { font-size: var(--t5); line-height: var(--t5-lh); color: var(--dsw-alias-label-secondary); font-family: var(--mono); }
 .dmo-icon { display: block; }
 
+/* v6 \u8BC4\u5BA1 P1-1\uFF1A/remember \u6D6E\u5C42 portal \u5230 document.body\uFF0C\u4E0D\u5728 .dmo-root \u5B50\u6811\u91CC\uFF0C
+   \u53EA\u5199 .dmo-root * \u4F1A\u6F0F\u6389\u5B83\u3002\u964D\u7EA7\u8303\u56F4\u5FC5\u987B\u8986\u76D6\u5168\u90E8\u63D2\u4EF6\u6839\u3002 */
 @media (prefers-reduced-motion: reduce) {
-  .dmo-root *, .dmo-root *::before, .dmo-root *::after {
+  .dmo-root *, .dmo-root *::before, .dmo-root *::after,
+  .dmo-remember-backdrop, .dmo-remember-backdrop *,
+  .dmo-remember-toast, .dmo-overlay, .dmo-overlay * {
     animation: none !important; transition: none !important;
   }
 }

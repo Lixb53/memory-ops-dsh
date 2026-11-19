@@ -83,6 +83,6 @@
     }).join('');
 
     return head + MO.sectionHead('最近记的', `${data.inbox.length} 条`)
-      + MO.cardQuiet(`<ul class="list">${rows}</ul>`);
+      + MO.cardQuiet(`<ul class="list" role="list">${rows}</ul>`);
   };
 })();

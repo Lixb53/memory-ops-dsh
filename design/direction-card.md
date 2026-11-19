@@ -29,7 +29,7 @@ ux 域硬性要求「状态不许只靠颜色，徽标必须带文字/符号」�
 
 | 手法 | 落点 |
 |---|---|
-| KPI 账带 | 今天页首屏：单条 4 格，数字等宽右对齐同一基线，首格数字用业务蓝 |
+| KPI 账带 | 今天页首屏：单条 4 格，数字等宽右对齐同一基线；**首格例外**——它是本页主指标，左对齐 + 业务蓝，其余三格右对齐。裁决（v6 第 1 轮评审）：首格左置是「这一格和另外三格不是一类东西」的信号，不是违规 |
 | 分段导航 | 轨道 = bg-module-platform + border-l2；选中 = bg-base 白底浮起 + border-l3 + 600 |
 | 卡片 | card-fill 真灰底 + border-l3 描边；静卡用 bg-module-platform + border-l2 |
 | 台账行 | 36px 定高、8px 内边距、hover 换 card-fill-hover；数字列右对齐 tabular-nums |
@@ -55,7 +55,7 @@ ux 域硬性要求「状态不许只靠颜色，徽标必须带文字/符号」�
 | 行 hover | `--dsw-alias-card-fill-hover`（兜底 bg-layer-2） | 只给可点行 |
 | **强调蓝** | `--dsw-alias-state-business-primary` | 主按钮实底、选中态、链接、KPI 首格、焦点环、进度条 |
 | 蓝 hover | `--dsw-alias-button-info-hover` | 主按钮悬停 |
-| 蓝底文字 | `--dsw-alias-label-on-color`（兜底 bg-base） | 禁止蓝底放黑字 |
+| 蓝底文字 | `--dsw-alias-bg-base`（**不用 label-on-color**，两套都是白，深色不达标） | 见 §七-3 |
 | 文本三档 | `label-primary / secondary / tertiary` | 正文必须 primary；占位 tertiary |
 | 边界 | `border-l2`（静卡/控件）`l3`（重卡/输入）`l4`（hover）`l1`（卡内发丝） | l1 只做卡内分隔，不做分组 |
 | 语义 | `state-warn/success/error-primary` + `-tertiary` | tint 底 + 方点；错误底 `color-mix(err 8%)` |
@@ -144,10 +144,18 @@ ux 域硬性要求「状态不许只靠颜色，徽标必须带文字/符号」�
 2. 正文 ≥4.5:1：正文一律 label-primary（浅 17:1 / 深 15:1）。
    **徽标文字一律 label-primary**，彩色只出现在 tint 底与方点上——
    amber-500/green-500 在 12px 上直接做文字色不达标，v6 从根上避开。
-3. 蓝底白字：deepseek-500 上放 label-on-color（浅=白）≈4.6:1，14px/600 达标；
-   深色主题蓝底用 label-on-color（=深色底）同样达标。
+3. **主按钮文字色 = `--dsw-alias-bg-base`，不是 label-on-color**
+   （v6 第 1 轮评审 P0-2 抓出，原句「深色蓝底用 label-on-color 同样达标」是事实错误）。
+   宿主实测 design-platform.css L254/L406：`label-on-color` **两套主题都是白色**
+   （neutral-bluish-00）。深色蓝底 deepseek-400 上放白字只有 ≈2.3:1，不达标。
+   `bg-base` 恰好两套都对：浅=白 on deepseek-500 ≈4.6:1；深=近黑 on deepseek-400 ≈9:1。
+   hover 也不许切 `button-info-hover`（浅色下它更亮，白字对比反而跌到 ≈2.3:1），
+   一律 `filter: brightness(0.92)` 压暗——两主题对比只升不降。
 4. 状态不只靠颜色：方点 + 文字标签同时存在。
-5. 列表用 `role="list"` / `role="listitem"`；浮层焦点移入、Esc 关闭、关闭后回焦。
+5. 列表语义：`.dmo-list` / `.list` 设了 `list-style: none`，
+   Safari + VoiceOver 会因此**剥掉原生 ul/li 的列表语义**——所以列表容器必须
+   显式 `role="list"`（li 不需要逐个加 listitem，role=list 已恢复语义）。
+   浮层焦点移入、Esc 关闭、关闭后回焦。
 6. KPI 账带每格必须可点（`role="group"` + 按钮），不许裸数字。
 
 ---

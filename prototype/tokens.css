@@ -75,7 +75,7 @@
 
   --r-row: 0;
   --r-control: 6px;
-  --r-card: 8px;       /* v6：卡片档 = 8（方向卡 §四） */
+  --r-container: 8px;   /* v6：卡片与容器档（与插件 --r-container 同名同值，v5 叫 --r-card 是漂移源） */
   --r-overlay: 12px;
 
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

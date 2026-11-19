@@ -230,7 +230,7 @@
       </li>`).join('');
 
     return head + MO.card(MO.sectionHead(searching ? '检索结果' : '全部记忆', `${list.length} 条`)
-      + `<ul class="list list-clickable">${rows}</ul>`)
+      + `<ul class="list list-clickable" role="list">${rows}</ul>`)
       + MO.inlineResult(state.lastAction);
   }
 

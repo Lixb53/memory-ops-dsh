@@ -55,3 +55,43 @@
 
 禁止清单未清零项：**0**。两处「曾命中」均已修复并有回归锚点（class-audit 脚本 + wiring 测试）。
 可触发 5B。
+
+---
+
+## 四、v6 第 1 轮评审后的补记（2026-11-19）
+
+critic 第 1 轮判 **不通过**（功能性 4/10 + 三项 P0），报告见
+[`5b-v6-round-1.md`](5b-v6-round-1.md)。补记新增的机器闸门与修复：
+
+| 新增闸门（wiring-ui.test.mjs） | 挡住什么 |
+|---|---|
+| 「客户端引用的每个 dmo-* 类都在 styles.ts 里有定义」 | v4 删光 `.dmo-remember-*` 导致弹窗「挂载了但不可见」；此前只有手动脚本，没有 CI |
+| 「/remember 浮层 11 类必须全在 + 遮罩必须 fixed/inset:0」 | 同上，且挡住「类在但遮罩不是全屏」这种半修 |
+| 「尺寸令牌挂在所有插件根上」 | 令牌只挂 `.dmo-root` 时，会话 tab 与 portal 浮层拿不到 `var(--s4)/--accent` |
+
+修复清单（全部已落码）：
+
+- **P0-1 死按钮**：today 建议卡次动作、memory 三个空态出口、todo 两个跳转出口，
+  原先只带 `data-action` 测试钩子没有 `onClick`——点了没反应。
+  现在分别走 `onOpenDetail` / `gotoPane` / `requestPane`。
+  连带修掉一个更深的 bug：today 页把 `first.id`（点分 `personal.principles`）
+  传给 core 的 confirm/detail，而 core 要的是 `path`（`personal/principles.md`）——
+  「确认这条」必然 ENOENT。
+- **P0-1 容器**：插件端四个分区的台账原先裸铺在面板底上，行间只靠 `border-l1`
+  （浅色 4% 黑，肉眼不可见）分隔——正是 §零点名的 v5 根病，且让「已评审的原型」
+  与「实际交付的插件」是两套界面。现在每段装进 `.dmo-card-heavy`（每屏 ≤1）
+  或 `.dmo-card-quiet`，`border-l1` 只在卡内出现。
+- **P0-2 深色主按钮对比**：宿主实测 `label-on-color` 两套主题都是白色，
+  深色蓝底白字 ≈2.3:1 不达标。文字改 `bg-base`（浅=白 ≈4.6:1 / 深=近黑 ≈9:1），
+  hover 不再切更亮的 `button-info-hover`，改 `brightness(0.92)`。
+  **方向卡 §二/§七-3 原句是事实错误，已修正**（经用户「落地 v6」授权范围内的纠错）。
+- **P0-3 护栏缺失**：见上表。
+- P1-1 reduced-motion 覆盖 portal 浮层；P1-2 内联编辑提交降次按钮（消除同屏 2 处蓝实底）；
+  P1-3 可撤销 toast 活满 30s（原 5s 自动消失 = 伪造承诺）；P1-4 原型圆角档统一为
+  `--r-container`（`--r-card` 是漂移源）；P1-5 原型弹窗补焦点移入/回焦。
+- Quick wins 全部完成：账带 6px→s1、nav gap/padding 归 4 倍数、focus offset 统一 2px、
+  浮层字号 18/15px→字阶、`marginTop: 7`→`var(--s2)`、notice 圆点→6px 方点、
+  列表补 `role="list"`（`list-style:none` 会让 Safari+VoiceOver 剥掉列表语义）。
+
+验证：core 252 + 插件 88 全绿（含 3 项新闸门）、tsc 0 错、
+类名审计双向 0 缺失、8 条状态分支渲染通过、明暗两套截图目测通过。

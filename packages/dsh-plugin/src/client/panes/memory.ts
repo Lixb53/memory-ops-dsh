@@ -21,6 +21,7 @@ import { createElement, useState, type ReactNode } from 'react'
 
 import { call, type DetailView, type SearchView, type SnapshotView } from '../api.ts'
 import { useBridge } from '../data.ts'
+import { gotoPane } from '../pane-nav.ts'
 import { scopeBody, useSessionProject, type ClientContextLike } from '../session-context.ts'
 import {
   Btn, EmptyState, ErrorAlert, InlineDone, Primary, RejectBox, SectionHead, SkeletonRows,
@@ -132,8 +133,11 @@ function MemoryList({ ctx, onOpenDetail }: {
       snapshot.data === undefined
         ? ''
         : `最重的一条占 ${count(Math.max(...entries.map(e => e.tokens), 0))} tokens；超 80 行 ${count(snapshot.data.stats.overLimit)} 篇。`),
+  ]
 
-    createElement('div', { className: 'dmo-toolbar', style: { marginTop: 0 } },
+  /* v6 评审 P0-1：工具行 + 筛选签装进一张静卡，与台账卡分层 */
+  const filterCard = createElement('section', { className: 'dmo-card-quiet' },
+    createElement('div', { className: 'dmo-toolbar' },
       createElement('input', {
         className: 'dmo-input',
         'data-field': 'query',
@@ -182,12 +186,11 @@ function MemoryList({ ctx, onOpenDetail }: {
         'data-domain': name,
         'aria-pressed': domainFilter === name,
         onClick: () => { setDomainFilter(domainFilter === name ? '' : name); setSelected([]) },
-      }, name))),
-  ]
+      }, name))))
 
   if (snapshot.phase === 'loading') return SkeletonRows({ rows: 4, height: 56 })
   if (snapshot.phase === 'error') {
-    return createElement('div', null, head,
+    return createElement('div', { className: 'dmo-pane' }, head,
       h(ErrorAlert, {
         title: '读不到记忆',
         body: '库文件没有丢，这是读取问题。记忆不会因为这次失败而消失。',
@@ -202,21 +205,22 @@ function MemoryList({ ctx, onOpenDetail }: {
           + '换个词，或去待办看这次落空。',
         actions: [
           Primary({ children: '换个词', onClick: () => { setQuery(''); setSubmitted('') }, attrs: { 'data-action': 'clear-search' } }),
-          Btn({ children: '去待办看', attrs: { 'data-action': 'goto', 'data-pane': 'todo' } }),
+          // v6 评审 P0-1：导航出口必须真的跳，不能只带测试钩子
+          Btn({ children: '去待办看', onClick: () => { gotoPane(ctx, 'todo') }, attrs: { 'data-action': 'goto', 'data-pane': 'todo' } }),
         ],
       })
     : entries.length === 0
       ? h(EmptyState, {
           title: '库是空的',
           body: '还没有任何记忆。记一条，它就会出现在这里。',
-          actions: [Primary({ children: '记一条', attrs: { 'data-action': 'goto', 'data-pane': 'capture' } })],
+          actions: [Primary({ children: '记一条', onClick: () => { gotoPane(ctx, 'capture') }, attrs: { 'data-action': 'goto', 'data-pane': 'capture' } })],
         })
       : h(EmptyState, {
           title: '这个筛选下没有',
           body: '换个筛选，或者清空筛选看全部。',
           actions: [
             Primary({ children: '清空筛选', onClick: () => { setStatusFilter(''); setDomainFilter(''); setScope('all') }, attrs: { 'data-action': 'clear-filter' } }),
-            Btn({ children: '记一条', attrs: { 'data-action': 'goto', 'data-pane': 'capture' } }),
+            Btn({ children: '记一条', onClick: () => { gotoPane(ctx, 'capture') }, attrs: { 'data-action': 'goto', 'data-pane': 'capture' } }),
           ],
         })
 
@@ -248,7 +252,8 @@ function MemoryList({ ctx, onOpenDetail }: {
         },
       }))))
 
-  return createElement('div', null, head,
+  return createElement('div', { className: 'dmo-pane' }, head,
+    filterCard,
     selected.length === 0 ? null : createElement('div', { className: 'dmo-bulk' },
       h('span', { className: 'dmo-meta' }, `已选 ${selected.length} / ${list.length} 条`),
       Btn({
@@ -258,16 +263,18 @@ function MemoryList({ ctx, onOpenDetail }: {
       }),
       Btn({ children: '清空选择', small: true, disabled: busy, onClick: () => { setSelected([]) } })),
 
-    SectionHead({ title: searching ? '检索结果' : '全部记忆', count: `${list.length} 条` }),
-    searching && search.phase === 'loading'
-      ? SkeletonRows({ rows: 2, height: 44 })
-      : listEmpty
-        ? emptyBlock
-        : createElement('ul', { className: 'dmo-list dmo-list-clickable' }, rows),
-    searching && search.phase === 'ready' && search.data !== undefined && !listEmpty
-      ? h('p', { className: 'dmo-note' },
-          `命中 ${count(search.data.total)} 条 · 本次读取约 ${count(search.data.cost)} tokens（已记账）`)
-      : null,
+    /* v6 评审 P0-1：台账装进本页唯一重卡；空态出口也留在卡内（空屏不许是灰字） */
+    createElement('section', { className: 'dmo-card-heavy' },
+      SectionHead({ title: searching ? '检索结果' : '全部记忆', count: `${list.length} 条` }),
+      searching && search.phase === 'loading'
+        ? SkeletonRows({ rows: 2, height: 44 })
+        : listEmpty
+          ? emptyBlock
+          : createElement('ul', { className: 'dmo-list dmo-list-clickable', role: 'list' }, rows),
+      searching && search.phase === 'ready' && search.data !== undefined && !listEmpty
+        ? h('p', { className: 'dmo-note' },
+            `命中 ${count(search.data.total)} 条 · 本次读取约 ${count(search.data.cost)} tokens（已记账）`)
+        : null),
     feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }))
 }
 
@@ -309,97 +316,114 @@ function MemoryDetail({ path, onBack }: { path: string; onBack: () => void }): R
       }))
   }
   const data = detail.data
-  if (data === undefined) return null
+  // v6 评审 Quick-win 5 同型：读不到不许 return null（空屏必须说话）
+  if (data === undefined) {
+    return createElement('div', { className: 'dmo-pane' },
+      createElement('div', { className: 'dmo-back' },
+        TextLink({ children: '← 返回列表', onClick: onBack, attrs: { 'data-action': 'back-to-list' } })),
+      h(ErrorAlert, {
+        title: '没读到这条记忆',
+        body: '不是它没了，是这次没读到——两者不一样。先重试，或返回列表重新找。',
+        actions: [
+          Primary({ children: '重试', onClick: detail.reload, attrs: { 'data-action': 'retry' } }),
+          Btn({ children: '返回列表', onClick: onBack, attrs: { 'data-action': 'back-to-list' } }),
+        ],
+      }))
+  }
 
   const { entry, trust } = data
   const canConfirm = entry.status === 'stale' || entry.status === 'observed' || entry.status === 'hypothesis'
   const canReject = entry.status !== 'rejected'
 
-  return createElement('div', null,
+  /* v6 评审 P0-1：详情整页装进唯一重卡（与原型 pane-memory.js 同构）。
+     P1-2：编辑态的「保存」是这一屏唯一主按钮——此时「确认这条」降为次按钮，
+     否则同屏 2 处蓝实底。 */
+  return createElement('div', { className: 'dmo-pane' },
     createElement('div', { className: 'dmo-back' },
       TextLink({ children: '← 返回列表', onClick: onBack, attrs: { 'data-action': 'back-to-list' } })),
-    h('h1', { className: 'dmo-detail-title' }, entry.title),
-    h('div', { className: 'dmo-meta-row', style: { marginTop: 0 } },
-      tag(statusLabel(entry.status),
-        entry.status === 'confirmed' || entry.status === 'active' ? 'ok'
-          : entry.status === 'rejected' ? 'err'
-            : entry.status === 'stale' || entry.status === 'observed' || entry.status === 'hypothesis' ? 'warn' : ''),
-      h('span', { className: 'dmo-meta' }, entry.domainLabel),
-      h('span', { className: 'dmo-meta' }, `${entry.tokens} tokens`),
-      h('span', { className: 'dmo-meta' }, `${entry.lines} 行`),
-      h('span', { className: 'dmo-meta' }, `引用 ${count(trust.citeCount)} 次`)),
+    createElement('section', { className: 'dmo-card-heavy' },
+      h('h1', { className: 'dmo-detail-title' }, entry.title),
+      h('div', { className: 'dmo-meta-row', style: { marginTop: 0 } },
+        tag(statusLabel(entry.status),
+          entry.status === 'confirmed' || entry.status === 'active' ? 'ok'
+            : entry.status === 'rejected' ? 'err'
+              : entry.status === 'stale' || entry.status === 'observed' || entry.status === 'hypothesis' ? 'warn' : ''),
+        h('span', { className: 'dmo-meta' }, entry.domainLabel),
+        h('span', { className: 'dmo-meta' }, `${entry.tokens} tokens`),
+        h('span', { className: 'dmo-meta' }, `${entry.lines} 行`),
+        h('span', { className: 'dmo-meta' }, `引用 ${count(trust.citeCount)} 次`)),
 
-    SectionHead({ title: '凭什么可信' }),
-    h('div', { className: 'dmo-meta-row', style: { marginTop: 0 } },
-      h('span', { className: 'dmo-meta' }, `置信：${entry.confidence === null ? '—' : entry.confidence.toFixed(1)}`),
-      h('span', { className: 'dmo-meta' }, `证据：${count(trust.evidenceCount)}`),
-      h('span', { className: 'dmo-meta' }, `最后引用：${trust.lastCitedAt ?? '从未'}`)),
-    entry.evidence.length === 0
-      ? h('p', { className: 'dmo-note' }, '这条没有证据摘录——它来自你亲口说的话，不需要再举证。')
-      : entry.evidence.map((item, index) => createElement('div', { key: index, className: 'dmo-evidence' },
-          truncate(item.excerpt ?? '', 120),
-          h('div', { className: 'dmo-evidence-src' }, `${item.gate ?? ''} · ${item.session ?? ''}`))),
+      SectionHead({ title: '凭什么可信' }),
+      h('div', { className: 'dmo-meta-row', style: { marginTop: 0 } },
+        h('span', { className: 'dmo-meta' }, `置信：${entry.confidence === null ? '—' : entry.confidence.toFixed(1)}`),
+        h('span', { className: 'dmo-meta' }, `证据：${count(trust.evidenceCount)}`),
+        h('span', { className: 'dmo-meta' }, `最后引用：${trust.lastCitedAt ?? '从未'}`)),
+      entry.evidence.length === 0
+        ? h('p', { className: 'dmo-note' }, '这条没有证据摘录——它来自你亲口说的话，不需要再举证。')
+        : entry.evidence.map((item, index) => createElement('div', { key: index, className: 'dmo-evidence' },
+            truncate(item.excerpt ?? '', 120),
+            h('div', { className: 'dmo-evidence-src' }, `${item.gate ?? ''} · ${item.session ?? ''}`))),
 
-    SectionHead({ title: '正文' }),
-    editing
-      ? createElement('div', null,
-          createElement('textarea', {
-            className: 'dmo-textarea',
-            style: { minHeight: 190 },
-            'aria-label': '正文源码',
-            value: draft ?? entry.body,
-            onChange: (event: { target: { value: string } }) => { setDraft(event.target.value) },
-          }),
-          createElement('div', { className: 'dmo-row-actions' },
-            Primary({
-              children: busy ? '保存中…' : '保存', disabled: busy,
-              onClick: () => { run(() => call('writeBody', { path, body: draft ?? entry.body }), '已保存') },
-              attrs: { 'data-action': 'writeBody', 'data-path': path },
+      SectionHead({ title: '正文' }),
+      editing
+        ? createElement('div', null,
+            createElement('textarea', {
+              className: 'dmo-textarea',
+              style: { minHeight: 190 },
+              'aria-label': '正文源码',
+              value: draft ?? entry.body,
+              onChange: (event: { target: { value: string } }) => { setDraft(event.target.value) },
             }),
-            Btn({ children: '取消', onClick: () => { setEditing(false); setDraft(null) } })))
-      : h('div', { className: 'dmo-body-block' }, entry.body.trim() === '' ? '（空）' : entry.body),
+            createElement('div', { className: 'dmo-row-actions' },
+              Primary({
+                children: busy ? '保存中…' : '保存', disabled: busy,
+                onClick: () => { run(() => call('writeBody', { path, body: draft ?? entry.body }), '已保存') },
+                attrs: { 'data-action': 'writeBody', 'data-path': path },
+              }),
+              Btn({ children: '取消', onClick: () => { setEditing(false); setDraft(null) } })))
+        : h('div', { className: 'dmo-body-block' }, entry.body.trim() === '' ? '（空）' : entry.body),
 
-    feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
+      feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
 
-    createElement('div', { className: 'dmo-row-actions', style: { marginTop: 'var(--s4)' } },
-      canConfirm
-        ? Primary({
-            children: '确认这条', disabled: busy,
-            onClick: () => { run(() => call('confirm', { path }), '已确认') },
-            attrs: { 'data-action': 'confirm', 'data-path': path },
+      createElement('div', { className: 'dmo-row-actions' },
+        canConfirm && !editing
+          ? Primary({
+              children: '确认这条', disabled: busy,
+              onClick: () => { run(() => call('confirm', { path }), '已确认') },
+              attrs: { 'data-action': 'confirm', 'data-path': path },
+            })
+          : Btn({ children: '编辑正文', disabled: busy || editing, onClick: () => { setEditing(true); setDraft(entry.body) }, attrs: { 'data-action': 'edit' } })),
+      canReject || editing
+        ? createElement('div', { className: 'dmo-row-actions' },
+            canReject
+              ? Btn({
+                  children: '驳回（需要写理由）', small: true, disabled: busy,
+                  onClick: () => { setRejecting(value => !value) },
+                  attrs: { 'data-action': 'reject', 'data-path': path },
+                })
+              : null,
+            Btn({
+              children: '再留 90 天', small: true, disabled: busy,
+              onClick: () => { run(() => call('keep', { path }), '已再留 90 天') },
+              attrs: { 'data-action': 'keep', 'data-path': path },
+            }),
+            Btn({
+              children: '归档退役', small: true, disabled: busy,
+              onClick: () => { run(() => call('archive', { path }), '已归档') },
+              attrs: { 'data-action': 'archive', 'data-path': path },
+            }),
+            h('p', { className: 'dmo-note' },
+              '驳回会静默 30 天，期间不再推荐这条。归档后仍可检索，只是不再进上下文。'))
+        : null,
+      rejecting
+        ? h(RejectBox, {
+            reason: rejectReason,
+            onReason: setRejectReason,
+            busy,
+            onCancel: () => { setRejecting(false); setRejectReason('') },
+            onSubmit: () => { run(() => call('reject', { path, reason: rejectReason.trim() }), '已驳回，30 天内不再推荐') },
           })
-        : Btn({ children: '编辑正文', disabled: busy, onClick: () => { setEditing(true); setDraft(entry.body) }, attrs: { 'data-action': 'edit' } })),
-    canReject || editing
-      ? createElement('div', { className: 'dmo-row-actions' },
-          canReject
-            ? Btn({
-                children: '驳回（需要写理由）', small: true, disabled: busy,
-                onClick: () => { setRejecting(value => !value) },
-                attrs: { 'data-action': 'reject', 'data-path': path },
-              })
-            : null,
-          Btn({
-            children: '再留 90 天', small: true, disabled: busy,
-            onClick: () => { run(() => call('keep', { path }), '已再留 90 天') },
-            attrs: { 'data-action': 'keep', 'data-path': path },
-          }),
-          Btn({
-            children: '归档退役', small: true, disabled: busy,
-            onClick: () => { run(() => call('archive', { path }), '已归档') },
-            attrs: { 'data-action': 'archive', 'data-path': path },
-          }),
-          h('p', { className: 'dmo-note' },
-            '驳回会静默 30 天，期间不再推荐这条。归档后仍可检索，只是不再进上下文。'))
-      : null,
-    rejecting
-      ? h(RejectBox, {
-          reason: rejectReason,
-          onReason: setRejectReason,
-          busy,
-          onCancel: () => { setRejecting(false); setRejectReason('') },
-          onSubmit: () => { run(() => call('reject', { path, reason: rejectReason.trim() }), '已驳回，30 天内不再推荐') },
-        })
-      : null)
+        : null))
 }
 
 /** statusLabel 的本地引用（避免循环 import ui.ts 的导出顺序问题）。 */

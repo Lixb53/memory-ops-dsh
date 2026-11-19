@@ -270,7 +270,7 @@ export function Empty({ title, children }: { title?: string; children?: ReactNod
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }): ReactNode {
   return h('div', { className: 'dmo-error', role: 'alert' },
     h('div', null, message),
-    onRetry === undefined ? null : h('div', { style: { marginTop: 7 } },
+    onRetry === undefined ? null : h('div', { style: { marginTop: 'var(--s2)' } },
       h(Button, { onClick: onRetry, small: true }, '重试')),
   )
 }
@@ -376,7 +376,7 @@ export function RejectBox({ reason, onReason, onCancel, onSubmit, busy }: {
   busy: boolean
 }): ReactNode {
   const empty = reason.trim() === ''
-  return h('div', { style: { marginTop: 7 } },
+  return h('div', { style: { marginTop: 'var(--s2)' } },
     h('label', { className: 'dmo-label' }, '驳回理由（必填，30 天后可复查）'),
     h('textarea', {
       className: 'dmo-textarea',
