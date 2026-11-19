@@ -29,7 +29,7 @@ import { useBridge } from '../data.ts'
 // 面板订阅同一个 store（usePaneRequest），写请求就会切分区，不需要 layout 服务。
 import { requestPane } from '../pane-nav.ts'
 import {
-  Btn, EmptyState, ErrorAlert, InlineDone, Notice, Primary, RejectBox, SectionHead, SkeletonRows,
+  Btn, EmptyState, ErrorAlert, InlineDone, Notice, PaneHead, Primary, RejectBox, SectionHead, SkeletonRows,
   TextLink, h, tag, truncate,
 } from '../ui.ts'
 
@@ -111,11 +111,10 @@ export function TodoPane({ onOpenDetail }: {
   const draftingItems = misses.data?.pipeline.drafting ?? []
   const todoTotal = queue.length + openRows.length + fillable.length + draftingItems.length
 
-  const head = [
-    h('h1', { className: 'dmo-page-name' }, '待办'),
-    h('p', { className: 'dmo-lede' },
-      todoTotal === 0 ? '三段都清空了' : `共 ${todoTotal} 件，分三类：要我拍板的、要我流转的、要我补的`),
-  ]
+  const head = PaneHead({
+    pageName: '待办',
+    lede: todoTotal === 0 ? '三段都清空了' : `共 ${todoTotal} 件，分三类：要我拍板的、要我流转的、要我补的`,
+  })
 
   /* —— 整页错误：三段共用一次快照读取，失败时如实说，不谎称「互不影响」 —— */
   if (snapshot.phase === 'error') {

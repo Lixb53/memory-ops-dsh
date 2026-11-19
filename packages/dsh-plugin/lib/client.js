@@ -143,6 +143,15 @@ function SectionHead({ title, count: count2, action }) {
     action === void 0 ? null : h("span", { style: { marginLeft: "auto" } }, action)
   );
 }
+function PaneHead({ pageName, lede, ledeSub }) {
+  return h(
+    "div",
+    null,
+    pageName === void 0 ? null : h("h1", { className: "dmo-page-name" }, pageName),
+    h("p", { className: "dmo-lede" }, lede),
+    ledeSub === void 0 ? null : h("p", { className: "dmo-lede-sub" }, ledeSub)
+  );
+}
 function Primary({ children, onClick, disabled, small, attrs }) {
   return h("button", {
     type: "button",
@@ -638,8 +647,7 @@ function TodayPane({ ctx, onOpenDetail }) {
     return (0, import_react5.createElement)(
       "div",
       { className: "dmo-pane" },
-      h("h1", { className: "dmo-lede" }, "\u8FD9\u662F\u4F60\u7684\u7B2C\u4E00\u6761\u8BB0\u5FC6"),
-      h("p", { className: "dmo-lede-sub" }, "\u5199\u4E00\u53E5\u4F60\u4ECA\u5929\u60F3\u8BB0\u4F4F\u7684\u8BDD\uFF0Cagent \u4E0B\u6B21\u5C31\u4F1A\u7528\u4E0A\u5B83\u3002"),
+      PaneHead({ lede: "\u8FD9\u662F\u4F60\u7684\u7B2C\u4E00\u6761\u8BB0\u5FC6", ledeSub: "\u5199\u4E00\u53E5\u4F60\u4ECA\u5929\u60F3\u8BB0\u4F4F\u7684\u8BDD\uFF0Cagent \u4E0B\u6B21\u5C31\u4F1A\u7528\u4E0A\u5B83\u3002" }),
       (0, import_react5.createElement)(
         "div",
         { className: "dmo-capture" },
@@ -702,8 +710,7 @@ function TodayPane({ ctx, onOpenDetail }) {
     "div",
     { className: "dmo-pane" },
     tape,
-    h("h1", { className: "dmo-lede" }, lede),
-    h("p", { className: "dmo-lede-sub" }, "\u8FD9\u4E2A\u9762\u677F\u53EA\u56DE\u7B54\u4E00\u4E2A\u95EE\u9898\uFF1A\u4F60\u73B0\u5728\u8BE5\u505A\u54EA\u4EF6\u4E8B\u3002\u5176\u4F59\u90FD\u6536\u5728\u4E0B\u9762\u3002"),
+    PaneHead({ lede, ledeSub: "\u8FD9\u4E2A\u9762\u677F\u53EA\u56DE\u7B54\u4E00\u4E2A\u95EE\u9898\uFF1A\u4F60\u73B0\u5728\u8BE5\u505A\u54EA\u4EF6\u4E8B\u3002\u5176\u4F59\u90FD\u6536\u5728\u4E0B\u9762\u3002" }),
     (0, import_react5.createElement)(
       "div",
       { className: "dmo-suggest" },
@@ -861,11 +868,11 @@ function CapturePane() {
       setBusy(false);
     });
   }
-  const head = [
-    h("h1", { className: "dmo-page-name" }, "\u8BB0\u4E00\u6761"),
-    h("p", { className: "dmo-lede" }, "\u5148\u5B58\u4E0B\u6765\uFF0C\u4E4B\u540E\u5728\u300C\u5F85\u529E\u300D\u91CC\u6574\u7406"),
-    h("p", { className: "dmo-lede-sub" }, "\u4E0D\u9700\u8981\u60F3\u6E05\u695A\u600E\u4E48\u5199\u3002\u591A\u884C\u4F1A\u9010\u6761\u62C6\u5F00\u3002")
-  ];
+  const head = PaneHead({
+    pageName: "\u8BB0\u4E00\u6761",
+    lede: "\u5148\u5B58\u4E0B\u6765\uFF0C\u4E4B\u540E\u5728\u300C\u5F85\u529E\u300D\u91CC\u6574\u7406",
+    ledeSub: "\u4E0D\u9700\u8981\u60F3\u6E05\u695A\u600E\u4E48\u5199\u3002\u591A\u884C\u4F1A\u9010\u6761\u62C6\u5F00\u3002"
+  });
   const captureCard = (0, import_react6.createElement)(
     "section",
     { className: "dmo-card-heavy" },
@@ -1059,14 +1066,10 @@ function TodoPane({ onOpenDetail }) {
   const fillable = misses.data?.pipeline["should-fill"] ?? [];
   const draftingItems = misses.data?.pipeline.drafting ?? [];
   const todoTotal = queue.length + openRows.length + fillable.length + draftingItems.length;
-  const head = [
-    h("h1", { className: "dmo-page-name" }, "\u5F85\u529E"),
-    h(
-      "p",
-      { className: "dmo-lede" },
-      todoTotal === 0 ? "\u4E09\u6BB5\u90FD\u6E05\u7A7A\u4E86" : `\u5171 ${todoTotal} \u4EF6\uFF0C\u5206\u4E09\u7C7B\uFF1A\u8981\u6211\u62CD\u677F\u7684\u3001\u8981\u6211\u6D41\u8F6C\u7684\u3001\u8981\u6211\u8865\u7684`
-    )
-  ];
+  const head = PaneHead({
+    pageName: "\u5F85\u529E",
+    lede: todoTotal === 0 ? "\u4E09\u6BB5\u90FD\u6E05\u7A7A\u4E86" : `\u5171 ${todoTotal} \u4EF6\uFF0C\u5206\u4E09\u7C7B\uFF1A\u8981\u6211\u62CD\u677F\u7684\u3001\u8981\u6211\u6D41\u8F6C\u7684\u3001\u8981\u6211\u8865\u7684`
+  });
   if (snapshot.phase === "error") {
     return (0, import_react7.createElement)(
       "div",
@@ -1556,15 +1559,11 @@ function MemoryList({ ctx, onOpenDetail }) {
   }, attrs: { "data-action": "search" } }) : Primary({ children: "\u641C", onClick: () => {
     setSubmitted(query);
   }, attrs: { "data-action": "search" } });
-  const head = [
-    h("h1", { className: "dmo-page-name" }, "\u8BB0\u5FC6"),
-    h("p", { className: "dmo-lede" }, `\u5E93\u91CC\u4E00\u5171 ${count(entries.length)} \u6761\uFF0C${count(snapshot.data?.stats.tokens ?? 0)} tokens`),
-    h(
-      "p",
-      { className: "dmo-lede-sub" },
-      snapshot.data === void 0 ? "" : `\u6700\u91CD\u7684\u4E00\u6761\u5360 ${count(Math.max(...entries.map((e) => e.tokens), 0))} tokens\uFF1B\u8D85 80 \u884C ${count(snapshot.data.stats.overLimit)} \u7BC7\u3002`
-    )
-  ];
+  const head = PaneHead({
+    pageName: "\u8BB0\u5FC6",
+    lede: `\u5E93\u91CC\u4E00\u5171 ${count(entries.length)} \u6761\uFF0C${count(snapshot.data?.stats.tokens ?? 0)} tokens`,
+    ledeSub: snapshot.data === void 0 ? void 0 : `\u6700\u91CD\u7684\u4E00\u6761\u5360 ${count(Math.max(...entries.map((e) => e.tokens), 0))} tokens\uFF1B\u8D85 80 \u884C ${count(snapshot.data.stats.overLimit)} \u7BC7\u3002`
+  });
   const filterCard = (0, import_react8.createElement)(
     "section",
     { className: "dmo-card-quiet" },
@@ -2484,9 +2483,11 @@ function HealthPane({ onGotoToday }) {
   return (0, import_react10.createElement)(
     "div",
     { className: "dmo-pane" },
-    h("h1", { className: "dmo-page-name" }, "\u5E93\u5065\u5EB7"),
-    h("p", { className: "dmo-lede" }, "\u6BCF\u8BF7\u6C42\u90FD\u4ED8\u7684\u94B1\uFF0C\u548C\u53EA\u5728\u88AB\u8BFB\u65F6\u624D\u4ED8\u7684\u94B1"),
-    h("p", { className: "dmo-lede-sub" }, "\u6DF7\u5728\u4E00\u8D77\u770B\u4F1A\u4F18\u5316\u9519\u4E1C\u897F\u2014\u2014\u6309\u5B83\u4F18\u5316\u7D22\u5F15\u6587\u4EF6\uFF0C\u6BCF\u8BF7\u6C42\u6210\u672C\u4E00\u5206\u4E0D\u7701\u3002"),
+    PaneHead({
+      pageName: "\u5E93\u5065\u5EB7",
+      lede: "\u6BCF\u8BF7\u6C42\u90FD\u4ED8\u7684\u94B1\uFF0C\u548C\u53EA\u5728\u88AB\u8BFB\u65F6\u624D\u4ED8\u7684\u94B1",
+      ledeSub: "\u6DF7\u5728\u4E00\u8D77\u770B\u4F1A\u4F18\u5316\u9519\u4E1C\u897F\u2014\u2014\u6309\u5B83\u4F18\u5316\u7D22\u5F15\u6587\u4EF6\uFF0C\u6BCF\u8BF7\u6C42\u6210\u672C\u4E00\u5206\u4E0D\u7701\u3002"
+    }),
     /* v6 评审 P0-1：成本区 = 本页唯一重卡；维护/导出 = 静卡。
        行分隔的 border-l1 从此只在卡内出现。 */
     (0, import_react10.createElement)(

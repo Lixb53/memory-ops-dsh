@@ -26,7 +26,7 @@ import { useBridge } from '../data.ts'
 import { gotoPane, type PaneId } from '../pane-nav.ts'
 import { scopeBody, useSessionProject, type ClientContextLike } from '../session-context.ts'
 import {
-  Btn, ErrorAlert, InlineDone, Primary, SectionHead, SkeletonRows,
+  Btn, ErrorAlert, InlineDone, PaneHead, Primary, SectionHead, SkeletonRows,
   count, h, truncate,
 } from '../ui.ts'
 
@@ -237,8 +237,7 @@ export function TodayPane({ ctx, onOpenDetail }: {
   /* 空库：唯一出路是写下第一条，捕获框用主按钮 */
   if (isEmpty) {
     return createElement('div', { className: 'dmo-pane' },
-      h('h1', { className: 'dmo-lede' }, '这是你的第一条记忆'),
-      h('p', { className: 'dmo-lede-sub' }, '写一句你今天想记住的话，agent 下次就会用上它。'),
+      PaneHead({ lede: '这是你的第一条记忆', ledeSub: '写一句你今天想记住的话，agent 下次就会用上它。' }),
       createElement('div', { className: 'dmo-capture' },
         createElement('textarea', {
           className: 'dmo-capture-input',
@@ -291,8 +290,7 @@ export function TodayPane({ ctx, onOpenDetail }: {
   return createElement('div', { className: 'dmo-pane' },
     tape,
 
-    h('h1', { className: 'dmo-lede' }, lede),
-    h('p', { className: 'dmo-lede-sub' }, '这个面板只回答一个问题：你现在该做哪件事。其余都收在下面。'),
+    PaneHead({ lede, ledeSub: '这个面板只回答一个问题：你现在该做哪件事。其余都收在下面。' }),
 
     createElement('div', { className: 'dmo-suggest' },
       h('p', { className: 'dmo-suggest-label' }, sug.label),

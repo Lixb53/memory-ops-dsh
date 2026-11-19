@@ -19,7 +19,7 @@ import { call, type OverviewView } from '../api.ts'
 import { useBridge } from '../data.ts'
 import { MaintenancePanel } from './maintenance.ts'
 import {
-  Btn, ErrorAlert, InlineDone, Primary, SectionHead, SkeletonRows, TextLink,
+  Btn, ErrorAlert, InlineDone, PaneHead, Primary, SectionHead, SkeletonRows, TextLink,
   count, h,
 } from '../ui.ts'
 
@@ -73,9 +73,11 @@ export function HealthPane({ onGotoToday }: { onGotoToday: () => void }): ReactN
   }
 
   return createElement('div', { className: 'dmo-pane' },
-    h('h1', { className: 'dmo-page-name' }, '库健康'),
-    h('p', { className: 'dmo-lede' }, '每请求都付的钱，和只在被读时才付的钱'),
-    h('p', { className: 'dmo-lede-sub' }, '混在一起看会优化错东西——按它优化索引文件，每请求成本一分不省。'),
+    PaneHead({
+      pageName: '库健康',
+      lede: '每请求都付的钱，和只在被读时才付的钱',
+      ledeSub: '混在一起看会优化错东西——按它优化索引文件，每请求成本一分不省。',
+    }),
 
     /* v6 评审 P0-1：成本区 = 本页唯一重卡；维护/导出 = 静卡。
        行分隔的 border-l1 从此只在卡内出现。 */

@@ -24,7 +24,7 @@ import { useBridge } from '../data.ts'
 import { gotoPane } from '../pane-nav.ts'
 import { scopeBody, useSessionProject, type ClientContextLike } from '../session-context.ts'
 import {
-  Btn, EmptyState, ErrorAlert, InlineDone, Primary, RejectBox, SectionHead, SkeletonRows,
+  Btn, EmptyState, ErrorAlert, InlineDone, PaneHead, Primary, RejectBox, SectionHead, SkeletonRows,
   TextLink, count, h, tag, truncate,
 } from '../ui.ts'
 
@@ -126,14 +126,13 @@ function MemoryList({ ctx, onOpenDetail }: {
     ? Btn({ children: '搜', onClick: () => { setSubmitted(query) }, attrs: { 'data-action': 'search' } })
     : Primary({ children: '搜', onClick: () => { setSubmitted(query) }, attrs: { 'data-action': 'search' } })
 
-  const head = [
-    h('h1', { className: 'dmo-page-name' }, '记忆'),
-    h('p', { className: 'dmo-lede' }, `库里一共 ${count(entries.length)} 条，${count(snapshot.data?.stats.tokens ?? 0)} tokens`),
-    h('p', { className: 'dmo-lede-sub' },
-      snapshot.data === undefined
-        ? ''
-        : `最重的一条占 ${count(Math.max(...entries.map(e => e.tokens), 0))} tokens；超 80 行 ${count(snapshot.data.stats.overLimit)} 篇。`),
-  ]
+  const head = PaneHead({
+    pageName: '记忆',
+    lede: `库里一共 ${count(entries.length)} 条，${count(snapshot.data?.stats.tokens ?? 0)} tokens`,
+    ledeSub: snapshot.data === undefined
+      ? undefined
+      : `最重的一条占 ${count(Math.max(...entries.map(e => e.tokens), 0))} tokens；超 80 行 ${count(snapshot.data.stats.overLimit)} 篇。`,
+  })
 
   /* v6 评审 P0-1：工具行 + 筛选签装进一张静卡，与台账卡分层 */
   const filterCard = createElement('section', { className: 'dmo-card-quiet' },

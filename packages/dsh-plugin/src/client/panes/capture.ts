@@ -23,7 +23,7 @@ import { createElement, useState, type ReactNode } from 'react'
 import { call, type InboxView } from '../api.ts'
 import { useBridge } from '../data.ts'
 import {
-  Btn, EmptyState, ErrorAlert, InlineDone, Primary, SectionHead, SkeletonRows,
+  Btn, EmptyState, ErrorAlert, InlineDone, PaneHead, Primary, SectionHead, SkeletonRows,
   h, tag, truncate,
 } from '../ui.ts'
 
@@ -119,11 +119,11 @@ export function CapturePane(): ReactNode {
       .finally(() => { setBusy(false) })
   }
 
-  const head = [
-    h('h1', { className: 'dmo-page-name' }, '记一条'),
-    h('p', { className: 'dmo-lede' }, '先存下来，之后在「待办」里整理'),
-    h('p', { className: 'dmo-lede-sub' }, '不需要想清楚怎么写。多行会逐条拆开。'),
-  ]
+  const head = PaneHead({
+    pageName: '记一条',
+    lede: '先存下来，之后在「待办」里整理',
+    ledeSub: '不需要想清楚怎么写。多行会逐条拆开。',
+  })
 
   /* v6 评审 P0-1：类型签 + 捕获框 + 隐私说明装进本页唯一重卡（主操作所在） */
   const captureCard = createElement('section', { className: 'dmo-card-heavy' },

@@ -109,6 +109,26 @@ export function SectionHead({ title, count, action }: {
   )
 }
 
+/**
+ * 页头三件套（页面名 + 一句话结论 + 补充句）。
+ *
+ * 为什么必须包一层 div：分区根 `.dmo-pane` 是 flex + gap s3(12px)。
+ * 三个元素各自当 flex 子项时，lede 与它的补充句之间会被拉开成 12px——
+ * 而原型把它们包在一个 div 里（间距 4px），两端因此漂移（v6 第 1 轮
+ * 评审的「两端一致性」要求）。包一层，让它们读起来是同一块。
+ */
+export function PaneHead({ pageName, lede, ledeSub }: {
+  pageName?: string
+  lede: string
+  ledeSub?: string
+}): ReactNode {
+  return h('div', null,
+    pageName === undefined ? null : h('h1', { className: 'dmo-page-name' }, pageName),
+    h('p', { className: 'dmo-lede' }, lede),
+    ledeSub === undefined ? null : h('p', { className: 'dmo-lede-sub' }, ledeSub),
+  )
+}
+
 /** 主按钮：每屏唯一 brand 实底。 */
 export function Primary({ children, onClick, disabled, small, attrs }: {
   children?: ReactNode
