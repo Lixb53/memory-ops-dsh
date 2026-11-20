@@ -38,6 +38,20 @@ export interface BridgeEnv {
    * 或「skill 没有 description」。两种情况的处理方式完全不同，必须让人看见。
    */
   skillsError?: () => string
+  /**
+   * 置顶注入段的每请求 token 成本（未启用时返回 0）。
+   *
+   * 必须并进总览的「常驻前缀」，否则它会低于真实付费量——
+   * 那个数字是产品第一指标，报低了比不报更有害。
+   */
+  pinnedTokens?: () => number
+  /**
+   * 等置顶缓存就绪。
+   *
+   * `pinnedTokens` 是同步读，进程刚起时它只能报 0；总览会在页面上显示
+   * 「常驻前缀没变」，而实际上注入段已经存在。等一次再算，数字才可信。
+   */
+  pinnedReady?: () => Promise<void>
 }
 
 /** 能力表：路由名 → 实现。与 product.md §8.1 的「30 条」对齐。 */
@@ -51,10 +65,16 @@ export const ROUTES: Readonly<Record<string, RouteSpec>> = {
      * 早先同步当数组用，抛 `all.filter is not a function` 被吞成
      * 「读不到 skill」——于是常驻前缀恒等于框架 171，而不是真实 361。
      */
-    run: async (a, _b, env) => a.overview({
-      skillDescriptions: (await env.listSkills?.()) ?? [],
-      skillsError: env.skillsError?.() ?? '',
-    }),
+    run: async (a, _b, env) => {
+      const descriptions = (await env.listSkills?.()) ?? []
+      // 先等缓存就绪再读成本：否则冷启动那一次总览会报「注入段 0 tokens」。
+      await env.pinnedReady?.()
+      return a.overview({
+        skillDescriptions: descriptions,
+        skillsError: env.skillsError?.() ?? '',
+        pinnedTokens: env.pinnedTokens?.() ?? 0,
+      })
+    },
   },
   inbox: { method: 'POST', run: (a, b) => a.inbox(b as never) },
   search: { method: 'POST', run: (a, b) => a.search(b as never) },

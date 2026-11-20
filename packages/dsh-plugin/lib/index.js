@@ -1350,7 +1350,7 @@ function createReadActions({ store, now }) {
       };
     });
   }
-  function residentBreakdown(entries, skills) {
+  function residentBreakdown(entries, skills, pinnedTokens = 0) {
     const indexItems = entries.filter((entry) => entry.layer === "l0").map((entry) => ({
       kind: "index",
       id: entry.id,
@@ -1378,25 +1378,44 @@ function createReadActions({ store, now }) {
     }));
     const indexTokens = indexItems.reduce((sum, item) => sum + item.tokens, 0);
     const catalogTokens = catalogItems.reduce((sum, item) => sum + item.tokens, 0);
+    const injectedItems = pinnedTokens > 0 ? [{
+      kind: "injected",
+      id: "injected.pinned",
+      path: "",
+      title: "\u7F6E\u9876\u6761\u76EE\u6CE8\u5165",
+      tokens: pinnedTokens,
+      bytes: 0,
+      lines: 0,
+      overLineLimit: false,
+      billed: true,
+      note: "pinned: true \u7684\u6761\u76EE\uFF0C\u6BCF\u8BF7\u6C42\u4ED8\u8D39\uFF1B\u7F6E\u9876\u51E0\u6761\u5C31\u4ED8\u51E0\u6761"
+    }] : [];
     return {
-      items: [...catalogItems, ...indexItems],
+      items: [...catalogItems, ...injectedItems, ...indexItems],
       catalogTokens,
       indexTokens,
+      /**
+       * 置顶注入的 token 数单列一格。
+       *
+       * 不给这个数，「常驻前缀涨了 80」就无法归因：是装了新 skill，
+       * 还是自己多置顶了一条原则？两种处置方式完全不同。
+       */
+      injectedTokens: pinnedTokens,
       frameTokens: SKILL_CATALOG_FRAME_TOKENS,
-      /** 真正每请求付费的部分：catalog + 框架。 */
-      billedTokens: catalogTokens + SKILL_CATALOG_FRAME_TOKENS,
+      /** 真正每请求付费的部分：catalog + 框架 + 置顶注入。 */
+      billedTokens: catalogTokens + SKILL_CATALOG_FRAME_TOKENS + pinnedTokens,
       /** 标了 l0 但按需加载的部分。 */
       onDemandTokens: indexTokens
     };
   }
-  async function overview({ skillDescriptions = [], skillsError = "" } = {}) {
+  async function overview({ skillDescriptions = [], skillsError = "", pinnedTokens = 0 } = {}) {
     return guard(async () => {
       const entries = await store.scan();
       const events = await store.readEvents();
       const misses = await store.readMisses();
       const stats = store.summarize(entries, events, misses, { nowMs: now() });
       const l0 = stats.layers.l0.tokens;
-      const resident = residentBreakdown(entries, skillDescriptions);
+      const resident = residentBreakdown(entries, skillDescriptions, pinnedTokens);
       return {
         kpi: {
           /**
@@ -1447,8 +1466,8 @@ function createReadActions({ store, now }) {
             files: skillDescriptions.length,
             limit: RESIDENT_TOKEN_BUDGET,
             billing: "per-request",
-            note: "skill description + \u76EE\u5F55\u6846\u67B6\uFF0C\u6BCF\u4E2A\u8BF7\u6C42\u90FD\u4ED8\u8D39",
-            advice: "\u8D85\u4E86\u8981\u538B\u7F29 skill description\uFF08\u6539\u5B83\u624D\u4F1A\u7701\u6BCF\u8BF7\u6C42\u6210\u672C\uFF09"
+            note: "skill description + \u76EE\u5F55\u6846\u67B6 + \u7F6E\u9876\u6CE8\u5165\uFF0C\u6BCF\u4E2A\u8BF7\u6C42\u90FD\u4ED8\u8D39",
+            advice: "\u8D85\u4E86\u5148\u770B\u6CE8\u5165\u6BB5\uFF1A\u53D6\u6D88\u7F6E\u9876\u6700\u7701\uFF0C\u6539 skill description \u6B21\u4E4B"
           },
           {
             layer: "L1",
@@ -3274,6 +3293,63 @@ ${body.replace(/^\n+/, "")}`);
   };
 }
 
+// ../core/src/pinned.ts
+var PINNED_MAX_TOKENS = 256;
+var PINNED_SECTION_NAME = "memory-ops:pinned-rules";
+var PINNED_SECTION_ORDER = 10;
+var HEADER = "## \u8BB0\u5FC6\u5E93\u7F6E\u9876\u89C4\u5219";
+var FOOTER = "\u4EE5\u4E0A\u4E3A\u7528\u6237\u663E\u5F0F\u7F6E\u9876\u7684\u957F\u671F\u89C4\u5219\uFF0C\u4F18\u5148\u7EA7\u9AD8\u4E8E\u9ED8\u8BA4\u884C\u4E3A\u3002";
+function oneLine(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim();
+}
+function selectPinned(entries, options = {}) {
+  const includeWork = options.includeWork === true;
+  const seen = /* @__PURE__ */ new Set();
+  const picked = [];
+  for (const entry of entries) {
+    if (entry.pinned !== true) continue;
+    if (entry.status === "rejected") continue;
+    if (!includeWork && entry.domain !== "personal") continue;
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    picked.push(entry);
+  }
+  return picked;
+}
+function renderPinnedSection(entries, options = {}) {
+  const maxTokens = options.maxTokens ?? PINNED_MAX_TOKENS;
+  const picked = selectPinned(entries, options);
+  if (picked.length === 0) return { text: "", tokens: 0, ids: [], omitted: 0 };
+  const budget = Math.max(0, maxTokens - estimateTokens(`${HEADER}
+
+${FOOTER}`));
+  const lines = [];
+  const ids = [];
+  let used = 0;
+  let omitted = 0;
+  for (const entry of picked) {
+    const line = `- [${entry.id}] ${oneLine(entry.title)}`;
+    const cost = estimateTokens(line);
+    if (used + cost > budget) {
+      omitted += 1;
+      continue;
+    }
+    lines.push(line);
+    ids.push(entry.id);
+    used += cost;
+  }
+  if (lines.length === 0) {
+    const first = picked[0];
+    lines.push(`- [${first.id}] ${truncate(oneLine(first.title), 40)}`);
+    ids.push(first.id);
+    omitted = picked.length - 1;
+  }
+  const note = omitted > 0 ? `
+\u53E6\u6709 ${omitted} \u6761\u7F6E\u9876\u6761\u76EE\u8D85\u51FA ${maxTokens} tokens \u9884\u7B97\u672A\u6CE8\u5165\uFF0C\u89C1\u8BB0\u5FC6\u5E93\u603B\u89C8\u3002` : "";
+  const text = [HEADER, "", ...lines, "", `${FOOTER}${note}`].join("\n");
+  return { text, tokens: estimateTokens(text), ids, omitted };
+}
+
 // src/index.ts
 import fsp3 from "node:fs/promises";
 import path4 from "node:path";
@@ -3289,10 +3365,15 @@ var ROUTES = {
      * 早先同步当数组用，抛 `all.filter is not a function` 被吞成
      * 「读不到 skill」——于是常驻前缀恒等于框架 171，而不是真实 361。
      */
-    run: async (a, _b, env) => a.overview({
-      skillDescriptions: await env.listSkills?.() ?? [],
-      skillsError: env.skillsError?.() ?? ""
-    })
+    run: async (a, _b, env) => {
+      const descriptions = await env.listSkills?.() ?? [];
+      await env.pinnedReady?.();
+      return a.overview({
+        skillDescriptions: descriptions,
+        skillsError: env.skillsError?.() ?? "",
+        pinnedTokens: env.pinnedTokens?.() ?? 0
+      });
+    }
   },
   inbox: { method: "POST", run: (a, b) => a.inbox(b) },
   search: { method: "POST", run: (a, b) => a.search(b) },
@@ -3636,6 +3717,73 @@ ${content}
   return { attach };
 }
 
+// src/pinned-cache.ts
+var EMPTY = { text: "", tokens: 0, ids: [], omitted: 0 };
+function createPinnedCache(config) {
+  const maxTokens = config.maxTokens ?? PINNED_MAX_TOKENS;
+  const includeWork = config.includeWork === true;
+  const ttl = config.refreshTtlMs ?? 3e4;
+  const now = config.now ?? Date.now;
+  let snapshot = EMPTY;
+  let loaded = false;
+  let inflight = null;
+  let lastAttempt = null;
+  let disposed = false;
+  const frozen = /* @__PURE__ */ new Map();
+  function scanIntoMemory() {
+    if (inflight !== null) return inflight;
+    lastAttempt = now();
+    const run = config.scan().then((entries) => {
+      if (disposed) return;
+      snapshot = renderPinnedSection(entries, { maxTokens, includeWork });
+      loaded = true;
+    }).catch(() => {
+    }).finally(() => {
+      if (inflight === run) inflight = null;
+    });
+    inflight = run;
+    return run;
+  }
+  function maybeRefresh() {
+    if (disposed) return;
+    if (lastAttempt !== null && now() - lastAttempt < ttl) return;
+    void scanIntoMemory();
+  }
+  return {
+    prime() {
+      void scanIntoMemory();
+    },
+    ready() {
+      return loaded ? Promise.resolve() : scanIntoMemory();
+    },
+    refresh() {
+      return scanIntoMemory();
+    },
+    renderFor(session) {
+      const key = session ?? "";
+      const hit = frozen.get(key);
+      if (hit !== void 0) return hit;
+      if (!loaded) {
+        maybeRefresh();
+        return "";
+      }
+      maybeRefresh();
+      frozen.set(key, snapshot.text);
+      return snapshot.text;
+    },
+    current() {
+      maybeRefresh();
+      return snapshot;
+    },
+    dispose() {
+      disposed = true;
+      frozen.clear();
+      snapshot = EMPTY;
+      loaded = false;
+    }
+  };
+}
+
 // src/index.ts
 var name = "dsh-memory-ops";
 var BRIDGE_PREFIX = "/api/dsh-memory-ops";
@@ -3653,6 +3801,17 @@ function apply(ctx, config = {}) {
   const actions = createActions({ store, readExternal });
   void store.ensureLayout().catch(() => {
   });
+  const injectPinned = config.injectPinned !== false;
+  const pinnedCache = createPinnedCache({
+    scan: () => store.scan(),
+    maxTokens: config.maxPinnedTokens,
+    includeWork: config.injectWorkPinned === true
+  });
+  void pinnedCache.prime();
+  const sessionOfContext = (context) => {
+    const agent = context?.agent;
+    return typeof agent?.id === "string" && agent.id !== "" ? agent.id : void 0;
+  };
   const disposers = [];
   let skillsError = "";
   const env = {
@@ -3686,7 +3845,16 @@ function apply(ctx, config = {}) {
         return [];
       }
     },
-    skillsError: () => skillsError
+    skillsError: () => skillsError,
+    /**
+     * 置顶注入段的每请求成本，供总览并进 `billedTokens`。
+     *
+     * 为什么必须并进去：常驻前缀原本只算「skill description + 目录框架」。
+     * 多出一段注入却不计入，顶栏那个数字就会**低于真实付费量**——
+     * 正是 `product.md` §十二 修过的同类错误：口径不一致时，用户不知道信哪个。
+     */
+    pinnedTokens: () => injectPinned ? pinnedCache.current().tokens : 0,
+    pinnedReady: () => injectPinned ? pinnedCache.ready() : Promise.resolve()
   };
   void Promise.resolve(env.listSkills?.()).catch((error) => {
     skillsError = `\u542F\u52A8\u63A2\u6D4B skills \u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
@@ -3699,14 +3867,28 @@ function apply(ctx, config = {}) {
     const dispose = registerTools({ actions }).attach(toolCtx);
     return dispose;
   });
+  if (injectPinned) {
+    ctx.inject(["systemPrompt"], (promptCtx) => {
+      const systemPrompt = promptCtx.systemPrompt;
+      if (typeof systemPrompt?.section !== "function") return;
+      return systemPrompt.section({
+        name: PINNED_SECTION_NAME,
+        order: PINNED_SECTION_ORDER,
+        text: (context) => pinnedCache.renderFor(sessionOfContext(context)),
+        interpolate: false
+      });
+    });
+  }
   return () => {
     for (const dispose of disposers) dispose();
+    pinnedCache.dispose();
   };
 }
 var index_default = { name, apply };
 export {
   BRIDGE_PREFIX,
   apply,
+  createPinnedCache,
   index_default as default,
   name
 };

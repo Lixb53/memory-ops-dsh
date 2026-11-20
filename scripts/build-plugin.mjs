@@ -49,7 +49,7 @@ const CLIENT_EXTERNALS = ['react', 'react-dom', 'react/jsx-runtime']
  */
 const coreSrcDir = path.join(here, '..', 'packages', 'core', 'src')
 const CORE_SUBPATHS = new Set([
-  'actions', 'parse', 'privacy', 'project', 'schema', 'scope', 'search', 'store', 'index',
+  'actions', 'parse', 'pinned', 'privacy', 'project', 'schema', 'scope', 'search', 'store', 'index',
 ])
 
 function resolveCoreSource() {

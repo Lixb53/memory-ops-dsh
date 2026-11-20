@@ -13,11 +13,22 @@
 
 import { createActions } from '@memory-ops/core/actions'
 import { createStore, defaultRoot, safeRelPath } from '@memory-ops/core/store'
+import { PINNED_SECTION_NAME, PINNED_SECTION_ORDER } from '@memory-ops/core/pinned'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { createBridge, type BridgeEnv } from './bridge.ts'
 import { registerTools } from './tools.ts'
+import { createPinnedCache } from './pinned-cache.ts'
 import { estimateTokens } from '@memory-ops/core/schema'
+
+/**
+ * 再导出缓存工厂供测试使用。
+ *
+ * 为什么要开这个口子：冻结与冷启动这两条路径**只能靠假 scan 与假时钟**验证，
+ * 而它们恰恰是最容易写错的地方（把空串冻结进去，那个会话就永远拿不到内容）。
+ * 走真文件 + 真 30s TTL 去测，测不出来也跑不动。
+ */
+export { createPinnedCache }
 
 export const name = 'dsh-memory-ops'
 
@@ -28,6 +39,16 @@ export const BRIDGE_PREFIX = '/api/dsh-memory-ops'
 export interface PluginConfig {
   /** 真相源根目录；省略时读 MEMORY_OPS_ROOT 或 ~/.memory-ops。 */
   root?: string
+  /**
+   * 是否把 `pinned: true` 的条目注册成系统提示词段落；默认 true。
+   *
+   * 关掉它，记忆库就退回纯拉取模型（只有 `memory_recall` 命中才进上下文）。
+   */
+  injectPinned?: boolean
+  /** 注入段的 token 上限；默认 256。 */
+  maxPinnedTokens?: number
+  /** 是否连工作域置顶条目一起注入；默认 false（理由见 core/pinned.ts）。 */
+  injectWorkPinned?: boolean
 }
 
 /** 最小 Context 形状：只声明本插件真正用到的成员，避免死依赖宿主内部类型。 */
@@ -65,6 +86,30 @@ export function apply(ctx: PluginContext, config: PluginConfig = {}): () => void
 
   // 首次加载把骨架建好，避免 UI 首次打开看到「读取失败」
   void store.ensureLayout().catch(() => {})
+
+  /**
+   * 置顶条目的同步缓存。
+   *
+   * 宿主的 `systemPrompt.section()` 要求 `text` 同步返回，而 `store.scan()` 是
+   * async —— 这层缓存不是优化，是接口约束。详见 `pinned-cache.ts` 文件头。
+   */
+  const injectPinned = config.injectPinned !== false
+  const pinnedCache = createPinnedCache({
+    scan: () => store.scan(),
+    maxTokens: config.maxPinnedTokens,
+    includeWork: config.injectWorkPinned === true,
+  })
+  /**
+   * 启动即预热：覆盖「进程起来 → 用户发第一条消息」这段空窗，
+   * 让冷启动的第一个会话也能拿到内容，而不是先收一轮空串。
+   */
+  void pinnedCache.prime()
+
+  /** 组装上下文的会话 id（宿主在 `AssembleContext` 上加了 `agent`）。 */
+  const sessionOfContext = (context: unknown): string | undefined => {
+    const agent = (context as { agent?: { id?: unknown } } | null | undefined)?.agent
+    return typeof agent?.id === 'string' && agent.id !== '' ? agent.id : undefined
+  }
 
   const disposers: (() => void)[] = []
 
@@ -126,6 +171,15 @@ export function apply(ctx: PluginContext, config: PluginConfig = {}): () => void
       }
     },
     skillsError: () => skillsError,
+    /**
+     * 置顶注入段的每请求成本，供总览并进 `billedTokens`。
+     *
+     * 为什么必须并进去：常驻前缀原本只算「skill description + 目录框架」。
+     * 多出一段注入却不计入，顶栏那个数字就会**低于真实付费量**——
+     * 正是 `product.md` §十二 修过的同类错误：口径不一致时，用户不知道信哪个。
+     */
+    pinnedTokens: () => (injectPinned ? pinnedCache.current().tokens : 0),
+    pinnedReady: () => (injectPinned ? pinnedCache.ready() : Promise.resolve()),
   }
 
   /**
@@ -151,8 +205,39 @@ export function apply(ctx: PluginContext, config: PluginConfig = {}): () => void
     return dispose
   })
 
+  /**
+   * ---- 置顶条目注入系统提示词 ----
+   *
+   * 这是记忆库从「纯拉取」补上的那条**推送**通道：`pinned: true` 的条目
+   * 不再依赖模型主动 `memory_recall`，而是每个请求都在。
+   *
+   * 三个必须守住的细节：
+   *
+   *   1. `interpolate: false` —— 记忆正文是用户写的任意 Markdown。宿主的变量
+   *      插值是**严格**的：出现未注册的 `{{...}}` 会让整次提示词组装抛错。
+   *      一条内容里有 `{{` 就炸掉全部请求，这个代价不能接受。
+   *   2. `text` 必须同步 —— 走缓存，见 `pinned-cache.ts`。
+   *   3. 同名段落只能注册一次 —— 名字是 `memory-ops:pinned-rules`，重复注册直接抛错。
+   */
+  if (injectPinned) {
+    ctx.inject(['systemPrompt'], (promptCtx) => {
+      const systemPrompt = (promptCtx as {
+        systemPrompt?: { section?: (section: unknown) => () => void }
+      }).systemPrompt
+      // 宿主没有这个服务时静默跳过：注入是增强，缺了它记忆库其余部分照常工作。
+      if (typeof systemPrompt?.section !== 'function') return
+      return systemPrompt.section({
+        name: PINNED_SECTION_NAME,
+        order: PINNED_SECTION_ORDER,
+        text: (context: unknown) => pinnedCache.renderFor(sessionOfContext(context)),
+        interpolate: false,
+      })
+    })
+  }
+
   return () => {
     for (const dispose of disposers) dispose()
+    pinnedCache.dispose()
   }
 }
 

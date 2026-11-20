@@ -234,17 +234,26 @@ export function createReadActions({ store, now }: ActionContext) {
   /**
    * 常驻前缀逐项拆解 —— 回答「这 N 个 tokens 到底是什么」。
    *
-   * 拆成三类，因为它们**付费方式完全不同**，混在一起就会得出错误结论：
-   *   1. `catalog`：skill description + `<available_skills>` 框架，**每个请求都付费**
-   *   2. `index`：`layer: l0` 的索引文件，只在被 read 时才进上下文
-   *   3. `frame`：其余固定文字
+   * 拆成四类，因为它们**付费方式完全不同**，混在一起就会得出错误结论：
+   *   1. `catalog`：skill description，**每个请求都付费**
+   *   2. `frame`：`<available_skills>` 目录框架，每请求付费（固定）
+   *   3. `injected`：`pinned: true` 的记忆条目，每请求付费（可关）
+   *   4. `index`：`layer: l0` 的索引文件，只在被 read 时才进上下文
    *
    * 为什么必须拆开：product.md 把「两个 skill description」与「L0 索引文件」
    * 都记作「常驻前缀 286 tokens」，但实测前者是 190 + 171 框架 = 361，
    * 后者是 286。两个数字对不上，说明口径本身有歧义——而这个歧义会直接
    * 导致「该优化哪个」判断错。
+   *
+   * `injected` 是第四类，同理不能并进别的桶：它是**唯一一个由用户直接控制
+   * 大小的每请求成本**（置顶几条就付几条）。并进 catalog 会让「关掉某个
+   * 置顶条目能省多少」这个问题无法回答。
    */
-  function residentBreakdown(entries: MemoryEntry[], skills: ResidentSkill[]) {
+  function residentBreakdown(
+    entries: MemoryEntry[],
+    skills: ResidentSkill[],
+    pinnedTokens = 0,
+  ) {
     const indexItems = entries
       .filter(entry => entry.layer === 'l0')
       .map(entry => ({
@@ -277,23 +286,48 @@ export function createReadActions({ store, now }: ActionContext) {
     const indexTokens = indexItems.reduce((sum, item) => sum + item.tokens, 0)
     const catalogTokens = catalogItems.reduce((sum, item) => sum + item.tokens, 0)
 
+    /** 置顶注入段：有就占一行，没有就不占——不制造一个恒为 0 的假条目。 */
+    const injectedItems = pinnedTokens > 0
+      ? [{
+          kind: 'injected' as const,
+          id: 'injected.pinned',
+          path: '',
+          title: '置顶条目注入',
+          tokens: pinnedTokens,
+          bytes: 0,
+          lines: 0,
+          overLineLimit: false,
+          billed: true,
+          note: 'pinned: true 的条目，每请求付费；置顶几条就付几条',
+        }]
+      : []
+
     return {
-      items: [...catalogItems, ...indexItems],
+      items: [...catalogItems, ...injectedItems, ...indexItems],
       catalogTokens,
       indexTokens,
+      /**
+       * 置顶注入的 token 数单列一格。
+       *
+       * 不给这个数，「常驻前缀涨了 80」就无法归因：是装了新 skill，
+       * 还是自己多置顶了一条原则？两种处置方式完全不同。
+       */
+      injectedTokens: pinnedTokens,
       frameTokens: SKILL_CATALOG_FRAME_TOKENS,
-      /** 真正每请求付费的部分：catalog + 框架。 */
-      billedTokens: catalogTokens + SKILL_CATALOG_FRAME_TOKENS,
+      /** 真正每请求付费的部分：catalog + 框架 + 置顶注入。 */
+      billedTokens: catalogTokens + SKILL_CATALOG_FRAME_TOKENS + pinnedTokens,
       /** 标了 l0 但按需加载的部分。 */
       onDemandTokens: indexTokens,
     }
   }
 
   /** 总览：KPI + 预算账本 + 三率 + 域统计。 */
-  async function overview({ skillDescriptions = [], skillsError = '' }: {
+  async function overview({ skillDescriptions = [], skillsError = '', pinnedTokens = 0 }: {
     skillDescriptions?: ResidentSkill[]
     /** 为什么没读到 skill（空字符串表示没出问题）。 */
     skillsError?: string
+    /** 置顶注入段占用的 token（未启用或库内无置顶条目时为 0）。 */
+    pinnedTokens?: number
   } = {}) {
     return guard(async () => {
       const entries = await store.scan()
@@ -301,7 +335,7 @@ export function createReadActions({ store, now }: ActionContext) {
       const misses = await store.readMisses()
       const stats = store.summarize(entries, events, misses, { nowMs: now() })
       const l0 = stats.layers.l0.tokens
-      const resident = residentBreakdown(entries, skillDescriptions)
+      const resident = residentBreakdown(entries, skillDescriptions, pinnedTokens)
       return {
         kpi: {
           /**
@@ -352,8 +386,8 @@ export function createReadActions({ store, now }: ActionContext) {
             files: skillDescriptions.length,
             limit: RESIDENT_TOKEN_BUDGET,
             billing: 'per-request',
-            note: 'skill description + 目录框架，每个请求都付费',
-            advice: '超了要压缩 skill description（改它才会省每请求成本）',
+            note: 'skill description + 目录框架 + 置顶注入，每个请求都付费',
+            advice: '超了先看注入段：取消置顶最省，改 skill description 次之',
           },
           {
             layer: 'L1',

@@ -161,9 +161,9 @@ export interface InboxView {
   states: string[]
 }
 
-/** 常驻前缀的一项（skill description 或 l0 索引文件）。 */
+/** 常驻前缀的一项（skill description、置顶注入段，或 l0 索引文件）。 */
 export interface ResidentItem {
-  kind: 'catalog' | 'index'
+  kind: 'catalog' | 'injected' | 'index'
   id: string
   path: string
   title: string
@@ -180,6 +180,8 @@ export interface ResidentItem {
 export interface ResidentBreakdown {
   items: ResidentItem[]
   catalogTokens: number
+  /** 置顶条目注入段（`pinned: true`）；0 表示未启用或库内没有置顶条目。 */
+  injectedTokens: number
   indexTokens: number
   frameTokens: number
   billedTokens: number

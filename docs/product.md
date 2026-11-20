@@ -39,7 +39,7 @@
 | `packages/dsh-plugin` | ✅ 已实现并安装运行 | host 半体（34 条路由 + 2 个工具）+ 浏览器半体（4 表面） |
 | `packages/memory-web` | ❌ **未实现** | Web 管理端**没有代码**，本文档中所有 Web 端描述均为设计意图 |
 
-测试：core 252 项 + plugin 85 项 = **337 项**，`tsc --noEmit` 0 错误。
+测试：core 266 项 + plugin 101 项 = **367 项**，`tsc --noEmit` 0 错误。
 
 ### 2.2 表面与分区：真实完成度
 
@@ -1581,7 +1581,7 @@ remote 会说谎的两种情况都兜住了：不是 git 仓库（退回路径�
 
 ### 20.5 验证
 
-`scope.test.ts` 26 项 + `project.test.ts` 3 项 + `scope-migrate.test.ts` 5 项回归。core 252 项、plugin 85 项，共 337 项全绿。
+`scope.test.ts` 26 项 + `project.test.ts` 3 项 + `scope-migrate.test.ts` 5 项回归。本轮 core 与 plugin 当时共 337 项全绿。
 
 | 断言的 | 挡住的回潮 |
 |---|---|
@@ -1607,3 +1607,91 @@ remote 会说谎的两种情况都兜住了：不是 git 仓库（退回路径�
 而它实际是主仓 135 个模块的清单；`issues/因事因案save…` 标题毫无子模块痕迹，
 正文却明写 `sz-web-dzh-gslz packages/modules/src/data-screen`。
 两类判错的代价相反（丢主仓知识 / 泄漏定制细节），必须人来拍板。
+
+---
+
+## 二十一、置顶条目注入：补上「推送」通道（2026-11-20）
+
+### 21.1 问题：原则只有被检索才存在
+
+用户提出：「记忆库里有一条『所有会话的思考过程和结果全都使用中文』，为什么没有生效」。
+
+查证结果是**它从来没有机会生效**，而不是写错了：
+
+| 事实 | 证据 |
+|---|---|
+| 条目是 L2 详情层 | `personal/principles.md` 的 frontmatter `layer: l2` |
+| 插件只注册了两个入口 | `index.ts` 里 `ctx.inject(['webServer'])` 与 `ctx.inject(['tools'])`，没有 system prompt 注入 |
+| 生效依赖模型自己想起来查 | `memory_recall` 是**拉取**模型；实测 promote 后 11 个会话、3 次 recall，命中它 2 次 |
+| 本会话 system prompt 里一个字都没有 | 解压 session 日志：`includes('AGENTS') === false` |
+
+§九 撤销「建 personal-memory skill」时留过一句话：「若将来确实需要（例如希望 agent
+在用户没提『记忆』二字时也主动来查），正确做法是让插件自动生成 SKILL.md」。
+本次选择的是**比 skill 更省**的那条：直接把置顶条目注册成系统提示词段落。
+
+### 21.2 通道：`systemPrompt.section()`
+
+```ts
+ctx.inject(['systemPrompt'], (ctx) => ctx.systemPrompt.section({
+  name: 'memory-ops:pinned-rules',
+  order: 10,                       // persona(0) 之后、工具引导(1000) 之前
+  text: () => cache.renderFor(sessionId),
+  interpolate: false,
+}))
+```
+
+### 21.3 四条硬约束（读 `system-prompt/src/index.ts` 得出，不是猜的）
+
+| # | 约束 | 后果 |
+|---|---|---|
+| 1 | `section.text` 只接受**同步**返回值（`index.ts:669` 无 `await`） | `store.scan()` 是 async，必须另建同步缓存 |
+| 2 | 变量插值是**严格**的：未注册的 `{{x}}` 会让整次组装抛错 | 记忆正文是任意 Markdown，**必须 `interpolate: false`**，否则一条含 `{{` 的记忆能炸掉全部请求 |
+| 3 | `AssembleContext.agent` 只有 `id`（`dispatch.ts:174`） | 组装期拿不到 cwd，**不能按项目判断该不该注入** |
+| 4 | 组装发生在 `agent/pre-step` 之前 | 想「本步改、本步生效」做不到 |
+
+约束 3 直接决定了 21.4 的取舍。
+
+### 21.4 两个决定
+
+**① 只注入个人域。** 工作域置顶条目按分支变化；跨会话注入就是 `_shared`
+那个坑的重演（`schema.ts` 的 `SHARED_BRANCH`：一个分支的架构结论套到另一个
+分支上就是错的）。配置项 `injectWorkPinned` 默认 false，要跨分支就写进个人域。
+
+**② 按会话冻结（策略 A）。** 系统提示词一变，当前会话 KV cache 作废（实测单次
+20–57 万 tokens）。因此每个会话在第一次组装时快照一次，之后不变：
+
+| | 会话中途改置顶 | 代价 |
+|---|---|---|
+| A（采用） | 新会话生效，老会话保持前后一致 | 改完要新开会话才看到 |
+| B（未采用） | 立即生效 | 每次改条目作废一次会话缓存 |
+
+A 也更符合语义：同一轮对话里规则悄悄换掉，模型前几步的依据就再也对不上了。
+
+### 21.5 两个必须显式处理的边界
+
+| 边界 | 错误做法 | 现在的做法 |
+|---|---|---|
+| 冷启动时首扫未回 | 返回 `''` 并**冻结** | 只返回 `''` 不冻结 —— 冻结了那个会话永远拿不到内容 |
+| 超预算 | 静默丢弃多余条目 | 跳过并写进段落：`另有 N 条置顶条目超出 256 tokens 预算未注入` |
+
+### 21.6 记账：常驻前缀多了一个桶
+
+原来 `billedTokens = catalog + frame`。多出一段注入却不计入，顶栏那个数字就会
+**低于真实付费量**——正是 §十二 修过的同类错误。现在：
+
+```
+const 常驻前缀 = catalog（skill description）
+               + frame（<available_skills> 框架 171）
+               + injected（置顶条目，唯一由用户直接控制大小的每请求成本）
+```
+
+`injected` 单列而不并进 catalog：只有单独一格，「取消一条置顶能省多少」才可回答。
+
+实测（本机，一条原则）：`0 + 171 + 58 = 229`。
+
+### 21.7 未做的事
+
+- **不自动挨个条目注入**：只有 `pinned: true` 才进。全量注入就是第二个重型知识库。
+- **不做 `agent/pre-step` 钩子**：按会话冻结之后，它带来的只是「本步改本步生效」，
+  而那正是策略 A 主动放弃的语义。
+- **不改写 `memory_recall`**：拉取通道不变，两者并存。
