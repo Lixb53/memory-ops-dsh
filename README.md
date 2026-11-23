@@ -8,7 +8,7 @@
 > **文档入口**：产品设计、真实完成度、设计稿与对账记录**全部以 [`docs/`](docs/) 为准**。
 > - [`docs/README.md`](docs/README.md) — 一页总结（先看这个）
 > - [`docs/product.md`](docs/product.md) — 完整设计说明（§二 当前真实状态）
-> - [`docs/design/`](docs/design/) — HTML 设计稿与 QA 脚本（**与代码不同源**）
+> - [`design/`](design/) — HTML 设计稿与 QA 脚本（**与代码不同源**）
 >
 > 本文件只是仓库门面，不承载产品状态。
 
@@ -114,7 +114,7 @@ hypothesis ──重复≥2──> observed ──重复≥3且无反驳──> 
 ```bash
 pnpm install
 pnpm build          # 构建插件产物（产物已入库，见下）
-pnpm test           # core 231 + 插件 89 项测试
+pnpm test           # core 266 + 插件 143 项测试
 pnpm typecheck
 ```
 
@@ -224,7 +224,12 @@ DSH 会记成 `link:` 依赖，源码改了要重新 `pnpm build` **并刷新页
 | 右侧栏快速捕获 | `sidebarRightTabs` + `sidebar.right.pane.tab` |
 | `/remember` 命令 | `inputTriggers.registerSource` |
 
-**5 个分区**：本项目 / 记录流 / 记忆 / 未命中 / 总览。
+**5 个分区**：今天 / 记一条 / 待办 / 记忆 / 库健康。
+
+> **界面版本**：主面板自 v9（2026-11-21）起是**三栏工作台**（212 左轨 / 1fr 中栏 / 360 检视栏），
+> 契约见 [`design/brief.md`](design/brief.md)。其余 3 个表面（会话 tab / 右侧捕获 / `/remember`）
+> 仍是 v7 结构，列为下一轮迁移。验证方法与实测数据见
+> [`packages/dsh-plugin/perf-report.md`](packages/dsh-plugin/perf-report.md)。
 
 ### agent 工具
 

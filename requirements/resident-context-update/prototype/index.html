@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>记忆库 · 常驻前缀与更新（原型 v0.2）</title>
+<style>
+  :root{
+    --ink:#1b2430;--ink-2:#465568;--muted:#7a8798;--line:#e3e8ef;--bg:#f7f8fa;--card:#fff;
+    --accent:#1f4e79;--accent-2:#eaf1f8;--ok:#0d6b3f;--ok-2:#e8f5ee;--warn:#96570a;--warn-2:#fdf3e3;
+    --danger:#a92a1e;--danger-2:#fdeae7;--radius:10px;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg)}
+  header{display:flex;align-items:center;gap:16px;padding:10px 18px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  .brand{font-weight:700}.brand small{font-weight:400;color:var(--muted);margin-left:6px}
+  .crumb{color:var(--muted);font-size:13px}
+  .spacer{flex:1}
+  .switch{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);user-select:none}
+  .switch input{appearance:none;width:36px;height:20px;border-radius:20px;background:#cfd8e3;position:relative;cursor:pointer;transition:.2s}
+  .switch input:checked{background:var(--accent)}
+  .switch input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+  .switch input:checked::after{left:18px}
+  .layout{display:grid;grid-template-columns:212px 1fr;min-height:calc(100vh - 53px)}
+  nav{background:#fff;border-right:1px solid var(--line);padding:14px 10px}
+  nav h4{margin:6px 10px 8px;font-size:11px;letter-spacing:1px;color:var(--muted)}
+  nav button{display:flex;width:100%;gap:10px;align-items:center;border:0;background:transparent;padding:9px 10px;border-radius:8px;font:inherit;color:var(--ink-2);cursor:pointer;text-align:left}
+  nav button:hover{background:#f2f5f8}
+  nav button.on{background:var(--accent-2);color:var(--accent);font-weight:600}
+  nav .dot{width:6px;height:6px;border-radius:50%;background:#c8d2de}
+  nav button.on .dot{background:var(--accent)}
+  nav .hint{margin:14px 10px 0;font-size:12px;color:var(--muted);line-height:1.5}
+  main{padding:18px 22px 90px;max-width:1080px}
+  h1{font-size:19px;margin:4px 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
+  .card h3{margin:0 0 4px;font-size:14px}
+  .note{margin:0 0 10px;color:var(--muted);font-size:12.5px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+  .kpi .k{font-size:12px;color:var(--muted)}
+  .kpi .v{font-size:24px;font-weight:700;font-family:var(--mono);margin:2px 0 1px}
+  .kpi .s{font-size:12px;color:var(--ink-2)}
+  .bar{height:10px;border-radius:6px;background:#eef1f5;display:flex;overflow:hidden;margin:8px 0 6px}
+  .bar i{display:block;height:100%}
+  .seg-c{background:#1f4e79}.seg-f{background:#5b7fa6}.seg-i{background:#b98321}.seg-t{background:#3f7d63}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-2)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend em{width:9px;height:9px;border-radius:2px;display:inline-block}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;color:var(--muted);font-weight:600}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  .tag{display:inline-block;padding:1px 7px;border-radius:20px;font-size:11.5px;border:1px solid transparent;white-space:nowrap}
+  .tag.bill{background:#eaf1f8;color:#1f4e79;border-color:#cfe0ef}
+  .tag.ondemand{background:#f1f3f6;color:#55627a;border-color:#e0e5ec}
+  .tag.ro{background:#f1f3f6;color:#55627a;border-color:#e0e5ec}
+  .tag.ok{background:var(--ok-2);color:var(--ok);border-color:#c7e6d6}
+  .tag.warn{background:var(--warn-2);color:var(--warn);border-color:#f0dcbb}
+  .tag.bad{background:var(--danger-2);color:var(--danger);border-color:#f3cbc5}
+  button.act{font:inherit;border:1px solid #cfd8e3;background:#fff;color:var(--ink-2);border-radius:8px;padding:5px 11px;cursor:pointer}
+  button.act:hover{border-color:var(--accent);color:var(--accent)}
+  button.act[disabled]{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{color:#fff;filter:brightness(1.08)}
+  button.ghost{border-color:transparent;background:transparent;color:var(--accent);padding:4px 6px}
+  .bucket{margin-bottom:10px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .bucket .hd{display:flex;gap:10px;align-items:center;padding:9px 12px;background:#fbfcfd;cursor:pointer;user-select:none}
+  .bucket .hd b{font-weight:600;font-size:13px}
+  .bucket .hd .sum{margin-left:auto;font-family:var(--mono);font-size:13px}
+  .bucket .bd{padding:6px 12px 10px;display:none;background:#fff}
+  .bucket.open .bd{display:block}
+  .bucket .caret{transition:.15s;color:var(--muted)}
+  .bucket.open .caret{transform:rotate(90deg)}
+  .alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:9px;font-size:13px;margin:10px 0;border:1px solid;flex-wrap:wrap}
+  .alert.err{background:var(--danger-2);border-color:#f3cbc5;color:#7d1f16}
+  .alert.warn{background:var(--warn-2);border-color:#f0dcbb;color:#6b4008}
+  .alert.ok{background:var(--ok-2);border-color:#c7e6d6;color:#0b5734}
+  .alert.info{background:#eef4fa;border-color:#d5e3f0;color:#1f4e79}
+  code{font-family:var(--mono);font-size:12px;background:rgba(0,0,0,.05);padding:1px 4px;border-radius:4px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .targets{display:grid;grid-template-columns:280px 1fr;gap:14px}
+  .tlist{border:1px solid var(--line);border-radius:9px;overflow:hidden;max-height:560px;overflow-y:auto}
+  .tlist button{display:block;width:100%;text-align:left;border:0;background:#fff;padding:9px 11px;border-bottom:1px solid var(--line);font:inherit;cursor:pointer;color:var(--ink-2)}
+  .tlist button:last-child{border-bottom:0}
+  .tlist button.on{background:var(--accent-2);color:var(--accent);font-weight:600}
+  .tlist .meta{display:block;font-size:11.5px;color:var(--muted);font-weight:400;margin-top:2px}
+  textarea{width:100%;min-height:104px;border:1px solid #cfd8e3;border-radius:8px;padding:10px;font:13px/1.6 var(--mono);resize:vertical;color:var(--ink)}
+  textarea[readonly]{background:#f7f8fa;color:var(--muted)}
+  .diff{border:1px solid var(--line);border-radius:8px;font-family:var(--mono);font-size:12.5px;overflow:hidden}
+  .diff div{padding:6px 10px;white-space:pre-wrap}
+  .diff .del{background:#fdeae7;color:#7d1f16}
+  .diff .add{background:#e8f5ee;color:#0b5734}
+  .kv{display:grid;grid-template-columns:110px 1fr;gap:6px 12px;font-size:13px}
+  .kv .k{color:var(--muted)}
+  .path{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start}
+  .path .no{font-family:var(--mono);color:var(--muted);font-size:12px;padding-top:2px}
+  .path .body{flex:1}
+  .path .body b{font-size:13px}
+  .path .body p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+  pre.cmd{margin:6px 0 0;background:#f4f6f9;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-family:var(--mono);font-size:12px;overflow:auto;white-space:pre-wrap}
+  .rb{position:relative;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;padding:0 5px;margin-left:6px;border-radius:5px;background:#fff5df;color:#8a5a00;border:1px solid #f0dcbb;font:600 10.5px/1 var(--mono);cursor:help;vertical-align:middle}
+  .rb .tip{display:none;position:absolute;left:0;top:22px;z-index:30;width:300px;padding:8px 10px;background:#1b2430;color:#fff;border-radius:8px;font:12px/1.55 -apple-system,"Segoe UI","PingFang SC",sans-serif;text-align:left;white-space:normal;box-shadow:0 8px 24px rgba(16,24,40,.22)}
+  .rb:hover .tip{display:block}
+  body.no-rules .rb{display:none}
+  footer.caliper{position:fixed;left:212px;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:6px 22px;font-size:12px;color:var(--muted);z-index:15}
+  body.no-rules footer.caliper{padding-left:22px}
+  .foot{margin-top:18px;color:var(--muted);font-size:12px;border-top:1px dashed var(--line);padding-top:10px}
+  .hidden{display:none!important}
+  .toast{position:fixed;right:18px;bottom:52px;max-width:380px;z-index:50}
+  .toast .alert{margin:0 0 8px;box-shadow:0 8px 24px rgba(16,24,40,.12)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">记忆库<small>Memory Ops · 原型 v0.2（示例数据）</small></div>
+  <div class="crumb" id="crumb">记忆库 / 库健康（health）/ 常驻前缀</div>
+  <div class="spacer"></div>
+  <label class="switch"><input type="checkbox" id="ruleToggle" checked> 规则标注</label>
+</header>
+
+<div class="layout">
+  <nav>
+    <h4>库健康（health）</h4>
+    <button class="on" data-view="v1"><span class="dot"></span>常驻前缀</button>
+    <button data-view="v2"><span class="dot"></span>前缀编辑</button>
+    <button data-view="v3"><span class="dot"></span>版本与更新</button>
+    <div class="hint">可点击原型：桶可展开、编辑会算 token Δ、检查更新可模拟失败/超时。<br>右上角可关掉规则标注再演示。</div>
+  </nav>
+
+  <main>
+    <!-- ================= V1 ================= -->
+    <section id="v1">
+      <h1>常驻前缀 <span class="rb">R1<span class="tip"><b>R1</b> 顶栏数字必须等于四桶之和；不允许出现两个对不上的常驻数字。</span></span></h1>
+      <div class="sub">落点：侧栏 · 库健康（health）→ 成本区；不新增一级分区。</div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="k">常驻前缀 / 请求</div><div class="v" id="ktotal">—</div><div class="s" id="ktotalSub">预算 1024</div></div>
+        <div class="kpi"><div class="k">索引层（按需）</div><div class="v">286</div><div class="s">只在被 read 时付费</div></div>
+        <div class="kpi"><div class="k">其中置顶注入</div><div class="v" id="kinj">—</div><div class="s">唯一可直接关掉的那段</div></div>
+        <div class="kpi"><div class="k">付费条目数</div><div class="v" id="kcount">—</div><div class="s" id="kcountSub">catalog · 置顶 · 工具</div></div>
+      </div>
+
+      <div class="card">
+        <h3>构成与校验 <span class="rb">R4<span class="tip"><b>R4</b> 桶内条目 tokens 之和必须等于桶数字；不等要显示差额并写明原因（未计入 / 截断 / 超预算跳过）。</span></span></h3>
+        <div class="bar" id="bar"></div>
+        <div class="legend" id="legend"></div>
+        <div id="checkline" class="alert info">—</div>
+        <div class="row">
+          <button class="act" onclick="setSkills('ok')">模拟：skills 正常</button>
+          <button class="act" onclick="setSkills('empty')">模拟：确实没有 skill</button>
+          <button class="act" onclick="setSkills('error')">模拟：skills 读不到</button>
+          <button class="act" onclick="toggleTools()">模拟：工具 schema 不可读</button>
+        </div>
+        <div id="statebox"></div>
+      </div>
+
+      <div class="card">
+        <h3>三态约定（首屏即说明，不靠点按钮才出现） <span class="rb">R6<span class="tip"><b>R6</b> ok / empty / error 三态分离；error 或"还没检查"不许渲染成 empty 或 0。</span></span> <span class="rb">R7<span class="tip"><b>R7</b> 工具 schema 不可读时显示"不可读 + 原因"，不显示 0，并在合计行声明"不含工具 schema"。</span></span></h3>
+        <table>
+          <thead><tr><th>态</th><th>判定</th><th>界面要求</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tag ok">ok</span></td><td>四桶至少一桶有数据</td><td>正常渲染 + 合计校验行</td></tr>
+            <tr><td><span class="tag">empty</span></td><td>确实一条常驻内容都没有</td><td>空态文案，<b>不得</b>与 error 混用</td></tr>
+            <tr><td><span class="tag bad">error</span></td><td>skills 读取失败 / schema 不可读</td><td>红条 + 原因串 + 重试；合计行注明"不含 X"</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>四桶明细（点击展开） <span class="rb">R2<span class="tip"><b>R2</b> 每个桶可展开到条目级：名称、来源、tokens、占比、计费性质。</span></span></h3>
+        <p class="note">只读项带 <span class="tag ro">只读</span> 与理由；可编辑项给「去编辑」入口 <span class="rb">R8<span class="tip"><b>R8</b> 只读项必须标"只读"与理由（宿主生成/代码生成/非受管目录）；可编辑项必须给编辑入口。</span></span></p>
+
+        <div class="bucket open" id="b-catalog">
+          <div class="hd" onclick="this.parentNode.classList.toggle('open')">
+            <span class="caret">▶</span><b>技能目录（catalog）</b><span class="tag bill">每请求</span><span class="sum" id="sum-catalog">—</span>
+          </div>
+          <div class="bd"><div id="catalogBody"></div></div>
+        </div>
+
+        <div class="bucket" id="b-frame">
+          <div class="hd" onclick="this.parentNode.classList.toggle('open')">
+            <span class="caret">▶</span><b>目录框架（frame）</b><span class="tag bill">每请求</span><span class="tag ro">只读</span><span class="sum">171</span>
+          </div>
+          <div class="bd">
+            <table>
+              <thead><tr><th>项</th><th>来源</th><th class="num">tokens</th><th class="num">占比</th><th>说明</th></tr></thead>
+              <tbody><tr><td><code>&lt;available_skills&gt;</code> 包装与分隔</td><td><code>宿主内置</code></td><td class="num">171</td><td class="num">100%</td><td>宿主生成，插件无权改 <span class="rb">R8<span class="tip"><b>R8</b> 只读项必须标"只读"与理由；点击编辑要解释为什么不能改。</span></span></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bucket" id="b-injected">
+          <div class="hd" onclick="this.parentNode.classList.toggle('open')">
+            <span class="caret">▶</span><b>置顶注入（injected）</b><span class="tag bill">每请求</span><span class="sum" id="sum-injected">—</span>
+          </div>
+          <div class="bd">
+            <div class="alert warn" id="pinnedWarn">段落预算 256（总预算 1024 的另一层：总预算管全部常驻，段落预算只管置顶） <span class="rb">R5<span class="tip"><b>R5</b> 置顶必须逐条列出 id、标题、tokens、是否实际注入；被跳过的要写原因。</span></span></div>
+            <table>
+              <thead><tr><th>条目</th><th>标题</th><th>域</th><th class="num">tokens</th><th>注入</th><th>操作</th></tr></thead>
+              <tbody id="pinnedBody"></tbody>
+            </table>
+            <div id="pinnedDiff" class="alert info"></div>
+          </div>
+        </div>
+
+        <div class="bucket" id="b-tools">
+          <div class="hd" onclick="this.parentNode.classList.toggle('open')">
+            <span class="caret">▶</span><b>工具 schema（toolschema）</b><span class="tag bill">每请求</span><span class="tag ro">只读</span><span class="sum" id="sum-tools">—</span>
+          </div>
+          <div class="bd"><div id="toolsBody"></div></div>
+        </div>
+
+        <div class="bucket" id="b-index">
+          <div class="hd" onclick="this.parentNode.classList.toggle('open')">
+            <span class="caret">▶</span><b>索引层（index，不计入合计）</b><span class="tag ondemand">按需</span><span class="sum">286</span>
+          </div>
+          <div class="bd">
+            <table>
+              <thead><tr><th>文件</th><th>来源</th><th class="num">tokens</th><th class="num">占比</th><th>计费</th></tr></thead>
+              <tbody>
+                <tr><td><code>personal/index.md</code></td><td><code>~/.memory-ops/personal/</code></td><td class="num">135</td><td class="num">47%</td><td><span class="tag ondemand">billed=false</span></td></tr>
+                <tr><td><code>work/sz-web/index.md</code></td><td><code>~/.memory-ops/work/</code></td><td class="num">151</td><td class="num">53%</td><td><span class="tag ondemand">billed=false</span></td></tr>
+              </tbody>
+            </table>
+            <p class="note">这一桶只在被 <code>read</code> 时付费，<b>不计入</b>顶栏常驻合计 <span class="rb">R9<span class="tip"><b>R9</b> 计费性质必须可区分：每请求常驻 vs 按需；索引层单列（billed=false），不混进常驻合计。</span></span></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= V2 ================= -->
+    <section id="v2" class="hidden">
+      <h1>前缀编辑 <span class="rb">R10<span class="tip"><b>R10</b> 可编辑对象四类（置顶条目 / 段落包装 / 技能 description / 只读项）必须逐项标注可编辑性与原因。</span></span></h1>
+      <div class="sub">能改的就地改，不能改的说清为什么。保存前必须看到 diff、成本与生效时机。</div>
+
+      <div class="targets">
+        <div>
+          <div class="tlist" id="tlist"></div>
+          <p class="note">取消置顶后条目仍在库里（pinned=false），只是不再付费 <span class="rb">R15<span class="tip"><b>R15</b> 提供"取消置顶"与"恢复包装默认"两个逆操作；不提供"写回源码"，并写明原因。</span></span></p>
+          <p class="note" style="margin-top:8px"><b>不提供「写回源码」</b>：插件运行期没有源码写权限，写也只能写副本，等于制造第二真相源。</p>
+        </div>
+
+        <div class="card" style="margin:0">
+          <h3 id="edTitle">—</h3>
+          <p class="note" id="edMeta">—</p>
+          <textarea id="edText"></textarea>
+          <div class="row" style="margin-top:10px">
+            <button class="act" onclick="preview()">预览变更（必做）</button>
+            <span class="rb">R11<span class="tip"><b>R11</b> 保存前必须给出 diff（前/后）+ tokens 前·后·Δ + 生效时机，三项缺一不可保存。</span></span>
+            <button class="act primary" id="saveBtn" onclick="save()" disabled>保存</button>
+            <span class="rb">R16<span class="tip"><b>R16</b> 仅本机回环可编辑；保存需二次确认；成功/失败都出结果条，失败带宿主原文。</span></span>
+            <button class="act" onclick="resetDraft()">取消</button>
+            <button class="act" id="unpinBtn" onclick="unpin()">取消置顶</button>
+            <button class="act" id="restoreBtn" onclick="restoreDefault()">恢复默认</button>
+            <button class="act" onclick="saveFail()">模拟：保存失败</button>
+            <button class="act" onclick="loopbackFail()">模拟：非回环请求</button>
+          </div>
+          <div id="edPreview" class="hidden" style="margin-top:12px">
+            <div class="diff" id="diffBox"></div>
+            <div class="row" style="margin-top:8px">
+              <span>tokens：<b id="tokBefore">—</b> → <b id="tokAfter">—</b>（<span id="tokDelta">—</span>）</span>
+              <span class="tag bill">生效：新会话生效，当前会话保持原样</span>
+              <span class="rb">R12<span class="tip"><b>R12</b> 生效时机必须显式：置顶/包装 = 新会话生效（按会话冻结，避免作废 KV cache），不得写"立即生效"。</span></span>
+            </div>
+            <div class="alert info">保存回执写明确切文件路径与改动行数；只改目标字段，frontmatter 其它字段不动 <span class="rb">R13<span class="tip"><b>R13</b> 原子写（tmp+rename）、只改目标字段、回执含实际文件路径与改动行数。</span></span></div>
+          </div>
+          <div id="edWarn"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= V3 ================= -->
+    <section id="v3" class="hidden">
+      <h1>版本与更新 <span class="rb">R17<span class="tip"><b>R17</b> 五项：当前版本 / 代码来源 spec / 安装方式 / 当前提交 / 目标（含发布日期）。</span></span></h1>
+      <div class="sub">宿主管「有没有新版本」和「执行更新」；我们只补「改了什么」，且不抢执行权 <span class="rb">R24<span class="tip"><b>R24</b> 单一入口：同一插件最多一个"执行更新"的动作；我方不实现下载/安装/回滚。</span></span></div>
+
+      <div class="card">
+        <h3>当前状态（五项）</h3>
+        <div class="row" style="align-items:flex-start;gap:28px">
+          <div class="kv">
+            <div class="k">当前版本</div><div><b>0.1.0</b>（package.json）</div>
+            <div class="k">代码来源</div><div id="specLine"><code>github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin&amp;5c44d95</code></div>
+            <div class="k">安装方式</div><div><span class="tag bill" id="installTag">git（github: 直装）</span></div>
+            <div class="k">当前提交</div><div><code>5c44d95</code> · 2026-11-20 · feat(pinned): 置顶条目注入系统提示词</div>
+            <div class="k">目标</div><div id="targetLine">—（未检查）</div>
+            <div class="k">检查</div><div id="checkLine">未检查 <span class="rb">R19<span class="tip"><b>R19</b> 三态 + 标明结果来源（宿主/自建）；失败/超时/未检查都不得显示为已最新。</span></span></div>
+          </div>
+          <div style="min-width:260px">
+            <div class="row">
+              <button class="act" onclick="setHostMode('git')">模拟：git 安装（现状）</button>
+              <button class="act" onclick="setHostMode('managed')">模拟：npm 安装（发版后）</button>
+              <button class="act" onclick="setHostMode('link')">模拟：link 安装</button>
+              <button class="act" onclick="setHostMode('engines')">模拟：宿主版本过低</button>
+            </div>
+            <div id="checkBox" style="margin-top:10px"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="hostCard">
+        <h3>宿主插件页「版本」区块（只读它，不重造） <span class="rb">R21<span class="tip"><b>R21</b> 入口宿主优先：宿主版本区块可用就用它（含热更新与失败回滚），命令兜底，不可用的入口不渲染。</span></span></h3>
+        <div id="hostBox">—</div>
+      </div>
+
+      <div class="card" id="diffCard">
+        <h3>改了什么（我们的增量：宿主只给发布日期，不给提交） <span class="rb">R18<span class="tip"><b>R18</b> 差异逐条可核验：sha·标题·日期，或发布说明标题；未检查/失败/超时不展示条目。</span></span></h3>
+        <div class="row">
+          <button class="act" onclick="loadDiff('ok')">拉取提交清单</button>
+          <button class="act" onclick="loadDiff('fail')">模拟：拉取失败</button>
+          <button class="act" onclick="loadDiff('timeout')">模拟：拉取超时</button>
+        </div>
+        <div id="diffBody" class="alert info" style="margin-top:10px">未检查：这里保持说明，不预填"3 条差异"。</div>
+      </div>
+
+      <div class="card">
+        <h3>入口与边界 <span class="rb">R20<span class="tip"><b>R20</b> engines 不满足时禁用更新入口并给可装范围。</span></span> <span class="rb">R22<span class="tip"><b>R22</b> 可用性三态 host-managed / command-only / blocked；我方不执行更新。</span></span></h3>
+        <div id="entryBox">—</div>
+        <p class="note" style="margin-top:10px">更新只动插件代码，不动 <code>~/.memory-ops/</code>；若目标声明需要数据迁移，会先要求确认并给备份命令 <span class="rb">R23<span class="tip"><b>R23</b> 更新不动记忆库数据；需要迁移时先确认并显示备份命令。</span></span></p>
+      </div>
+    </section>
+
+    <div class="foot">示例数据用于演示结构与交互，不代表真实库数值。规则编号与 <code>prd.md</code> 一一对应。</div>
+  </main>
+</div>
+
+<footer class="caliper">估算口径：CJK 1 字≈1 token，其余 4 字符≈1 token；非 tokenizer 精确值，仅用于相对比较 <span class="rb">R3<span class="tip"><b>R3</b> 每个 token 数字旁必须可获取估算口径声明；本页所有视图共用底部这条口径，不因换页消失。</span></span></footer>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- 数据 ---------- */
+const CATALOG = [
+  {name:'personal-memory', path:'~/.dsh/skills/personal-memory/SKILL.md', tokens:90, managed:false},
+  {name:'sz-web-memory',   path:'~/.dsh/skills/sz-web-memory/SKILL.md',       tokens:100, managed:true}
+];
+const PINNED = [
+  {id:'personal.principles.chinese',    title:'所有会话的思考过程和结果全都使用中文', tokens:28, domain:'personal', injected:true},
+  {id:'personal.principles.assumption', title:'不确定的结论必须标注为假设，并进确认单', tokens:31, domain:'personal', injected:true},
+  {id:'personal.goals.q4',              title:'Q4 只做三件事：透明化常驻、可编辑前缀、自更新', tokens:34, domain:'personal', injected:false, skip:'超 256 段落预算'},
+  {id:'work.sz-web.main.arch',          title:'sz-web 模块地图结论（工作域）', tokens:22, domain:'work', injected:false, skip:'工作域默认不注入'}
+];
+const SKELETON = {header:4, footer:8};
+const TOOLS = [
+  {name:'memory_recall', tokens:186, note:'description + 参数 schema，每请求都在'},
+  {name:'memory_write',  tokens:142, note:'同上；改它要发版'}
+];
+const INDEX = [
+  {file:'personal/index.md', path:'~/.memory-ops/personal/', tokens:135},
+  {file:'work/sz-web/index.md', path:'~/.memory-ops/work/', tokens:151}
+];
+
+const state = {
+  skills:'ok', tools:true, unpinned:new Set(),
+  hostMode:'git', check:'ok', diff:'none'
+};
+
+/* ---------- token 估算（与 core 同口径） ---------- */
+function estTokens(text){
+  let cjk=0, rest=0;
+  for (const ch of String(text||'')) {
+    const c = ch.codePointAt(0)||0;
+    const wide = (c>=0x2e80&&c<=0x9fff)||(c>=0xac00&&c<=0xd7af)||(c>=0xf900&&c<=0xfaff)||(c>=0xff00&&c<=0xffef)||(c>=0x3000&&c<=0x303f);
+    if(wide) cjk++; else rest++;
+  }
+  return Math.ceil(cjk + rest/4);
+}
+
+/* ---------- 派生数字 ---------- */
+function injectedItems(){
+  return PINNED.filter(p=>!state.unpinned.has(p.id)).map(p=>({...p, injected:p.injected && p.domain==='personal' && !state.unpinned.has(p.id)}));
+}
+function computed(){
+  const allPinned = injectedItems();
+  const injectedSum = allPinned.filter(p=>p.injected).reduce((s,p)=>s+p.tokens,0) + SKELETON.header + SKELETON.footer;
+  const pinnedListSum = allPinned.reduce((s,p)=>s+p.tokens,0);
+  const catalog = state.skills==='ok' ? CATALOG.reduce((s,c)=>s+c.tokens,0) : (state.skills==='empty'?0:null);
+  const frame = 171;
+  const injected = injectedSum;
+  const tools = state.tools ? TOOLS.reduce((s,t)=>s+t.tokens,0) : null;
+  const missing = [];
+  if(catalog===null) missing.push('catalog');
+  if(tools===null) missing.push('工具 schema');
+  const total = (catalog??0)+frame+injected+(tools??0);
+  return {catalog, frame, injected, tools, total, missing, allPinned, pinnedListSum, injectedSum};
+}
+
+/* ---------- 渲染 ---------- */
+function renderCatalog(){
+  const box = document.getElementById('catalogBody');
+  const sum = document.getElementById('sum-catalog');
+  if(state.skills==='ok'){
+    sum.textContent = String(CATALOG.reduce((s,c)=>s+c.tokens,0));
+    box.innerHTML = `<table><thead><tr><th>名称</th><th>来源</th><th class="num">tokens</th><th class="num">占比</th><th>计费</th><th>操作</th></tr></thead><tbody>` +
+      CATALOG.map(c=>`<tr><td>${c.name}</td><td><code>${c.path}</code></td><td class="num">${c.tokens}</td><td class="num">${Math.round(c.tokens/190*100)}%</td><td><span class="tag bill">每请求</span></td><td>${c.managed?`<button class="ghost" onclick="goto('v2','skill:${c.name}')">去编辑</button>`:`<span class="tag ro">只读</span> <span class="note">文件不在受管目录</span>`}</td></tr>`).join('') +
+      `</tbody></table>`;
+  } else if(state.skills==='empty'){
+    sum.textContent = '0';
+    box.innerHTML = `<div class="alert info">确实没有 skill：宿主 skills 目录为空。0 是真实值，不是错误。</div>`;
+  } else {
+    sum.textContent = '不可读';
+    box.innerHTML = `<div class="alert err">读不到 skills：<code>skills.list() 抛错：ENOENT / 宿主未配置 skill 目录</code></div><div class="row"><button class="act" onclick="setSkills('ok')">重试</button></div>`;
+  }
+}
+function renderPinned(){
+  const {allPinned, injectedSum, pinnedListSum} = computed();
+  document.getElementById('sum-injected').textContent = String(injectedSum);
+  document.getElementById('pinnedBody').innerHTML = allPinned.map(p=>{
+    const tag = p.injected ? `<span class="tag ok">已注入</span>` : `<span class="tag warn">跳过 · ${p.skip||'未注入'}</span>`;
+    const editable = p.domain==='personal';
+    return `<tr><td><code>${p.id}</code></td><td>${p.title}</td><td>${p.domain==='work'?'工作域':'个人域'}</td><td class="num">${p.tokens}</td><td>${tag}</td><td>${editable?`<button class="ghost" onclick="goto('v2','pinned:${p.id}')">去编辑</button>`:'<span class="tag ro">只读 · 工作域不注入</span>'}</td></tr>`;
+  }).join('') + `<tr><td colspan="3">段落骨架（标题 4 + 结语 8）</td><td class="num">12</td><td><span class="tag ok">固定</span></td><td>—</td></tr>`;
+  const skipSum = pinnedListSum - allPinned.filter(p=>p.injected).reduce((s,p)=>s+p.tokens,0);
+  document.getElementById('pinnedDiff').innerHTML = skipSum===0
+    ? `校验：条目和 ${pinnedListSum} = 注入 ${allPinned.filter(p=>p.injected).reduce((s,p)=>s+p.tokens,0)} + 骨架 12，无跳过。`
+    : `校验：条目和 <b>${pinnedListSum}</b> vs 实际注入 <b>${injectedSum}</b>，差额 <b>${skipSum}</b> = 跳过条目的 tokens（超段落预算 / 工作域不注入）——<b>差额必须解释，不许静默</b> <span class="rb">R4<span class="tip"><b>R4</b> 桶内条目之和必须等于桶数字；不等要显示差额与原因。</span></span>`;
+}
+function renderTools(){
+  const sum = document.getElementById('sum-tools');
+  const box = document.getElementById('toolsBody');
+  if(state.tools){
+    sum.textContent = String(TOOLS.reduce((s,t)=>s+t.tokens,0));
+    box.innerHTML = `<table><thead><tr><th>工具</th><th>来源</th><th class="num">tokens</th><th class="num">占比</th><th>计费</th></tr></thead><tbody>` +
+      TOOLS.map(t=>`<tr><td><code>${t.name}</code></td><td><code>代码生成（tools.ts）</code></td><td class="num">${t.tokens}</td><td class="num">${Math.round(t.tokens/328*100)}%</td><td><span class="tag bill">每请求</span></td></tr>`).join('') +
+      `</tbody></table>`;
+  } else {
+    sum.textContent = '不可读';
+    box.innerHTML = `<div class="alert warn">工具 schema 不可读：<code>宿主未暴露 tools.schemas（服务未就绪）</code>；本桶不计入合计 <span class="rb">R7<span class="tip"><b>R7</b> 不可读 ≠ 0；合计行必须声明"不含工具 schema"。</span></span></div>`;
+  }
+}
+function renderKpi(){
+  const c = computed();
+  const star = c.missing.length ? '*' : '';
+  document.getElementById('ktotal').textContent = c.total + star;
+  document.getElementById('ktotalSub').textContent = c.missing.length ? `预算 1024；${star} 不含 ${c.missing.join('、')}` : '预算 1024';
+  document.getElementById('kinj').textContent = String(c.injected);
+  const paid = (state.skills==='ok'?CATALOG.length:0) + c.allPinned.filter(p=>p.injected).length + (state.tools?TOOLS.length:0);
+  document.getElementById('kcount').textContent = String(paid);
+  document.getElementById('kcountSub').textContent = `catalog ${state.skills==='ok'?CATALOG.length:0} · 置顶 ${c.allPinned.filter(p=>p.injected).length} · 工具 ${state.tools?TOOLS.length:0}`;
+}
+function renderBar(){
+  const c = computed();
+  const vals = [[c.catalog??0,'seg-c','技能目录'],[c.frame,'seg-f','目录框架'],[c.injected,'seg-i','置顶注入'],[c.tools??0,'seg-t','工具 schema']];
+  const denom = Math.max(1, c.total);
+  document.getElementById('bar').innerHTML = vals.map(([v,cls])=>`<i class="${cls}" style="width:${v/denom*100}%"></i>`).join('');
+  document.getElementById('legend').innerHTML = vals.map(([v,cls,name])=>`<span><em class="${cls}"></em>${name} ${v}</span>`).join('');
+}
+function renderCheckline(){
+  const c = computed();
+  const line = document.getElementById('checkline');
+  const parts = [[c.catalog,'catalog'],[c.frame,'frame'],[c.injected,'injected'],[c.tools,'toolschema']];
+  const known = parts.filter(([v])=>v!==null);
+  const expr = parts.map(([v,name])=> v===null ? `${name} 不可读` : `${v}`).join(' + ');
+  const sum = known.reduce((s,[v])=>s+v,0);
+  if(c.missing.length===0){
+    if(sum !== c.total){ line.className='alert err'; line.innerHTML=`合计不一致：${expr} = ${sum}，顶栏 ${c.total} —— 这是 bug，不是展示问题`; return; }
+    line.className='alert info';
+    line.innerHTML = `校验：${expr} = <b>${sum}</b>，与顶栏一致（合计 = 各桶和）。`;
+  } else {
+    line.className='alert err';
+    line.innerHTML = `合计 <b>${sum}</b> = ${expr}；顶栏显示 <b>${c.total}*</b>，星号即这条说明：<b>不含 ${c.missing.join('、')}</b>。`;
+  }
+}
+function renderAll(){ renderCatalog(); renderPinned(); renderTools(); renderKpi(); renderBar(); renderCheckline(); }
+
+/* ---------- V1 交互 ---------- */
+function setSkills(s){ state.skills = s; renderAll(); }
+function toggleTools(){ state.tools = !state.tools; renderAll(); }
+
+/* ---------- 导航 ---------- */
+function goto(view, target){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.view===view));
+  ['v1','v2','v3'].forEach(v=>document.getElementById(v).classList.toggle('hidden', v!==view));
+  const names={v1:'常驻前缀',v2:'前缀编辑',v3:'版本与更新'};
+  document.getElementById('crumb').textContent = `记忆库 / 库健康（health）/ ${names[view]}`;
+  window.scrollTo({top:0});
+  if(target){ const btn=[...document.querySelectorAll('#tlist button')].find(b=>b.dataset.id===target); if(btn) pick(btn); }
+}
+document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>goto(b.dataset.view)));
+document.getElementById('ruleToggle').addEventListener('change', e=>document.body.classList.toggle('no-rules', !e.target.checked));
+
+/* ---------- V2 ---------- */
+const TARGETS = {
+  'pinned:personal.principles.chinese':{title:'置顶 · 中文规则',kind:'pinned',readOnly:false,limit:64,effect:'新会话生效',
+    meta:'来源：<code>~/.memory-ops/personal/principles.md</code> · 上限 64 tokens/条',
+    text:'所有会话的思考过程和结果全都使用中文'},
+  'pinned:personal.principles.assumption':{title:'置顶 · 假设标注',kind:'pinned',readOnly:false,limit:64,effect:'新会话生效',
+    meta:'来源：<code>~/.memory-ops/personal/principles.md</code> · 上限 64 tokens/条',
+    text:'不确定的结论必须标注为假设，并进确认单'},
+  'pinned:personal.goals.q4':{title:'置顶 · Q4 目标（当前被跳过）',kind:'pinned',readOnly:false,limit:64,effect:'新会话生效',
+    meta:'来源：<code>~/.memory-ops/personal/goals.md</code> · 34 tokens → 超段落预算，注入时会被跳过',
+    text:'Q4 只做三件事：透明化常驻、可编辑前缀、自更新'},
+  'wrapper:header':{title:'段落包装 · 标题',kind:'wrapper',readOnly:false,limit:32,effect:'新会话生效',
+    meta:'来源：<code>~/.memory-ops/.state/plugin-config.json</code> · 默认值可恢复',
+    text:'## 记忆库置顶规则'},
+  'wrapper:footer':{title:'段落包装 · 结语',kind:'wrapper',readOnly:false,limit:32,effect:'新会话生效',
+    meta:'来源：<code>~/.memory-ops/.state/plugin-config.json</code> · 默认值可恢复',
+    text:'以上为用户显式置顶的长期规则，优先级高于默认行为。'},
+  'skill:sz-web-memory':{title:'技能 · sz-web-memory（可编辑）',kind:'skill',readOnly:false,limit:500,effect:'刷新页面后重读 SKILL.md',
+    meta:'来源：<code>~/.dsh/skills/sz-web-memory/SKILL.md</code> · 受管目录 → 可编辑',
+    text:'sz-web 项目的模块地图、历史坑与索引规则'},
+  'skill:personal-memory':{title:'技能 · personal-memory（只读）',kind:'readonly',readOnly:true,limit:500,effect:'—',
+    meta:'来源：<code>~/Desktop/skill/personal-memory/SKILL.md</code> · 只读原因：文件不在插件受管目录',
+    text:'个人域记忆的索引与取用规则'},
+  'frame':{title:'目录框架（只读）',kind:'readonly',readOnly:true,limit:0,effect:'—',
+    meta:'来源：<code>宿主内置 &lt;available_skills&gt;</code> · 只读原因：宿主生成',
+    text:'<available_skills> … </available_skills>（171 tokens，固定）'},
+  'toolschema:memory_recall':{title:'工具 · memory_recall（只读）',kind:'readonly',readOnly:true,limit:0,effect:'—',
+    meta:'来源：<code>代码生成（tools.ts）</code> · 只读原因：改它要改代码并发版',
+    text:'按关键词检索记忆。命中记 cite，未命中记 miss。返回路径、tokens 与片段。'}
+};
+let current='pinned:personal.principles.chinese';
+let draft='', previewShown=false, restoreStage=0;
+
+function renderTargets(){
+  document.getElementById('tlist').innerHTML = Object.entries(TARGETS).map(([id,t])=>{
+    const meta = t.readOnly ? `只读 · ${(t.meta.split('只读原因：')[1]||'').replace(/<[^>]+>/g,'')}` : `${t.kind} · ${t.limit} 上限`;
+    return `<button data-id="${id}" onclick="pick(this)">${t.title}<span class="meta">${meta}</span></button>`;
+  }).join('');
+}
+function pick(btn){
+  document.querySelectorAll('#tlist button').forEach(b=>b.classList.toggle('on', b===btn));
+  current = btn.dataset.id;
+  const t = TARGETS[current];
+  document.getElementById('edTitle').textContent = t.title;
+  document.getElementById('edMeta').innerHTML = t.meta;
+  const ta = document.getElementById('edText');
+  ta.value = t.text; ta.readOnly = !!t.readOnly;
+  draft = t.text; previewShown = false; restoreStage = 0;
+  document.getElementById('edPreview').classList.add('hidden');
+  document.getElementById('edWarn').innerHTML = '';
+  document.getElementById('saveBtn').disabled = true;
+  document.getElementById('unpinBtn').classList.toggle('hidden', t.kind!=='pinned');
+  const rb = document.getElementById('restoreBtn');
+  rb.classList.toggle('hidden', t.kind!=='wrapper');
+  rb.textContent = '恢复默认';
+  if(t.readOnly){
+    document.getElementById('edWarn').innerHTML = `<div class="alert info">只读项：${t.meta.replace(/^.*只读原因：/,'').replace(/<[^>]+>/g,'')} —— 插件无权修改 <span class="rb">R8<span class="tip"><b>R8</b> 只读项必须标"只读"与理由；点击编辑要解释为什么不能改。</span></span></div>`;
+  }
+}
+document.getElementById('edText').addEventListener('input', e=>{
+  draft = e.target.value;
+  previewShown = false;
+  document.getElementById('saveBtn').disabled = true;
+  document.getElementById('edPreview').classList.add('hidden');
+});
+function judge(){
+  const t = TARGETS[current];
+  const a = estTokens(draft);
+  const refuse = [];
+  const warn = [];
+  if(!draft.trim()) refuse.push('标题为空：空标题会让模型拿到一条没有意义的规则');
+  if(/sk-[A-Za-z0-9]{8,}|192\.168\.|身份证/.test(draft)) refuse.push('命中隐私闸门（疑似密钥 / 内网地址）：请先把值换成 <code>&lt;redacted&gt;</code>');
+  if(a > (t.limit||64)) warn.push(`本条 ${a} tokens 超过上限 ${t.limit||64}：注入时可能被跳过，等于没注入`);
+  return {a, refuse, warn};
+}
+function preview(){
+  const t = TARGETS[current];
+  if(t.readOnly){ toast('只读项不能编辑','warn'); return; }
+  draft = document.getElementById('edText').value;
+  const {a, refuse, warn} = judge();
+  const b = estTokens(t.text);
+  document.getElementById('diffBox').innerHTML = `<div class="del">- ${t.text||'（空）'}</div><div class="add">+ ${draft||'（空）'}</div>`;
+  document.getElementById('tokBefore').textContent = b;
+  document.getElementById('tokAfter').textContent = a;
+  document.getElementById('tokDelta').textContent = `Δ ${a-b>=0?'+':''}${a-b}`;
+  document.getElementById('edPreview').classList.remove('hidden');
+  previewShown = true;
+  const box = document.getElementById('edWarn');
+  box.innerHTML = refuse.map(r=>`<div class="alert err"><b>拒绝保存</b>：${r} <span class="rb">R14<span class="tip"><b>R14</b> 校验分级：空标题/隐私→拒；超上限→警告可保存。拒与警互不短路，任一拒即禁保存。</span></span></div>`).join('')
+    + warn.map(w=>`<div class="alert warn"><b>警告（可保存）</b>：${w}</div>`).join('');
+  document.getElementById('saveBtn').disabled = refuse.length > 0 || draft === t.text;
+}
+function save(){
+  if(!previewShown || document.getElementById('saveBtn').disabled){ toast('必须先预览并通过校验才能保存','warn'); return; }
+  const t = TARGETS[current];
+  const b = estTokens(t.text), a = estTokens(draft);
+  t.text = draft;
+  document.getElementById('edPreview').classList.add('hidden');
+  previewShown = false;
+  document.getElementById('saveBtn').disabled = true;
+  const path = t.kind==='pinned' ? '~/.memory-ops/personal/principles.md' : (t.kind==='wrapper' ? '~/.memory-ops/.state/plugin-config.json' : '~/.dsh/skills/sz-web-memory/SKILL.md');
+  toast(`已保存到 ${path}（tokens ${b} → ${a}，新会话生效）`, 'ok');
+  document.getElementById('edWarn').innerHTML = `<div class="alert ok"><b>已写入</b> <code>${path}</code>：第 12 行 title 修改（<b>1 行变化</b>，tmp→rename 原子替换）；frontmatter 其它字段未变。<b>新会话生效</b>，当前会话保持原样 <span class="rb">R13<span class="tip"><b>R13</b> 原子写 + 只改目标字段 + 回执含文件路径与改动行数。</span></span></div>`;
+}
+function resetDraft(){
+  pick(document.querySelector('#tlist button.on'));
+  toast('已取消，草稿丢弃','info');
+}
+function unpin(){
+  const id = current.replace(/^pinned:/,'');
+  state.unpinned.add(id);
+  renderAll();
+  const t = TARGETS[current];
+  toast(`已取消置顶（pinned=false），条目保留；常驻合计减少 ${estTokens(t.text)} tokens`,'warn');
+  document.getElementById('edWarn').innerHTML = `<div class="alert warn">已取消置顶：条目仍在库里（<code>pinned:false</code>），常驻合计已随之下降 <span class="rb">R15<span class="tip"><b>R15</b> 取消置顶只改 pinned 标记，不删条目；合计与条目数必须同步变化。</span></span></div>`;
+}
+function restoreDefault(){
+  const t = TARGETS[current];
+  if(restoreStage===0){ restoreStage=1; document.getElementById('restoreBtn').textContent='再点一次确认恢复'; toast('恢复默认会丢弃当前自定义文本，再点一次确认','warn'); return; }
+  restoreStage=0;
+  t.text = t.kind==='wrapper' ? (current.endsWith('header')?'## 记忆库置顶规则':'以上为用户显式置顶的长期规则，优先级高于默认行为。') : t.text;
+  pick(document.querySelector('#tlist button.on'));
+  toast('已恢复默认文本','ok');
+}
+function saveFail(){
+  document.getElementById('edWarn').innerHTML = `<div class="alert err"><b>保存失败</b>：<code>EACCES: permission denied, rename .../principles.md.tmp</code>（文件被编辑器占用）。草稿已保留，请<b>重新预览</b>再试 <span class="rb">R16<span class="tip"><b>R16</b> 失败结果条必须带系统原文；重试必须重新走预览与校验。</span></span></div>
+    <div class="row"><button class="act" onclick="preview()">重新预览</button></div>`;
+  previewShown = false;
+  document.getElementById('saveBtn').disabled = true;
+}
+function loopbackFail(){
+  document.getElementById('edWarn').innerHTML = `<div class="alert err"><b>403 Forbidden</b>：编辑路由只接受本机回环请求（来源 <code>192.168.1.23</code> 被拒）。这不是失败，是围栏 <span class="rb">R16<span class="tip"><b>R16</b> 编辑入口仅本机回环；非回环请求 403，界面给明确提示。</span></span></div>`;
+}
+
+/* ---------- V3 ---------- */
+function setHostMode(mode){
+  state.hostMode = mode;
+  state.diff = 'none';
+  renderV3();
+  const msg = {managed:'已切到：npm 安装（发版后）→ 宿主列出版本', git:'已切到：git 安装（现状）→ 宿主 not-updatable', link:'已切到：link 安装 → blocked', engines:'已切到：宿主版本过低 → blocked'}[mode];
+  toast(msg, mode==='managed'?'ok':(mode==='engines'?'bad':'warn'));
+}
+function renderV3(){
+  const mode = state.hostMode;
+  const install = mode==='link' ? 'link（本地源码目录）' : (mode==='git' ? 'git（github: 直装）' : 'npm（@memory-ops/dsh-plugin）');
+  document.getElementById('installTag').textContent = install;
+  document.getElementById('specLine').innerHTML = mode==='link'
+    ? '<code>link:packages/dsh-plugin</code>'
+    : (mode==='git' ? '<code>github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin&amp;5c44d95</code>' : '<code>@memory-ops/dsh-plugin@0.1.0</code>');
+
+  // 目标与检查（git 时不许用 — 冒充"未检查"）
+  const target = document.getElementById('targetLine');
+  const line = document.getElementById('checkLine');
+  if(mode==='git'){
+    target.innerHTML = '宿主<b>不列出版本</b>（安装源非 registry）';
+    line.textContent = '宿主返回 not-updatable · 2026-11-21 09:20';
+  } else if(mode==='link'){
+    target.textContent = '—（link 安装，无版本可比）';
+    line.textContent = '无可比版本 · 2026-11-21 09:20';
+  } else if(mode==='engines'){
+    target.innerHTML = '<code>0.2.0</code>（宿主给出）· 但本机宿主版本不满足';
+    line.textContent = '已检查 2 个来源（宿主版本区块）· 2026-11-21 09:20';
+  } else {
+    target.innerHTML = '<code>0.2.0</code>（宿主给出）· 发布于 2026-11-19 · 2 条差异';
+    line.textContent = '已检查 2 个来源（宿主版本区块）· 2026-11-21 09:20';
+  }
+
+  // 宿主区块（只读展示）
+  document.getElementById('hostBox').innerHTML = mode==='git'
+    ? `<div class="alert err"><b>宿主返回 refused / not-updatable</b>：<code>@memory-ops/dsh-plugin is installed from Git, which lists no versions</code>
+        <div class="note" style="margin-top:4px">这是宿主原生的"版本"区块在 git 安装下的真实输出（实测：<code>listVersions()</code> 在查 registry 之前就返回）。它把"不支持"渲染成了"失败"。</div></div>
+       <p class="note">我们的处理：翻译成人话 + 给命令兜底，不把这句英文当失败抛给用户 <span class="rb">R22<span class="tip"><b>R22</b> not-updatable：git 安装 → 人话 + 命令，不显示成失败红条。</span></span></p>`
+    : `<div class="kv">
+        <div class="k">当前版本</div><div><b>0.1.0</b></div>
+        <div class="k">可更新到</div><div><b>0.2.0</b> · 发布于 2026-11-19</div>
+        <div class="k">新版本数</div><div>1 个新版本 <span class="note">（下拉可看列表，此处不模拟）</span></div>
+        <div class="k">操作</div><div><button class="act" onclick="toast('已请求宿主重新检查（原型不跳转）')">重新检查</button></div>
+      </div>
+      <p class="note">这一块是 <b>DSH 插件页自己渲染的</b>；我们只读它，不重建检查逻辑 <span class="rb">R24<span class="tip"><b>R24</b> 单一入口：不重复自建检查/安装/回滚。</span></span></p>`;
+
+  // 入口与边界
+  const entry = document.getElementById('entryBox');
+  if(mode==='managed'){
+    entry.innerHTML = `<div class="row"><button class="act primary" onclick="toast('已请求打开宿主插件页（原型不跳转）')">去宿主页更新</button>
+      <span class="tag bill">更新由宿主执行</span></div>
+      <div class="alert info" style="margin-top:10px">宿主会做热更新；<b>失败时自动回滚旧版本</b>。刷新/重启由宿主决定。<b>我们不提供自己的回滚按钮</b> <span class="rb">R22<span class="tip"><b>R22</b> host-managed：主按钮是"去宿主页更新"，我方不执行、不回滚。</span></span></div>
+      <details style="margin-top:8px"><summary class="note">headless / 无 GUI 时用命令（兜底）</summary>
+        <pre class="cmd" id="cmd">dsh plugin --profile desktop add "@memory-ops/dsh-plugin@0.2.0"</pre>
+        <div class="row" style="margin-top:6px"><button class="act" onclick="copyCmd()">复制命令</button><span class="note">需重启</span></div>
+      </details>`;
+  } else if(mode==='git'){
+    entry.innerHTML = `<div class="alert warn"><b>git 安装：宿主无法比较版本</b>（这不是网络故障，也不是"已是最新"）。升级只能走命令：<b>装完需重启。</b>
+      <span class="rb">R22<span class="tip"><b>R22</b> not-updatable：显示人话 + 命令；不允许显示成"失败"或"已最新"。</span></span></div>
+      <pre class="cmd" id="cmd">dsh plugin --profile desktop add "github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin&amp;v0.2.0"</pre>
+      <div class="row" style="margin-top:6px"><button class="act" onclick="copyCmd()">复制命令</button></div>
+      <p class="note" style="margin-top:8px">要拿到宿主那块"可更新到 + 发布日期"，必须改成 npm 安装（实测：打 git tag 不算，宿主仍判 git） <span class="rb">R21<span class="tip"><b>R21</b> 入口 1 的前提是安装源为 registry；git 装不渲染"去宿主页更新"。</span></span></p>`;
+  } else if(mode==='link'){
+    entry.innerHTML = `<div class="alert info"><b>blocked · 开发模式</b>：link 安装的是你的源码目录，更新会覆盖正在改的代码。请 <code>pnpm build</code> 后刷新页面；<b>此处不提供"去更新"</b> <span class="rb">R22<span class="tip"><b>R22</b> link 安装 = blocked，且不出现"去宿主页更新"。</span></span></div>`;
+  } else {
+    entry.innerHTML = `<div class="alert err"><b>blocked · 兼容性不满足</b>：目标 0.2.0 要求 DSH <code>&gt;=0.2.0-rc.2</code>，本机 <code>0.1.6-rc.2</code>。可装范围：<code>0.1.x</code>（含当前版本）。<b>无"去更新"按钮</b> <span class="rb">R20<span class="tip"><b>R20</b> engines 不满足 → 禁用更新入口并给可装范围。</span></span></div>`;
+  }
+
+  // 差异（未拉取/拉取失败时不展示条目）
+  renderDiff();
+}
+function loadDiff(kind){
+  const box = document.getElementById('diffBody');
+  if(kind==='fail'){
+    state.diff='fail';
+    box.className = 'alert err';
+    box.innerHTML = `<b>拉取差异失败</b>：<code>api.github.com/commits 403 rate limit</code>。不展示条目——"没查到"不等于"没有改动"。<div class="row" style="margin-top:6px"><button class="act" onclick="loadDiff('ok')">重试</button></div>`;
+    return;
+  }
+  if(kind==='timeout'){
+    state.diff='timeout';
+    box.className = 'alert err';
+    box.innerHTML = `<b>拉取差异超时</b>：15s 无响应。不展示条目。<div class="row" style="margin-top:6px"><button class="act" onclick="loadDiff('ok')">重试</button></div>`;
+    return;
+  }
+  state.diff='shown';
+  box.className = '';
+  box.innerHTML = `<table><thead><tr><th>sha</th><th>标题</th><th>日期</th></tr></thead><tbody>
+    <tr><td><code>0a9c31e</code></td><td>feat(stats): 常驻前缀拆成四桶，置顶逐条列出</td><td>2026-11-19</td></tr>
+    <tr><td><code>71d0f52</code></td><td>feat(prefix): 新增前缀编辑视图与 token 预览</td><td>2026-11-18</td></tr>
+  </tbody></table>`;
+}
+function renderDiff(){
+  const box = document.getElementById('diffBody');
+  if(state.diff==='shown'){ return; }
+  if(state.diff==='fail' || state.diff==='timeout'){ return; }
+  box.className = 'alert info';
+  box.textContent = '未拉取：这里只放说明，不预填"2 条差异"。';
+}
+function copyCmd(){
+  const el = document.querySelector('#entryBox #cmd');
+  const cmd = el ? el.textContent : '';
+  navigator.clipboard?.writeText(cmd).then(()=>toast('命令已复制。装完要重启 DSH。','ok')).catch(()=>toast('复制失败，请手动选中复制','bad'));
+}
+/* ---------- toast ---------- */
+function toast(msg, kind='info'){
+  const box = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = `alert ${kind==='ok'?'ok':kind==='warn'?'warn':kind==='bad'?'err':'info'}`;
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(()=>el.remove(), 4200);
+}
+
+/* ---------- 启动 ---------- */
+renderTargets();
+pick(document.querySelector('#tlist button'));
+renderAll();
+renderV3();</script>
+</body>
+</html>

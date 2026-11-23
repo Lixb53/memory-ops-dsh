@@ -38,8 +38,8 @@
 
 | 包 | 状态 |
 |---|---|
-| `packages/core` | ✅ 已实现，252 项测试 |
-| `packages/dsh-plugin` | ✅ 已实现，85 项测试；支持从 GitHub 直装（安装步骤见本文件下方「快速开始」与仓库 README） |
+| `packages/core` | ✅ 已实现，266 项测试 |
+| `packages/dsh-plugin` | ✅ 已实现，143 项测试；支持从 GitHub 直装（安装步骤见本文件下方「快速开始」与仓库 README） |
 | `packages/memory-web` | ❌ **未实现**（没有代码） |
 
 仓库：https://github.com/Lixb53/memory-ops-dsh
@@ -108,7 +108,7 @@
 | 个人域数据骨架 | 完成，`~/.memory-ops/personal/` 6 文件，真实结论 |
 | 工作域数据 | 完成，`~/.memory-ops/work/sz-web/` 35 篇 |
 | `@memory-ops/core` | **已实现**，266 项测试 |
-| `@memory-ops/dsh-plugin` host（34 路由 + 2 工具 + 1 提示词段落） | **已实现**，101 项测试 |
+| `@memory-ops/dsh-plugin` host（34 路由 + 2 工具 + 1 提示词段落） | **已实现**，143 项测试 |
 | `@memory-ops/dsh-plugin` client（4 表面 + 5 分区） | **已挂载**，部分能力未接入 UI |
 | **Web 管理端** | **未实现**（无代码） |
 | v3 契约（frontmatter v2 + events.jsonl + 三率） | **已实现** |

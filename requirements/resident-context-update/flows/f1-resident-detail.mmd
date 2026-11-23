@@ -1,0 +1,53 @@
+%% 常驻前缀明细：主路径 + 异常分支
+%% 对应 PRD R1–R9；泳道纵向排列（flowchart TB + subgraph）
+flowchart TB
+  subgraph U["用户"]
+    u1["打开 库健康→成本区（health）"]
+    u2["展开某个桶"]
+    u3["点某条 去编辑"]
+    u4["点 重试"]
+  end
+
+  subgraph UI["插件 UI（浏览器半体）"]
+    i1["请求 overview"]
+    i2{"四桶齐全?"}
+    i3["渲染 合计校验行 R1/R4"]
+    i4["渲染 条目表 R2/R3/R9"]
+    i5["置顶逐条 + 注入状态 R5"]
+    i6["只读徽标 + 编辑入口 R8"]
+    e1["error 红条 + 原因 + 重试 R6"]
+    e2["工具 schema 不可读标记 R7"]
+  end
+
+  subgraph CORE["core 聚合层"]
+    c1["residentBreakdown: catalog/frame/injected/toolschema"]
+    c2["校验 桶内和 = 桶数字 R4"]
+    c3["读 skills 抛错 → error R6"]
+    c4["宿主无 schema → 不读, 不进合计 R7"]
+  end
+
+  subgraph HOST["宿主服务"]
+    h1["skills.list()"]
+    h2["tools.schemas"]
+  end
+
+  u1 --> i1 --> c1
+  c1 --> h1
+  c1 --> h2
+  h1 --> c3
+  h2 --> c4
+  c3 --> i2
+  c4 --> i2
+  c1 --> c2 --> i2
+  i2 -->|"齐全"| i3
+  i3 --> i4
+  i4 --> i5
+  i5 --> i6
+  i2 -->|"缺/读失败"| e1
+  c4 --> e2
+  e1 --> u4 --> i1
+  u2 --> i4
+  i6 --> u3
+
+  style e1 fill:#fde8e6,stroke:#a92a1e
+  style e2 fill:#fff4e0,stroke:#96570a

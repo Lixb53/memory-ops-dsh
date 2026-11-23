@@ -1,0 +1,53 @@
+%% 版本与更新：宿主优先、只补差异、单一入口
+%% 对应 PRD R17–R24（R22/R24 是"我们不执行更新"的边界）
+flowchart TB
+  subgraph U["用户"]
+    u1["打开 版本卡"]
+    u2["点 去宿主页更新"]
+    u3["点 看改了什么"]
+    u4["复制命令（headless / 旧宿主）"]
+    u5["刷新 / 重启（宿主决定）"]
+    u6["点 重试"]
+  end
+
+  subgraph UI["插件 UI（我们的版本卡）"]
+    v1["渲染五项：版本/spec/安装方式/commit/目标 R17"]
+    v2["拉 commits 差异 R18"]
+    v3["逐条差异（sha·标题·日期）；此页无更新按钮 R24"]
+    v4{"宿主版本区块可用?"}
+    v4b["not-updatable：宿主明说 installed from Git, which lists no versions → 翻译成人话 + 命令兜底 R22"]
+    v5["无宿主区块（旧宿主）：只给命令 + 需重启 R21"]
+    v6["blocked：link=不提供更新；engines 不满足=给可装范围 R20 R22"]
+    v7["失败/超时：原因 + 重试；不展示差异 R19"]
+    v8["文案：更新由宿主执行，失败自动回滚；只改插件代码、不动记忆库数据 R22 R23"]
+  end
+
+  subgraph HOST["宿主插件页"]
+    h1["版本区块：可更新到 X · 发布于 D · N 个新版本 · 重新检查 R21"]
+    h2["宿主执行更新（热更新）"]
+    h3["宿主失败时回滚旧版本"]
+  end
+
+  subgraph REMOTE["远端"]
+    r1["registry 最新版 + 发布日期"]
+    r2["仓库 commits / release notes"]
+    r3["目标版本 engines.dsh"]
+  end
+
+  u1 --> v1 --> v4
+  v4 -->|"是 + registry(npm) 安装"| h1
+  v4 -->|"是 + git 安装"| v4b
+  v4 -->|"否"| v5 --> u4
+  v4 -->|"link / 版本不满足"| v6
+  h1 --> r1
+  v1 -->|"检查失败或超时"| v7 --> u6 --> v1
+  h1 --> u2 --> h2 --> h3
+  h2 -->|"完成"| u5
+  u3 --> v2 --> r2 --> v3
+  v1 --> v8
+  v3 --> r3
+  v6 --> u4
+
+  style v3 fill:#eef1f5,stroke:#1f4e79
+  style v6 fill:#eef1f5,stroke:#1f4e79
+  style h3 fill:#fdf3e3,stroke:#96570a

@@ -39,7 +39,7 @@
 | `packages/dsh-plugin` | ✅ 已实现并安装运行 | host 半体（34 条路由 + 2 个工具）+ 浏览器半体（4 表面） |
 | `packages/memory-web` | ❌ **未实现** | Web 管理端**没有代码**，本文档中所有 Web 端描述均为设计意图 |
 
-测试：core 266 项 + plugin 101 项 = **367 项**，`tsc --noEmit` 0 错误。
+测试：core 266 项 + plugin 143 项 = **409 项**，`tsc --noEmit` 0 错误。
 
 ### 2.2 表面与分区：真实完成度
 
