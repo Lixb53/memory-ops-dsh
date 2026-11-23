@@ -1,14 +1,12 @@
-# 记忆库 · 设计交付说明（当前 v6）
+# 记忆库 · 设计交付说明（当前 v9）
 
-> **v6（2026-11-19）**：视觉方向改为「密排档案台」（Data-Dense Ledger）并落地到插件；
-> 信息架构不变（沿用 v4 的 5 任务入口与四态）。唯一契约 = `direction-card.md`（v6）。
-> 预览图：`prototype/shots-v6/`（5 分区 × 亮/暗 + /remember 弹窗 2 张）、
-> `design/shots-v6/`（v6 静态视觉稿）。历史版本契约在 `design/archive/`。
+> **v9（2026-11-21）**：视觉方向改为「三栏工作台 · 双车道」。
+> 唯一契约：[`design/brief.md`](brief.md)。令牌：[`tokens.json`](tokens.json)。
+> 组件规格：[`components/README.md`](components/README.md)。
+> 预览图：[`prototype/shots-v9/`](../prototype/shots-v9/)（13 张 + 指标）。
 >
-> 以下为 v4（2026-11-17）原始交付说明，保留作透明记录。
->
-> 本次任务：重新分析产品，解决「用起来很奇怪、不知道要干嘛、怎么用」，给出改进。
-> 交付时间：2026-11-17。
+> 插件端主面板已按本契约落地（`packages/dsh-plugin/src/client/v9/`），
+> 实测与复现步骤见 [`packages/dsh-plugin/perf-report.md`](../packages/dsh-plugin/perf-report.md)。
 
 ---
 
@@ -16,136 +14,99 @@
 
 | 想知道什么 | 看哪个文件 |
 |---|---|
-| **为什么现在难用**（五条根因，带代码取证） | [`design/information-architecture.md` §一](information-architecture.md) |
-| **改成什么样**（5 个任务入口 + 术语对照 + 四态） | [`design/information-architecture.md` §二–§五](information-architecture.md) |
-| **长什么样、怎么点**（可运行原型） | 双击 [`prototype/index.html`](../prototype/index.html) |
-| **视觉规则**（唯一契约，v6） | [`design/direction-card.md`](direction-card.md) |
-| **代码怎么改**（文件级改动清单 + 验收标准） | [`design/implementation-plan.md`](implementation-plan.md) |
-| **合规自检** | [`review/5a-self-check.md`](../review/5a-self-check.md) |
-| **独立评审（v4 三轮，均未通过）** | [`review/5b-round-1.md`](../review/5b-round-1.md) … [`5b-round-3.md`](../review/5b-round-3.md)（v4 历史，见 git） |
-| **独立评审（v6 门禁轮）** | `review/5b-v6-round-1.md`（本轮结果落盘后填写） |
-| **系统架构评估（另一个问题域）** | [`docs/architecture-review.md`](../docs/architecture-review.md) |
+| **为什么再改一次**（v8「校样栏」在 1614 画布上不成立） | [brief.md §零](brief.md) |
+| **改成什么样**（方向卡 + 三条差异化声明） | [brief.md §一–§九](brief.md) |
+| **长什么样**（预览图） | [`prototype/shots-v9/`](../prototype/shots-v9/) |
+| **能点吗**（可运行原型，双击即开） | [`prototype/index.html`](../prototype/index.html) |
+| **令牌** | [`tokens.json`](tokens.json) |
+| **组件规格**（解剖 / 状态 / 映射 / 可达性） | [`components/README.md`](components/README.md) |
+| **四态 + IA** | [brief.md §十](brief.md) |
+| **验收标准 + 假设** | [brief.md §十二](brief.md) |
+| 历史契约（v4 / v5 / v6 / v7 / v8） | [`archive/`](archive/) |
 
 ---
 
-## 核心结论（一句话）
+## 这一版改了什么（三句话）
 
-> 不是功能不够，是**规模错配**：真实库只有 3 条记忆、3 条记录、5 条未命中，
-> 界面却给了 5 个数据分区、34 条路由、5 个 KPI、5 个维护子页签。
-> **内容少的时候，界面必须主动说出下一步**——现状是内容越少越安静。
-
----
-
-## 改动的三条主线
-
-1. **导航按「你要干的事」重排**
-   `本项目 / 记录流 / 记忆 / 未命中 / 总览` → `今天 / 记一条 / 待办 / 记忆 / 库健康`
-   能力与 34 条路由一个不删，只换入口。
-
-2. **首屏必须给出唯一建议**
-   无论数据是什么状态，第一屏都有一张建议卡 + 一个主按钮。
-   队列为空时说「去看看库里有什么」，而不是让整块消失。
-
-3. **术语全部换成用户语言 + 视觉层级从 11 种字号收到 5 档**
-   「该补了 / 爬升 / 锚点校验 / 记账」不再出现在界面；
-   条目从圆角卡片改为 hairline 台账行（圆角 0）。
+1. **画布从 400px 侧栏改成 1614×900 主区**：v8 的「单栏纸面」不再是地基，
+   三栏（212 左轨 / 1fr 中栏 / 360 检视栏）成为结构。
+2. **中栏顶部压一条 72px「每请求都在」窄带**：双车道——推送通道做成结构，不做 KPI 卡。
+3. **检视栏常驻 360**：详情、编辑、diff 三件事同屏，R11 的「三件缺一不可」才成立。
 
 ---
 
-## 怎么验收原型
+## 预览图清单（`prototype/shots-v9/`）
 
-双击 `prototype/index.html`（**无需服务器**，file:// 直接打开）。
-
-原型左侧是产品界面（按宿主真实侧栏宽度 400px 还原），右侧是**不属于产品**的验收控制台：
-
-- **切换页面**：5 个入口。
-- **切换状态**：正常 / 加载中 / 空 / 出错 / 成功 —— 每页都能切。
-- **展开面板**：真实侧栏是满高容器、内部滚动，所以默认会截断超出部分。
-  「展开面板」（或在地址后加 `?unfold=1`）解除高度限制，用于看完整布局。
-- **深链**：直接改地址栏 hash 也能到指定页与状态，如 `index.html#todo/error`、`#memory/empty`。
-
-已生成的界面截图在 `prototype/shots/`（12 张），覆盖 5 页正常态 + 5 种非常规态。
-
-### 值得亲手点一遍的三条路径
-
-| 路径 | 验证什么 |
-|---|---|
-| 今天 → 点「确认这条」 | 建议卡就地显示「已确认…还剩 N 条待拍板」，导航「待办」计数同步 -1（不是弹 toast） |
-| 记一条 → 输入含 `gho_xxxxx` 的文本 → 存 | 隐私闸门拦截 + 给出脱敏版本 + 可填入（Esc 也可关） |
-| 记忆 → 点任一条 | 详情页出口收敛为 1 主按钮 + 1 次按钮，其余折叠在「更多操作」 |
-
-已验证的交互逻辑（不靠目测，用 node 跑数据层）：
-
-```
-初始     todoTotal=3  openInbox=2  pending=1
-标完成   todoTotal=2  openInbox=1
-确认后   todoTotal=1  pending=0
-```
-
-即「点了按钮，数字真的会变」——这条在本仓是出过事故的（`docs/product.md` §13.1：
-「做完了但看起来什么都没发生」），所以专门验了。
-
----
-
-## 数据真实声明
-
-原型**不含任何占位假数据**。全部来自本机真实库 `C:\Users\51967\.memory-ops`（2026-11-17 实读）：
-
-| 项 | 数量 | 来源 |
+| 文件 | 内容 | 看什么 |
 |---|---|---|
-| 记忆条目 | 3 | `personal/INBOX.md` / `personal/principles.md` / `work/dsh-config/repo-conventions.md` |
-| INBOX 记录 | 3 | `personal/INBOX.md` 表格 |
-| 未命中 | 5 | `.state/misses.json` |
-| 事件 | 12 | `.state/events.jsonl` |
-| token 数 | 519 / 114 / 178 | 用 `core/schema.ts::estimateTokens` 同口径实算 |
+| `today-light.png` | 今天页 | 首屏线索 + 捕获带，无需滚动 |
+| `capture-light.png` | 记一条 | 类型签 → 输入 → 隐私说明 → 最近记的 |
+| `todo-light.png` | 待办 | 三段分组，观察项折叠 |
+| `memory-light.png` / `memory-cost-light.png` | 记忆 | 双面开关切换列集，行高不变 |
+| `health-light.png` / `health-edit-light.png` | 库健康 | 四桶 meter + 置顶编辑（diff 上下叠） |
+| `health-version-host-light.png` | 版本 | 五项 + 检查三态 |
+| `health-dark.png` | 深色 | T0 可见、对比达标 |
+| `today-{empty,error,loading}-light.png` | 四态 | error 下 T0 为 `—`，导航保留 |
+| `contact-sheet.png` | 拼版 | 一屏看全部 |
 
-成本口径（171 / 1024 / 4120）来自 `docs/product.md` §十二 的实测值，不是估的。
+另附 `metrics.json`：每张图的实测读数（T0 数量与文本、读头高度、行数、行高、对比度）。
+
+---
+
+## 怎么验收
+
+双击 `prototype/index.html`（**无需服务器**，`file://` 直接打开）。
+左侧是产品界面（画布 1614×900），右侧是不属于产品的验收控制台：
+切换页面 / 主题 / 四态 / 打开 `/remember` 浮层 / 展开面板。
+也可直接改 hash 深链：`#todo/error`、`#memory/empty`。
+
+### 机检（两条命令，退出码 = 命中数，双 0 才算过）
+
+```powershell
+pwsh -File tools/lint-anti-slop.ps1 prototype/
+pwsh -File tools/assert-structure.ps1 prototype/index.html prototype/app.css
+```
+
+### 真机量测 + 预览图重生成（自带断言）
+
+```powershell
+# 12 个用例逐条断言（三栏 / T0 / 判定句 / 溢出 / diff / 深色），
+# 同时把 13 张 PNG 与 metrics.json 写进指定目录；退出码 = 失败数。
+node scripts/measure-v9.mjs --out prototype/shots-v9
+```
+
+---
+
+## 数据真实性
+
+预览图**不含占位假数据**。全部来自本机真实库 `C:\Users\51967\.memory-ops`：
+7 条记忆 / 5 条待拍板 / 18 条观察未命中；token 用 `core/schema.ts::estimateTokens` 同口径实算
+（652 = 框架 171 + 技能 423 + 置顶 58）；成本口径来自 `docs/product.md` §十二。
 
 ---
 
 ## 已知边界（不隐瞒）
 
-1. **`prototype/tokens.css` 是占位实现**。它用 oklch 定义了一组与宿主同名的变量，
-   只为让原型脱离宿主跑起来。移植进插件时**整段删除**，颜色由宿主 `--dsw-alias-*` 提供。
-   文件头有明确删除指令。
-
-2. **原型不接真实数据**。它证明的是信息架构与交互，不是接线完整性。
-   接线由现有 `test/wiring-ui.test.mjs` 保证——落地时必须保持全绿。
-
-3. **「成功态」不是独立第五态**，而是真实操作后的就地反馈。
-   理由：本产品已因「做完了但看起来什么都没发生」出过一次事故（`docs/product.md` §13.1）。
-
-4. **Web 管理端仍未实现**，不在本次范围内。本次只重规划插件端。
-
-5. **CSS 拆成两份是为了满足「单文件 ≤1000 行」**。
-   落地时必须同步拆 TS（`client/styles/{base,pages,index}.ts`），
-   不能把两份合并回单个 `styles.ts`——那样会超限。见
-   [`implementation-plan.md`](implementation-plan.md) §二 第 1 步。
+1. **原型不接真实数据**：它证明的是信息架构与视觉，不是接线完整性。
+   接线完整性的证据在 `packages/dsh-plugin/perf-report.md`（同一份桥数据 + 同一套组件）。
+2. **`tokens.css` 是宿主值复刻**，移植时整段删除；它同时是主题回归测试。
+3. **键盘 roving tabindex 在原型里未实现**（插件端已实现，见 `client/v9/stage.ts`）。
+4. **悬停/焦点/滚动行为需实测**：静态 PNG 无法证明，已在组件规范里标「需实测」。
 
 ---
 
-## 三轮评审的净结果（透明记录）
+## 历史（v4–v8）
 
-| 轮次 | 门禁 | 主要发现 | 修复量 |
-|---|---|---|---|
-| 1 | ❌ 不通过 | 哲学 4 / 功能 4，5 项 P0 | 5 P0 + 13 P1 |
-| 2 | ❌ 不通过 | 无维度 ≤4，但 3 项 P0（brand 复发 / 成功态伪造 / 文档证据失效） | 3 P0 + 15 P1 |
-| 3 | ❌ 不通过 | 4 项 P0（归档伪造 / 记忆页 2 处 brand / success 文案反了 / 取证失实） | 4 P0 已修，**未复评** |
+v4 / v5 / v6 / v7 / v8 的原型目录与截图已于 2026-11-21 清理，只保留契约文本：
 
-**门禁状态（最终交付）**：
+| 版本 | 契约原文 | 当时的原型 |
+|---|---|---|
+| v8 | [`archive/brief-v8.md`](archive/brief-v8.md) | 已清理（`prototype/shots-v8/`、`prototype/v8/`） |
+| v6 | [`archive/direction-card-v6.md`](archive/direction-card-v6.md) | 已清理 |
+| v5 | [`archive/direction-card-v5.md`](archive/direction-card-v5.md) | 已清理（`prototype/v5/`） |
+| v4 | [`archive/direction-card-v4.md`](archive/direction-card-v4.md) | 已清理（`prototype/v4/`） |
 
-- 三轮评审均未通过（上限 3 轮已用尽）。
-- 第 3 轮的 4 项 P0 **已全部修复并实测验证**（归档真改数据 `observed→archived` + 待办徽标 `3→2`；
-  brand 穷举至「页 × 相 + 页内数据状态」全 ≤1；`todo/success` 与 `confirmEntry` 统一算法；
-  行数与取证按实测重写），但**未再触发第 4 轮独立评审**。
-- 因此：**「已修复」是主代理的实测结论，不是独立评审的通过结论。**
-  按门禁规则，这属于**阻塞项**，交付时不得静默带过。
-
-**为什么值得记录**：第 2 轮抓到的 3 个 P0 里，有 2 个是**我自己修复时引入的新问题**
-（拆 CSS 把 reduced-motion 挪错文件、成功态用文案代替行为）。
-第 3 轮又抓到「用文案代替行为」第三次出现（归档）。这说明：
-**同一个病灶会在每次修复后换位置复发，直到被抽象成机制（而不是逐处修补）。**
-这正是 `docs/architecture-review.md` §二 建议把 `ActionFailure` 分类的根本原因——
-前端之所以能「说成功但没做」，是因为失败与成功在类型上太容易被伪造。
-
-
+> 为什么清理：每个版本都留一份可运行原型 + 十余张截图，仓库里累积了 7.9 MB
+> 已不再对应任何现行契约的产物，而 `design/` 的价值在契约文本与令牌，不在旧截图。
+> 历史文档里对旧截图的引用**保留原样**（它们是当时评审的证据链），
+> 但那些文件已经不存在——要复现旧版本，请看对应 commit 的 `prototype/`。
