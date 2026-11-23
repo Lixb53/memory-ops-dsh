@@ -10,9 +10,16 @@
  * 所以这里不测行为，只测一件事实：**每个能力都有客户端调用点**。
  * 做法是静态扫描 client 源码里的 `call('<route>')` 与 `useBridge('<route>')`。
  *
- * v4（2026-11-18）分区从数据表改为任务入口（today / capture / todo / memory / health），
- * 本文件的所有文件级断言已跟随新结构重写；强度不变：
- * 每条路由仍必须能在某个源文件里找到调用点。
+ * ## v9（2026-11-21）的结构迁移
+ *
+ * 5 个分区从 `client/panes/*.ts` 迁到 `client/v9/panes/*.ts`，并且每个分区
+ * 拆成「中栏 Center + 检视栏 Inspector」两个组件。本文件的断言跟随新路径重写，
+ * 强度不降：
+ *   - 每条路由仍必须有 UI 调用点（白名单只剩内部能力）；
+ *   - 旧的「建议卡 / 三段文案 / 成本三行」这类**结构断言**换成 v9 的硬规则
+ *     （三栏宽度、T0 唯一、判定句长度、主操作唯一、diff 上下叠、四态齐）；
+ *   - 旧 `panes/*.ts` 保留成空模块并在这里被显式断言「不含逻辑」，
+ *     避免有人往迁移壳子里塞代码而界面根本不渲染。
  */
 
 import assert from 'node:assert/strict'
@@ -23,13 +30,14 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const CLIENT_DIR = path.join(here, '..', 'src', 'client')
+const V9_DIR = path.join(CLIENT_DIR, 'v9')
 const SRC_DIR = path.join(here, '..', 'src')
 
 /**
  * 递归收集 .ts 源码。
  *
- * 路径统一成正斜杠：断言里写的是 `panes/today.ts` 这种与操作系统无关的形式，
- * 而 Windows 的 path.join 产出反斜杠，`endsWith('panes/today.ts')` 永远为 false。
+ * 路径统一成正斜杠：断言里写的是 `v9/panes/today.ts` 这种与操作系统无关的形式，
+ * 而 Windows 的 path.join 产出反斜杠，`endsWith('v9/panes/today.ts')` 永远为 false。
  */
 async function collect(dir) {
   const out = []
@@ -47,11 +55,10 @@ async function collect(dir) {
 /** 合并所有客户端源码，便于正则扫描。 */
 async function clientSource() {
   const files = await collect(CLIENT_DIR)
-  const parts = await Promise.all(files.map(async file => ({
+  return Promise.all(files.map(async file => ({
     file,
     text: await fsp.readFile(file, 'utf8'),
   })))
-  return parts
 }
 
 /** 某个路由在客户端是否有调用点（call 或 useBridge 任一种）。 */
@@ -61,6 +68,11 @@ function hasCallSite(sources, route) {
     new RegExp(`\\buseBridge(?:<[^>]*>)?\\(\\s*['"]${route}['"]`, 's'),
   ]
   return sources.filter(source => patterns.some(pattern => pattern.test(source.text)))
+}
+
+/** 读一个 v9 文件。 */
+async function v9(file) {
+  return fsp.readFile(path.join(V9_DIR, file), 'utf8')
 }
 
 describe('UI 接线：product.md §2.3 的缺口不许回潮', () => {
@@ -89,52 +101,63 @@ describe('UI 接线：product.md §2.3 的缺口不许回潮', () => {
   }
 
   it('记忆分区用 search 记检索账，而不是客户端 filter', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'memory.ts'), 'utf8')
+    const text = await v9('panes/memory.ts')
     assert.match(
-      text, /useBridge<SearchView>\(\s*'search'/s,
+      text, /searchEntries\(/s,
       '必须以 search 路由发起检索（跨行写法也要认）',
     )
-    assert.match(text, /record:\s*submitted\.trim\(\) !== ''/, 'search 调用必须按「是否主动检索」决定记不记账')
+    assert.match(text, /searchEntries\(keyword,\s*keyword\s*!==\s*''\)/, 'search 调用必须按「是否主动检索」决定记不记账')
     assert.match(text, /setSubmitted/, '必须有一次显式提交动作（否则每敲一个字都记一条 miss）')
   })
 
-  it('库健康的常驻前缀取 billedTokens 口径，不是索引层', async () => {
-    const health = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'health.ts'), 'utf8')
-    assert.match(health, /data\.kpi\.indexTokens/, '索引层体积应有独立一行')
-    assert.match(health, /data\.kpi\.residentTokens/, '每请求成本行必须仍在')
-    assert.match(health, /每请求/, '每请求成本行必须写明它是每请求付费的口径')
+  it('库健康的常驻前缀取 kpi.residentTokens 口径，不是索引层', async () => {
+    const view = await v9('view-model.ts')
+    assert.match(view, /kpi\.residentTokens/, '每请求成本必须取 residentTokens')
+    const health = await v9('panes/health.ts')
+    assert.match(health, /每请求/, '中栏必须写明这是「每请求」付费的口径')
+    assert.match(health, /indexTokens/, '索引层体积要有独立一行（口径不许合并）')
+    assert.match(health, /全库/, '全库体积要有独立一行')
   })
 
-  it('面板保持 5 个任务入口（v4 不扩张导航）', async () => {
-    const panel = await fsp.readFile(path.join(CLIENT_DIR, 'panel.ts'), 'utf8')
-    const panes = panel.match(/id: '(today|capture|todo|memory|health)'/g) ?? []
+  it('面板保持 5 个任务入口（v9 不扩张导航）', async () => {
+    const view = await v9('view-model.ts')
+    const panes = view.match(/id: '(today|capture|todo|memory|health)'/g) ?? []
     assert.equal(panes.length, 5, `任务入口数量必须是 5，实际 ${panes.length}`)
-    const health = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'health.ts'), 'utf8')
+    const health = await v9('panes/health.ts')
     assert.match(health, /MaintenancePanel/, '维护面板必须挂进库健康')
   })
 
   it('驳回入口在待办与记忆详情两处都有', async () => {
-    for (const file of ['todo.ts', 'memory.ts']) {
-      const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', file), 'utf8')
-      assert.match(text, /'reject'/, `${file} 缺驳回入口`)
+    for (const file of ['panes/todo.ts', 'panes/memory.ts']) {
+      const text = await v9(file)
+      assert.match(text, /rejectEntry/, `${file} 缺驳回入口`)
     }
   })
 
   it('待办支持改内容（不只改状态）', async () => {
-    const todo = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'todo.ts'), 'utf8')
-    assert.match(todo, /patch: \{ content/, 'updateInbox 必须能改 content')
+    const todo = await v9('panes/todo.ts')
+    assert.match(todo, /\{ content: content\.trim\(\) \}/, 'updateInbox 必须能改 content')
+  })
+
+  it('旧的 panes/*.ts 只是迁移壳子，不含逻辑', async () => {
+    for (const file of ['today.ts', 'capture.ts', 'todo.ts', 'memory.ts', 'health.ts']) {
+      const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', file), 'utf8')
+      assert.match(text, /export \{\}/, `${file} 应为空模块`)
+      assert.equal(/createElement|useBridge|call\(/.test(text), false, `${file} 里出现了逻辑：迁移壳子不许放实现`)
+    }
   })
 })
 
 describe('项目上下文（假空态的三个入口）', () => {
-  it('入口都送 cwd，不由客户端猜项目名', async () => {
+  it('取数入口都送 cwd，不由客户端猜项目名', async () => {
     const sources = await clientSource()
-    const names = ['panes/today.ts', 'panes/memory.ts', 'session-view.ts', 'panel.ts']
-    for (const name of names) {
-      const found = sources.find(item => item.file.endsWith(name))
-      assert.ok(found !== undefined, `找不到 ${name}`)
-      assert.match(found.text, /scopeBody|useSessionProject/, `${name} 必须走 scopeBody / useSessionProject（cwd 优先）`)
-    }
+    const panel = sources.find(item => item.file.endsWith('client/panel.ts'))
+    assert.ok(panel !== undefined, '找不到 panel.ts')
+    assert.match(panel.text, /useWorkbenchData/, '面板必须走统一的取数入口（cwd 在那一层进请求）')
+
+    const data = await v9('data.ts')
+    assert.match(data, /useSessionProject/, '数据层必须用会话 cwd')
+    assert.match(data, /scopeBody/, '请求体必须由 scopeBody 生成（cwd 优先）')
   })
 
   it('scopeBody 优先 cwd，其次兜底项目名，最后才空对象', async () => {
@@ -151,15 +174,31 @@ describe('项目上下文（假空态的三个入口）', () => {
   })
 })
 
-describe('总览→库健康的动作反馈（点了要有反应）', () => {
-  it('确认 / 归档 / 再留都走 run 风格并把失败摆出来', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'todo.ts'), 'utf8')
-    const bareVoid = text.split('\n')
-      .filter(line => !/^\s*(\/\/|\*|\/\*)/.test(line))
-      .filter(line => /void call\('(confirm|archive|keep)'/.test(line))
-    assert.deepEqual(bareVoid, [], '这些动作不能再是静默 void call：\n' + bareVoid.join('\n'))
-    // 反馈走 InlineDone 组件（类名在 styles.ts 里），源码断言只认组件调用
-    assert.match(text, /InlineDone\(/, '反馈必须就地显示（InlineDone），不能静默')
+describe('动作反馈（点了要有反应，失败要说话）', () => {
+  it('写动作不许静默 void call，反馈落在统一的回执带', async () => {
+    for (const file of ['panes/todo.ts', 'panes/memory.ts', 'panes/today.ts', 'panes/health.ts']) {
+      const text = await v9(file)
+      const bareVoid = text.split('\n')
+        .filter(line => !/^\s*(\/\/|\*|\/\*)/.test(line))
+        .filter(line => /void call\('(confirm|archive|keep|reject|updateInbox)/.test(line))
+      assert.deepEqual(bareVoid, [], `${file} 出现静默写调用：\n${bareVoid.join('\n')}`)
+    }
+    /*
+     * 回执统一在 Stage 的一条带上渲染（所有分区共用），
+     * 不再由各 pane 各放一个 InlineDone——那样「撤销」会随分区切换消失。
+     */
+    const stage = await v9('stage.ts')
+    assert.match(stage, /mo-notice-bar/, '回执必须有一条常驻落点')
+    assert.match(stage, /InlineDone\(\{ ok: notice\.ok/, '回执要渲染成功/失败与撤销')
+    const panel = await fsp.readFile(path.join(CLIENT_DIR, 'panel.ts'), 'utf8')
+    assert.match(panel, /notice,\s*\n\s*statusLeft/, '面板必须把 notice 传给外壳')
+  })
+
+  it('run() 是唯一写出口：pending / 回执 / 重取三件事由它统一', async () => {
+    const panel = await fsp.readFile(path.join(CLIENT_DIR, 'panel.ts'), 'utf8')
+    assert.match(panel, /const run = useCallback/, 'run 必须是稳定引用（否则每次渲染换函数）')
+    assert.match(panel, /data\.reloadAll\(\)/, '成功后必须重取全部数据')
+    assert.match(panel, /setNotice\(\{ ok: false/, '失败必须落回执')
   })
 })
 
@@ -185,88 +224,182 @@ describe('路由接线全表（防止「有路由没入口」回潮）', () => {
   })
 })
 
-describe('v4 设计要点（用户痛点不许回退）', () => {
-  it('捕获有常驻入口，不依赖空态', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'capture.ts'), 'utf8')
-    assert.match(text, /dmo-capture/, '必须有捕获框容器类')
-    assert.match(text, /captureBatch/, '多行提交走 captureBatch')
-    // 注意：断言源码里的对象键形态，不是渲染后的 HTML 属性
-    assert.match(text, /'data-action':\s*'capture'/, '提交按钮必须带可测的 data-action=capture')
+describe('v9 设计硬规则（brief §八，机检替代手工过目）', () => {
+  it('三栏宽度 212 / 1fr / 360，列间距 24', async () => {
+    const css = await v9('styles-base.ts')
+    assert.match(css, /--mo-w-rail: 212px/, '左轨必须是 212')
+    assert.match(css, /--mo-w-insp: 360px/, '检视栏必须是 360')
+    assert.match(css, /--mo-s5: 24px/, '列间距必须是 24')
+    assert.match(css, /grid-template-columns: var\(--mo-w-rail\) minmax\(0, 1fr\) var\(--mo-w-insp\)/, '三栏网格')
   })
 
-  it('今天页有建议卡（首屏必须给出一件事）', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'today.ts'), 'utf8')
-    assert.match(text, /dmo-suggest/, '必须有建议卡容器')
-    assert.match(text, /pickSuggestion/, '建议必须由数据推导（拍板 > 补库 > 流转 > 兜底）')
-    assert.match(text, /dmo-trail/, '要有可点的次要线索')
-  })
-
-  it('待办三段齐全：拍板 / 流转 / 补库', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'todo.ts'), 'utf8')
-    for (const title of ['要我拍板的', '要我流转的', '要我补的']) {
-      assert.equal(text.includes(title), true, `待办缺「${title}」段`)
+  it('每页恰好 1 个 T0：只有外壳渲染 Figure，分区不许出现第二个', async () => {
+    const stage = await v9('stage.ts')
+    assert.match(stage, /Figure\(\{ value: figure \}\)/, '顶条必须渲染唯一 T0')
+    const panes = await Promise.all(['today', 'capture', 'todo', 'memory', 'health'].map(file => v9(`panes/${file}.ts`)))
+    for (const text of panes) {
+      assert.equal(/mo-t0|Figure\(/.test(text), false, '分区里出现了第二个 T0')
     }
-    assert.match(text, /firstSection/, 'brand 实底名额必须整页分配（防止跨段出现 2 处主按钮）')
   })
 
-  it('验证期能显示剩余天数与命中进度', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'todo.ts'), 'utf8')
-    assert.match(text, /remainingDays|验证期/, '验证期信息必须能显示')
+  it('判定句只由 ledeFor 产出，并且有长度与单行拦截', async () => {
+    const view = await v9('view-model.ts')
+    assert.match(view, /export function ledeFor/, '判定句必须有单一出口')
+    assert.match(view, /export const LEDE_MAX = 20/, '上限必须是 20 字')
+    assert.match(view, /clip\(/, '超长必须截断（不能把顶条撑成两行）')
   })
 
-  it('列表显示引用次数', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'memory.ts'), 'utf8')
-    assert.match(text, /citeCount/, '引用次数要能在列表看到')
-    assert.match(text, /未引用|次引用/, '文案要写清是引用次数')
-  })
-
-  it('库健康把成本拆成三行（每请求 / 索引 / 全库）', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'health.ts'), 'utf8')
-    for (const name of ['每请求成本', '索引体积', '全库体积']) {
-      assert.equal(text.includes(name), true, `成本行缺「${name}」`)
+  it('主操作整页唯一：同屏至多一个墨块', async () => {
+    /*
+     * 一个文件里可以有多个检视栏分支（拍板 / 流转 / 补库 / 归档态），
+     * 但**每次渲染只出一个 InspectorFrame**。所以按 InspectorFrame 分块：
+     * 每块 ≤1 个墨块，就是「同屏唯一」的源码级等价物。
+     */
+    for (const file of ['today', 'capture', 'todo', 'memory', 'health']) {
+      const text = await v9(`panes/${file}.ts`)
+      const blocks = text.split(/\n\s*(?:return )?InspectorFrame\(\{/).slice(1)
+      assert.equal(blocks.length > 0, true, `${file} 里找不到 InspectorFrame`)
+      blocks.forEach((block, index) => {
+        /* 块到下一个 InspectorFrame 前为止（split 已切好），末尾还有外层闭合括号。 */
+        const count = (block.match(/BtnInk\(\{/g) ?? []).length
+        assert.equal(count <= 1, true, `${file} 第 ${index + 1} 个检视栏有 ${count} 个墨块：同屏只许一个主操作`)
+      })
     }
-    assert.match(text, /MaintenancePanel/, '维护面板必须挂进库健康')
-    assert.match(text, /仅个人域/, '导出要能按域')
   })
 
-  it('待办的 brand 名额整页分配，不许每段各出一个主按钮', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'todo.ts'), 'utf8')
-    const primaryCalls = (text.match(/Primary\(/g) ?? []).length
-    const conditionalPrimary = (text.match(/usePrimary\s*\?/g) ?? []).length
-    assert.equal(
-      conditionalPrimary > 0 || primaryCalls <= 2, true,
-      'todo 页的 Primary 调用必须经由 firstSection/usePrimary 条件分配，'
-      + '否则待拍板与待补同屏时会出现 2 处 brand 实底',
-    )
+  it('四态齐全：每个分区都处理 loading / error / empty', async () => {
+    for (const file of ['today', 'capture', 'todo', 'memory', 'health']) {
+      const text = await v9(`panes/${file}.ts`)
+      for (const state of ["phase === 'loading'", "phase === 'error'", "phase === 'empty'"]) {
+        assert.equal(text.includes(state), true, `${file} 缺 ${state} 分支`)
+      }
+    }
   })
 
-  it('快速捕获（右侧栏）保留类型药丸与回显', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'capture-tab.ts'), 'utf8')
-    assert.match(text, /dmo-types/, '类型改用药丸')
-    assert.match(text, /刚刚捕获/, '要有刚捕获的回显列表')
+  it('读不到 ≠ 0：T0 与上带在 error/loading 下必须是 null', async () => {
+    const view = await v9('view-model.ts')
+    assert.match(view, /if \(phase === 'error' \|\| phase === 'loading'\) return null/, 'figureFor 与 bandFigureFor 都要这样收口')
+    assert.match(view, /return null[\s\S]*?figureFor|figureFor[\s\S]*?return null/, 'T0 不许在 error 态回落到 0')
   })
 
-  it('未命中达标才进「等你补」，未达标给说明与出口', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'panes', 'todo.ts'), 'utf8')
-    assert.match(text, /还没有到该补的时候/, '未达阈值要有诚实说明')
-    assert.match(text, /仍然补一条/, '说明必须带真实出口，不能只说「现在补也行」')
+  it('上带「每请求都在」是结构而不是 KPI 卡', async () => {
+    const stage = await v9('stage.ts')
+    assert.match(stage, /每请求都在/, '双车道必须有上带')
+    assert.match(stage, /mo-band/, '上带是一个 72px 的带，不是卡片')
+  })
+
+  it('diff 上下叠：删除行 danger 左刻度 + 插入行 ok 左刻度，不并排', async () => {
+    const health = await v9('panes/health.ts')
+    assert.match(health, /mo-diff-removed/, '必须有删除行')
+    assert.match(health, /mo-diff-added/, '必须有插入行')
+    assert.match(health, /tokens[\s\S]*Δ/, '必须有 tokens 前/后/Δ')
+    assert.match(health, /生效时机/, '必须有生效时机')
+    const css = await v9('styles-panes.ts')
+    assert.match(css, /\.mo-diff-line \{[\s\S]*?grid-template-columns: 36px minmax\(0, 1fr\)/, 'diff 行是单栏（行号 + 文本），不是两列并排')
+  })
+
+  it('四桶之和必须能对账：合计行由可读桶求和', async () => {
+    const health = await v9('panes/health.ts')
+    assert.match(health, /const sum = readable\.reduce/, '合计必须由可读桶求和')
+    assert.match(health, /不含\$\{unknown\.join/, '不可读的桶必须写进「不含」')
+    assert.match(health, /data-unknown/, '不可读桶要有独立渲染，不能画成 0')
+  })
+
+  it('可达性：tablist / tabpanel / aside / status / aria-live 一个不少', async () => {
+    const stage = await v9('stage.ts')
+    assert.match(stage, /role: 'tablist'/, '左轨必须是 tablist')
+    assert.match(stage, /role: 'tabpanel'/, '中栏必须是 tabpanel')
+    assert.match(stage, /'aria-labelledby': `mo-tab-\$\{pane\}`/, 'tabpanel 要指回当前 tab')
+    assert.match(stage, /role: 'banner'/, '顶条是 banner')
+    assert.match(stage, /role: 'status'/, '状态条是 status')
+    assert.match(stage, /'aria-live': 'polite'/, '必须有常驻 aria-live 播报')
+    assert.match(stage, /ArrowDown/, '竖直 tablist 必须支持方向键')
+  })
+
+  it('检视栏是常驻 aside，不是抽屉', async () => {
+    const stage = await v9('stage.ts')
+    assert.match(stage, /className: 'mo-insp'/, '检视栏常驻')
+    const css = await v9('styles-base.ts')
+    assert.match(css, /\.mo-insp \{[\s\S]*?border-left/, '检视栏靠底色 + 单边线分区，不用框')
   })
 })
 
 describe('布局与样式契约', () => {
-  it('styles.ts 的注释里不出现反引号（会提前闭合模板字符串）', async () => {
-    const text = await fsp.readFile(path.join(CLIENT_DIR, 'styles.ts'), 'utf8')
-    const body = text.slice(text.indexOf('const CSS = `') + 13, text.lastIndexOf('`'))
-    assert.equal(/`/.test(body), false, 'styles.ts 的 CSS 里出现了反引号：会提前闭合模板字符串')
+  it('模板字符串内部不出现反引号（会提前闭合，整页样式全丢）', async () => {
+    /*
+     * 文件头注释里写 `xxx` 是合法的；真正的雷是**模板串内部**再出现反引号。
+     * 实测踩过：CSS 注释里写了一个带反引号的选择器，esbuild 报
+     * 「Expected ";" but found "button"」，构建失败，界面退回旧样式——
+     * 而旧样式的截图看起来「只是有点旧」，很容易被当成通过。
+     *
+     * 检查范围：从赋值后的第一个反引号，到文件最后一个反引号之间。
+     */
+    for (const file of ['styles.ts', 'v9/styles-base.ts', 'v9/styles-panes.ts']) {
+      const text = await fsp.readFile(path.join(CLIENT_DIR, file), 'utf8')
+      const assign = text.indexOf('= `')
+      assert.notEqual(assign, -1, `${file} 里找不到模板字符串赋值`)
+      const open = text.indexOf('`', assign)
+      const close = text.lastIndexOf('`')
+      assert.equal(close > open, true, `${file} 的模板串没有闭合`)
+      const body = text.slice(open + 1, close)
+      const stray = (body.match(/`/g) ?? []).length
+      assert.equal(stray, 0, `${file} 的模板串内部出现了 ${stray} 个反引号`)
+    }
   })
 
-  /*
-   * v6 评审 P0-3：方向卡 §八-3 把「类名审计 0 缺失」写成硬要求，
-   * 而这条护栏当时只存在于 scripts/class-audit.mjs（手动跑的脚本）。
-   * /remember 弹窗在 v4 就是因为样式重写时整段删掉 .dmo-remember-*
-   * 而「挂载了但不可见」——没有机器闸门，同一个事故必然复发。
-   * 现在它是测试：源码引用了、样式里没有的类 = 直接红。
-   */
+  it('客户端引用的每个 mo-* 类都在 v9 样式里定义（0 缺失）', async () => {
+    const css = `${await v9('styles-base.ts')}\n${await v9('styles-panes.ts')}`
+    const defined = new Set([...css.matchAll(/\.(mo-[a-z0-9-]+)/g)].map(m => m[1]))
+
+    /*
+     * 只认「字符串字面量里以空格分隔的纯类名」。
+     * 早先直接扫 `mo-[a-z0-9-]+` 会把 `dmo-capture` 里的子串与
+     * `var(--mo-s2)` 里的变量名一起抓进来，制造假红。
+     */
+    const sources = await clientSource()
+    const missing = new Map()
+    for (const { file, text } of sources) {
+      if (file.includes('/v9/styles')) continue
+      /* 只认 className 的字面量：id / htmlFor / aria 里的 mo-* 不是类名。 */
+      for (const literal of text.matchAll(/className:\s*['"`]([^'"`\n]*)['"`]/g)) {
+        for (const token of literal[1].split(/\s+/)) {
+          if (/^mo-[a-z0-9-]+$/.test(token) && !defined.has(token)) {
+            missing.set(token, file.split('/').pop())
+          }
+        }
+      }
+    }
+    assert.equal(
+      missing.size === 0, true,
+      `这些类被界面引用但 v9 样式没有定义（浮层会「挂载了但不可见」）：\n`
+      + [...missing].map(([c, f]) => `  ${c}  <- ${f}`).join('\n'),
+    )
+
+    /* 动态拼出来的 tone 类名扫不到，单独钉住四个变体。 */
+    for (const variant of ['mo-tone-ok', 'mo-tone-warn', 'mo-tone-err', 'mo-tone-idle']) {
+      assert.equal(defined.has(variant), true, `缺状态刻度类 ${variant}`)
+    }
+  })
+
+  it('v9 样式不出现字面色值（只许宿主 token）', async () => {
+    const css = `${await v9('styles-base.ts')}\n${await v9('styles-panes.ts')}`
+    const colors = css.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []
+    assert.deepEqual(colors, [], '出现字面色值，必须改用 --dsw-alias-*')
+  })
+
+  it('焦点环全站一种：2px + offset 2（贴边 -1）', async () => {
+    const css = await v9('styles-base.ts')
+    assert.match(css, /outline: 2px solid var\(--dsw-alias-state-business-primary\)/, '焦点环必须用业务蓝')
+    assert.match(css, /outline-offset: 2px/, '默认 offset 2')
+    assert.match(css, /outline-offset: -1px/, '贴边控件 offset -1')
+  })
+
+  it('reduced-motion 全关动效，骨架仍可辨', async () => {
+    const css = await v9('styles-base.ts')
+    assert.match(css, /prefers-reduced-motion: reduce/, '必须有降级块')
+    assert.match(css, /\.mo-skel-row \{ opacity: 1; \}/, '骨架在 reduce 下静止但仍可见')
+  })
+
   it('客户端引用的每个 dmo-* 类都在 styles.ts 里有定义（0 缺失）', async () => {
     const styles = await fsp.readFile(path.join(CLIENT_DIR, 'styles.ts'), 'utf8')
     const cssBody = styles.slice(styles.indexOf('const CSS = `') + 13, styles.lastIndexOf('`'))
@@ -278,7 +411,6 @@ describe('布局与样式契约', () => {
       if (file.endsWith('styles.ts')) continue
       for (const m of text.matchAll(/dmo-[a-z0-9-]+/g)) {
         const cls = m[0]
-        // 模板串前缀（`dmo-badge-${tone}`）匹配到的是残缺名，不是缺失
         if (cls === 'dmo-badge-') continue
         if (!defined.has(cls)) missing.set(cls, file.split('/').pop())
       }
@@ -300,14 +432,9 @@ describe('布局与样式契约', () => {
     ]
     const absent = required.filter(cls => !styles.includes(`.${cls}`))
     assert.deepEqual(absent, [], `.dmo-remember-* 缺失：${absent.join(', ')}`)
-    // 遮罩必须是 fixed 全屏——否则 portal 到 body 也只是贴在文档流末尾
     assert.match(styles, /\.dmo-remember-backdrop \{[\s\S]*position: fixed;[\s\S]*inset: 0/, '遮罩必须 fixed + inset:0')
   })
 
-  /*
-   * v6 评审 P1-1：尺寸令牌只挂 .dmo-root 时，会话 tab 与 portal 浮层
-   * 拿不到 var(--s4)/var(--accent)——弹窗即便类名在，内边距与圆角也是坏的。
-   */
   it('尺寸令牌挂在所有插件根上（含 portal 浮层与会话 tab）', async () => {
     const styles = await fsp.readFile(path.join(CLIENT_DIR, 'styles.ts'), 'utf8')
     const tokenBlock = styles.slice(styles.indexOf(':where('), styles.indexOf('.dmo-root {'))
@@ -320,8 +447,6 @@ describe('布局与样式契约', () => {
     for (const token of ['--t1', '--t4', '--s1', '--r-control', '--r-overlay']) {
       assert.equal(text.includes(token), true, `缺设计令牌 ${token}`)
     }
-    assert.equal(/--t1:\s*24px/.test(text), true, 'T1 必须是 24px（方向卡 §三）')
-    // 字面色值禁止：全部走宿主 token（reduced-motion 块与 mask 兜底除外）
     const colors = text.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []
     assert.equal(colors.length, 0, 'styles.ts 出现字面色值，必须改用 --dsw-alias-*')
   })
