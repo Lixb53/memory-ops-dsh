@@ -17,6 +17,7 @@ import {
   registerCaptureTab, registerMemoryPanel, registerRememberCommand, registerSessionView,
 } from './register.ts'
 import { installStyles } from './styles.ts'
+import { installV9Styles } from './v9/styles.ts'
 
 export const inject = ['slots']
 
@@ -24,7 +25,9 @@ export const inject = ['slots']
 export function apply(ctx: ClientContext): void {
   const disposers: (() => void)[] = []
 
-  // 样式：一次性注入，卸载时移除
+  // 样式：一次性注入，卸载时移除。
+  // 两份表并存：v9 只覆盖主面板（mo- 前缀），其余三个表面仍是 v7 的 dmo- 结构。
+  disposers.push(installV9Styles())
   disposers.push(installStyles())
 
   // 4 个表面

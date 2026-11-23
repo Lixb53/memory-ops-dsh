@@ -30,3 +30,19 @@ export {
   PANEL_ID, consumePaneRequest, gotoPane, paneRequestStore, requestPane,
   type PaneId, type PaneRequestState, type PaneRequestStore,
 } from './pane-nav.ts'
+
+/**
+ * v9 视图模型（纯函数）。
+ *
+ * 顶条读数、判定句、三段台账、四桶口径全部在这里算，组件只负责画。
+ * 把它们导出给 node 测试，是为了让「T0 只给数字」「判定句 ≤20 字」
+ * 「四桶之和 = 合计」这三条硬规则**能被自动断言**，而不是靠人看图。
+ */
+export {
+  PANES, LEDE_MAX, bandFigureFor, bandNoteFor, bucketsOf, clip, cluesOf, countsOf,
+  countDisplay, countFor, daysSince, estimateTokens, figureFor, ledeFor, memoryEntries,
+  memoryGroup, memoryRowsOf, openInboxRows, pinnedItemTokens, refillRows, statusLabelOf,
+  statusRightOf, statusToneOf, todoSectionsOf, todayKey, versionInfoOf, PLUGIN_VERSION,
+  type Bucket, type Clue, type Counts, type Face, type MemoryRow, type Phase,
+  type TodoRow, type TodoSection, type VersionInfo,
+} from './v9/view-model.ts'

@@ -40,7 +40,7 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 
 // src/client/register.ts
-var import_react15 = require("react");
+var import_react18 = require("react");
 
 // src/client/pane-nav.ts
 var import_react = require("react");
@@ -108,220 +108,82 @@ function gotoPane(ctx, pane, direct) {
 }
 
 // src/client/panel.ts
-var import_react11 = require("react");
+var import_react14 = require("react");
 
-// src/client/ui.ts
+// src/client/v9/data.ts
+var import_react4 = require("react");
+
+// src/client/data.ts
 var import_react2 = require("react");
-var h = import_react2.createElement;
-var EMPTY = "\u2014";
-function orEmpty(value) {
-  if (value === void 0 || value === null) return EMPTY;
-  const text = String(value).trim();
-  return text === "" ? EMPTY : text;
+
+// src/client/api.ts
+var PREFIX = "/api/dsh-memory-ops";
+var BridgeError = class extends Error {
+  constructor(message, route) {
+    super(message);
+    this.route = route;
+  }
+  route;
+  name = "BridgeError";
+};
+async function call(route, body = {}) {
+  let response;
+  try {
+    response = await fetch(`${PREFIX}/${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  } catch (error) {
+    throw new BridgeError(
+      `\u65E0\u6CD5\u8FDE\u63A5\u8BB0\u5FC6\u5E93\u5BBF\u4E3B\uFF08${route}\uFF09\uFF1A${error instanceof Error ? error.message : String(error)}`,
+      route
+    );
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new BridgeError(`\u5BBF\u4E3B\u8FD4\u56DE\u4E86\u975E JSON \u54CD\u5E94\uFF08${route}\uFF0CHTTP ${response.status}\uFF09`, route);
+  }
+  const record = payload;
+  if (record?.ok === false) {
+    throw new BridgeError(record.error ?? "\u672A\u77E5\u9519\u8BEF", route);
+  }
+  if (!response.ok) {
+    throw new BridgeError(`HTTP ${response.status}`, route);
+  }
+  return payload;
 }
-function truncate(text, max = 46) {
-  const chars = [...String(text ?? "")];
-  if (chars.length <= max) return String(text ?? "");
-  return `${chars.slice(0, max - 1).join("")}\u2026`;
-}
-function count(value) {
-  if (value === null || value === void 0 || !Number.isFinite(value)) return EMPTY;
-  return value.toLocaleString("zh-CN");
-}
-function tag(text, tone = "") {
-  return h("span", {
-    className: "dmo-tag",
-    "data-tone": tone === "" ? void 0 : tone
-  }, text);
-}
-function SectionHead({ title, count: count2, action }) {
-  return h(
-    "div",
-    { className: "dmo-section-head" },
-    h("h2", { className: "dmo-section-title" }, title),
-    count2 === void 0 ? null : h("span", { className: "dmo-section-count" }, count2),
-    action === void 0 ? null : h("span", { style: { marginLeft: "auto" } }, action)
-  );
-}
-function PaneHead({ pageName, lede, ledeSub }) {
-  return h(
-    "div",
-    null,
-    pageName === void 0 ? null : h("h1", { className: "dmo-page-name" }, pageName),
-    h("p", { className: "dmo-lede" }, lede),
-    ledeSub === void 0 ? null : h("p", { className: "dmo-lede-sub" }, ledeSub)
-  );
-}
-function Primary({ children, onClick, disabled, small, attrs }) {
-  return h("button", {
-    type: "button",
-    className: `dmo-btn dmo-btn-primary${small === true ? " dmo-btn-sm" : ""}`,
-    onClick: disabled === true ? void 0 : onClick,
-    disabled,
-    ...attrs ?? {}
-  }, children);
-}
-function Btn({ children, onClick, disabled, small, quiet, attrs }) {
-  const cls = ["dmo-btn"];
-  if (small === true) cls.push("dmo-btn-sm");
-  if (quiet === true) cls.push("dmo-btn-quiet");
-  return h("button", {
-    type: "button",
-    className: cls.join(" "),
-    onClick: disabled === true ? void 0 : onClick,
-    disabled,
-    ...attrs ?? {}
-  }, children);
-}
-function TextLink({ children, onClick, attrs }) {
-  return h("button", {
-    type: "button",
-    className: "dmo-textlink",
-    onClick,
-    ...attrs ?? {}
-  }, children);
-}
-function EmptyState({ title, body, actions }) {
-  return h(
-    "div",
-    { className: "dmo-empty" },
-    h("p", { className: "dmo-empty-title" }, title),
-    h("p", { className: "dmo-empty-body" }, body),
-    actions === void 0 ? null : h("div", { className: "dmo-empty-actions" }, actions)
-  );
-}
-function ErrorAlert({ title, body, actions }) {
-  return h(
-    "div",
-    { className: "dmo-alert", role: "alert" },
-    h("p", { className: "dmo-alert-title" }, title),
-    h("p", { className: "dmo-alert-body" }, body),
-    actions === void 0 ? null : h("div", { className: "dmo-alert-actions" }, actions)
-  );
-}
-function Notice({ title, text, tone }) {
-  return h(
-    "div",
-    { className: "dmo-notice", "data-tone": tone },
-    h("p", { className: "dmo-notice-title" }, title),
-    h("p", { className: "dmo-notice-text" }, text)
-  );
-}
-function InlineDone({ ok, text, onUndo }) {
-  return h(
-    "div",
-    { className: "dmo-inline-done", "data-tone": ok ? "ok" : "err", role: "status" },
-    h("span", { className: "dmo-inline-done-text" }, text),
-    onUndo === void 0 ? null : TextLink({ children: "\u64A4\u9500", onClick: onUndo })
-  );
-}
-function SkeletonRows({ rows = 3, height = 52 }) {
-  return h(
-    "div",
-    { "aria-busy": "true", "aria-live": "polite" },
-    Array.from({ length: rows }, (_, i) => h("div", { key: i, className: "dmo-skeleton", style: { height } }))
-  );
-}
-function Badge({ tone = "idle", children, title }) {
-  return h("span", { className: `dmo-badge dmo-badge-${tone}`, title }, children);
-}
-function Button({ children, onClick, variant = "plain", disabled = false, title, small = false }) {
-  const variantClass = variant === "primary" ? " dmo-btn-primary" : variant === "danger" ? " dmo-btn-danger" : "";
-  return h("button", {
-    type: "button",
-    className: `dmo-btn${variantClass}${small ? " dmo-btn-sm" : ""}`,
-    onClick: disabled ? void 0 : onClick,
-    disabled,
-    title
-  }, children);
-}
-function Empty({ title, children }) {
-  return h(
-    "div",
-    { className: "dmo-empty" },
-    title === void 0 ? null : h("div", { className: "dmo-empty-title" }, title),
-    children
-  );
-}
-function ErrorState({ message, onRetry }) {
-  return h(
-    "div",
-    { className: "dmo-error", role: "alert" },
-    h("div", null, message),
-    onRetry === void 0 ? null : h(
-      "div",
-      { style: { marginTop: "var(--s2)" } },
-      h(Button, { onClick: onRetry, small: true }, "\u91CD\u8BD5")
-    )
-  );
-}
-function Skeleton({ rows = 3, height = 52 }) {
-  return SkeletonRows({ rows, height });
-}
-function MemoryIcon({ size = 18 }) {
-  return h(
-    "svg",
-    {
-      className: "dmo-icon",
-      viewBox: "0 0 20 20",
-      width: size,
-      height: size,
-      "aria-hidden": true,
-      fill: "none",
-      stroke: "currentColor",
-      strokeWidth: 1.6,
-      strokeLinecap: "round",
-      strokeLinejoin: "round"
-    },
-    h("rect", { x: 2.5, y: 3, width: 15, height: 11, rx: 2 }),
-    h("path", { d: "M5.5 17h9" }),
-    h("path", { d: "M6.5 7h7M6.5 10h4.5" })
-  );
-}
-function RejectBox({ reason, onReason, onCancel, onSubmit, busy }) {
-  const empty = reason.trim() === "";
-  return h(
-    "div",
-    { style: { marginTop: "var(--s2)" } },
-    h("label", { className: "dmo-label" }, "\u9A73\u56DE\u7406\u7531\uFF08\u5FC5\u586B\uFF0C30 \u5929\u540E\u53EF\u590D\u67E5\uFF09"),
-    h("textarea", {
-      className: "dmo-textarea",
-      value: reason,
-      "aria-label": "\u9A73\u56DE\u7406\u7531",
-      placeholder: "\u4E3A\u4EC0\u4E48\u8FD9\u6761\u4E0D\u5BF9\uFF1F\u5199\u4E00\u53E5\uFF0C30 \u5929\u540E\u56DE\u770B\u65F6\u4F60\u4F1A\u9700\u8981\u5B83\u3002",
-      onChange: (event) => {
-        onReason(event.target.value);
-      }
-    }),
-    h(
-      "div",
-      { className: "dmo-card-actions" },
-      h(Button, {
-        small: true,
-        variant: "danger",
-        disabled: busy || empty,
-        onClick: onSubmit
-      }, busy ? "\u9A73\u56DE\u4E2D\u2026" : "\u786E\u8BA4\u9A73\u56DE"),
-      h(Button, { small: true, onClick: onCancel }, "\u53D6\u6D88"),
-      empty ? h("span", { className: "dmo-note", style: { margin: 0 } }, "\u7406\u7531\u4E3A\u7A7A\u4E0D\u80FD\u63D0\u4EA4") : null
-    )
-  );
-}
-function Chip({ label, count: num, active, onClick }) {
-  return h(
-    "button",
-    {
-      type: "button",
-      className: "dmo-chip",
-      "aria-pressed": active,
-      onClick
-    },
-    label,
-    num === void 0 ? null : h("span", { className: "dmo-chip-num" }, num)
-  );
-}
-function AnchorNote({ state: state2, children }) {
-  return h("div", { className: "dmo-anchor-note", "data-state": state2, role: "note" }, children);
+
+// src/client/data.ts
+function useBridge(route, body, deps = []) {
+  const [phase, setPhase] = (0, import_react2.useState)("loading");
+  const [data, setData] = (0, import_react2.useState)(void 0);
+  const [error, setError] = (0, import_react2.useState)(void 0);
+  const [nonce, setNonce] = (0, import_react2.useState)(0);
+  const reload = (0, import_react2.useCallback)(() => {
+    setNonce((value) => value + 1);
+  }, []);
+  const bodyKey = JSON.stringify(body);
+  (0, import_react2.useEffect)(() => {
+    let alive = true;
+    setPhase("loading");
+    setError(void 0);
+    call(route, JSON.parse(bodyKey)).then((payload) => {
+      if (!alive) return;
+      setData(payload);
+      setPhase("ready");
+    }).catch((failure) => {
+      if (!alive) return;
+      setError(failure instanceof BridgeError ? failure.message : String(failure));
+      setPhase("error");
+    });
+    return () => {
+      alive = false;
+    };
+  }, [route, bodyKey, nonce, ...deps]);
+  return { phase, data, error, reload };
 }
 
 // src/client/session-context.ts
@@ -400,1581 +262,1312 @@ function scopeBody(cwd, project) {
   return {};
 }
 
-// src/client/panes/today.ts
-var import_react5 = require("react");
-
-// src/client/api.ts
-var PREFIX = "/api/dsh-memory-ops";
-var BridgeError = class extends Error {
-  constructor(message, route) {
-    super(message);
-    this.route = route;
-  }
-  route;
-  name = "BridgeError";
-};
-async function call(route, body = {}) {
-  let response;
-  try {
-    response = await fetch(`${PREFIX}/${route}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body)
-    });
-  } catch (error) {
-    throw new BridgeError(
-      `\u65E0\u6CD5\u8FDE\u63A5\u8BB0\u5FC6\u5E93\u5BBF\u4E3B\uFF08${route}\uFF09\uFF1A${error instanceof Error ? error.message : String(error)}`,
-      route
-    );
-  }
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new BridgeError(`\u5BBF\u4E3B\u8FD4\u56DE\u4E86\u975E JSON \u54CD\u5E94\uFF08${route}\uFF0CHTTP ${response.status}\uFF09`, route);
-  }
-  const record = payload;
-  if (record?.ok === false) {
-    throw new BridgeError(record.error ?? "\u672A\u77E5\u9519\u8BEF", route);
-  }
-  if (!response.ok) {
-    throw new BridgeError(`HTTP ${response.status}`, route);
-  }
-  return payload;
+// src/client/v9/data.ts
+function useWorkbenchData(ctx) {
+  const { cwd, project } = useSessionProject(ctx);
+  const scope = scopeBody(cwd, project);
+  const snapshot = useBridge("snapshot", scope, [cwd, project]);
+  const overview = useBridge("overview", {}, []);
+  const inbox = useBridge("inbox", { domain: "personal" }, []);
+  const misses = useBridge("misses", {}, []);
+  const { reload: reloadSnapshot } = snapshot;
+  const { reload: reloadOverview } = overview;
+  const { reload: reloadInbox } = inbox;
+  const { reload: reloadMisses } = misses;
+  const reloadAll = (0, import_react4.useCallback)(() => {
+    reloadSnapshot();
+    reloadOverview();
+    reloadInbox();
+    reloadMisses();
+  }, [reloadSnapshot, reloadOverview, reloadInbox, reloadMisses]);
+  return { snapshot, overview, inbox, misses, scope, cwd, reloadAll };
+}
+function phaseOf(sources, isEmpty) {
+  if (sources.some((source) => source.phase === "error")) return "error";
+  if (sources.some((source) => source.phase === "loading" || source.data === void 0)) return "loading";
+  if (isEmpty) return "empty";
+  return "ready";
+}
+function sourcesFor(pane, data) {
+  if (pane === "today") return [data.snapshot, data.overview, data.inbox, data.misses];
+  if (pane === "capture") return [data.inbox];
+  if (pane === "todo") return [data.snapshot, data.inbox, data.misses];
+  if (pane === "memory") return [data.snapshot];
+  return [data.overview];
 }
 
-// src/client/data.ts
-var import_react4 = require("react");
-function useBridge(route, body, deps = []) {
-  const [phase, setPhase] = (0, import_react4.useState)("loading");
-  const [data, setData] = (0, import_react4.useState)(void 0);
-  const [error, setError] = (0, import_react4.useState)(void 0);
-  const [nonce, setNonce] = (0, import_react4.useState)(0);
-  const reload = (0, import_react4.useCallback)(() => {
-    setNonce((value) => value + 1);
-  }, []);
-  const bodyKey = JSON.stringify(body);
-  (0, import_react4.useEffect)(() => {
-    let alive = true;
-    setPhase("loading");
-    setError(void 0);
-    call(route, JSON.parse(bodyKey)).then((payload) => {
-      if (!alive) return;
-      setData(payload);
-      setPhase("ready");
-    }).catch((failure) => {
-      if (!alive) return;
-      setError(failure instanceof BridgeError ? failure.message : String(failure));
-      setPhase("error");
-    });
-    return () => {
-      alive = false;
-    };
-  }, [route, bodyKey, nonce, ...deps]);
-  return { phase, data, error, reload };
-}
-
-// src/client/panes/today.ts
-function hintOf(error) {
+// src/client/v9/actions.ts
+function classify(error) {
   const message = error instanceof Error ? error.message : String(error);
-  if (/密钥|私钥|身份证|内网 IP|拒写/.test(message)) {
-    return "\u660E\u6587 Markdown \u4E0D\u80FD\u5B58\u5BC6\u94A5\u3002\u53EF\u4EE5\u7528\u8131\u654F\u7248\u672C\u91CD\u5B58\u3002";
-  }
-  if (/写锁超时|EEXIST/.test(message)) {
-    return "\u53E6\u4E00\u4E2A\u8FDB\u7A0B\u6B63\u5728\u5199\u540C\u4E00\u4E2A\u6587\u4EF6\uFF0C\u7B49\u4E00\u4E24\u79D2\u518D\u8BD5\u3002";
-  }
+  if (/密钥|私钥|身份证|内网 IP|拒写|脱敏/.test(message)) return "privacy";
+  if (/写锁超时|EEXIST|EBUSY/.test(message)) return "lock";
+  if (/ENOENT|找不到|不存在/.test(message)) return "missing";
+  return "unknown";
+}
+function hintOf(error) {
+  const kind = classify(error);
+  if (kind === "privacy") return "\u660E\u6587 Markdown \u4E0D\u80FD\u5B58\u5BC6\u94A5\u3002\u6362\u6210\u5360\u4F4D\u7B26\u518D\u5B58\uFF0C\u539F\u6587\u4E0D\u8981\u8FDB\u5E93\u3002";
+  if (kind === "lock") return "\u53E6\u4E00\u4E2A\u8FDB\u7A0B\u6B63\u5728\u5199\u540C\u4E00\u4E2A\u6587\u4EF6\uFF0C\u7B49\u4E00\u4E24\u79D2\u518D\u8BD5\u3002";
+  if (kind === "missing") return "\u76EE\u6807\u6761\u76EE\u4E0D\u5728\u5E93\u91CC\u4E86\uFF08\u53EF\u80FD\u521A\u88AB\u79FB\u52A8\u6216\u5F52\u6863\uFF09\u3002\u91CD\u53D6\u4E00\u6B21\u518D\u770B\u3002";
   return "\u5E93\u6587\u4EF6\u6CA1\u6709\u4E22\uFF0C\u8FD9\u662F\u8BFB\u53D6\u6216\u5199\u5165\u95EE\u9898\u3002";
 }
-function pickSuggestion(queue, fillable, openInbox, entryCount) {
-  if (queue.length > 0) {
-    const first = queue[0];
-    const conf = first.confidence === null ? "\u672A\u6807" : first.confidence.toFixed(1);
-    return {
-      label: "\u5EFA\u8BAE\u5148\u505A\u8FD9\u4E00\u4EF6",
-      title: "\u6709\u4E00\u6761\u63A8\u65AD\u7B49\u4F60\u62CD\u677F",
-      body: `\u300C${truncate(first.title, 24)}\u300D\u2014\u2014\u7F6E\u4FE1\u5EA6 ${conf}\u3002\u786E\u8BA4\u540E\u5B83\u4F1A\u53C2\u4E0E\u540E\u7EED\u4F1A\u8BDD\uFF1B\u4E0D\u786E\u5B9A\u5C31\u9A73\u56DE\uFF0C\u5E76\u5199\u4E00\u53E5\u4E3A\u4EC0\u4E48\u3002`,
-      primaryText: "\u786E\u8BA4\u8FD9\u6761",
-      // v6 修复：core 的 confirm/detail 要的是 path（personal/principles.md），
-      // 不是点分 id（personal.principles）——早先前传 first.id，点了必 ENOENT。
-      primary: { action: "confirm", path: first.path },
-      secondary: { action: "open-detail", path: first.path, text: "\u5148\u770B\u5168\u6587" }
-    };
-  }
-  if (fillable > 0) {
-    return {
-      label: "\u5EFA\u8BAE\u5148\u505A\u8FD9\u4E00\u4EF6",
-      title: "\u8865\u4E00\u6761\u641C\u4E0D\u5230\u7684\u4E1C\u897F",
-      body: `\u6709 ${fillable} \u4E2A\u95EE\u9898\u88AB\u53CD\u590D\u95EE\u5230\uFF0C\u5E93\u91CC\u8FD8\u6CA1\u6709\u7B54\u6848\u3002`,
-      primaryText: "\u53BB\u8865\u5E93",
-      primary: { action: "goto", pane: "todo" },
-      secondary: { action: "goto", pane: "todo", text: "\u770B\u660E\u7EC6" }
-    };
-  }
-  if (openInbox > 0) {
-    return {
-      label: "\u5EFA\u8BAE\u5148\u505A\u8FD9\u4E00\u4EF6",
-      title: "\u8BB0\u5F55\u6D41\u91CC\u8FD8\u6709\u6CA1\u7ED3\u7684\u4E8B",
-      body: `${openInbox} \u6761\u6CA1\u7ED3\u3002\u505A\u5B8C\u6807\u5B8C\u6210\uFF0C\u4E0D\u505A\u5C31\u4E22\u6389\u2014\u2014\u7559\u7740\u4F1A\u8BA9\u300C\u5F85\u529E\u300D\u5931\u53BB\u610F\u4E49\u3002`,
-      primaryText: "\u53BB\u5904\u7406",
-      primary: { action: "goto", pane: "todo" },
-      secondary: { action: "goto", pane: "capture", text: "\u8BB0\u65B0\u7684" }
-    };
-  }
-  return {
-    label: "\u73B0\u5728\u6CA1\u6709\u5F85\u529E",
-    title: "\u5E93\u91CC\u4E00\u5207\u90FD\u5904\u7406\u5B8C\u4E86",
-    body: `${entryCount} \u6761\u8BB0\u5FC6\u30010 \u6761\u5F85\u529E\u3002\u8FD9\u65F6\u5019\u6700\u6709\u7528\u7684\u4E8B\u662F\u770B\u770B\u6709\u6CA1\u6709\u8BE5\u9000\u5F79\u7684\uFF0C\u6216\u8005\u8BB0\u4E0B\u4ECA\u5929\u7684\u4E00\u4E2A\u7ED3\u8BBA\u3002`,
-    primaryText: "\u770B\u770B\u5E93\u91CC\u6709\u4EC0\u4E48",
-    primary: { action: "goto", pane: "memory" },
-    secondary: { action: "goto", pane: "capture", text: "\u8BB0\u4E00\u6761" }
-  };
+async function confirmEntry(path) {
+  await call("confirm", { path });
 }
-function trailLine(value, text, pane, onGoto) {
-  return h(
-    "button",
-    {
-      key: text,
-      type: "button",
-      className: "dmo-trail-line",
-      onClick: () => {
-        onGoto(pane);
-      }
-    },
-    h("span", { className: "dmo-trail-num" }, String(value)),
-    h("span", { className: "dmo-trail-text" }, text)
-  );
+async function rejectEntry(path, reason) {
+  const trimmed = reason.trim();
+  if (trimmed === "") throw new Error("\u9A73\u56DE\u8981\u5199\u7406\u7531\uFF1A\u5426\u5219 30 \u5929\u540E\u6CA1\u4EBA\u77E5\u9053\u4E3A\u4EC0\u4E48\u5426\u6389\u5B83");
+  await call("reject", { path, reason: trimmed });
 }
-function TodayPane({ ctx, onOpenDetail }) {
-  const { cwd, project } = useSessionProject(ctx);
-  const snapshot = useBridge("snapshot", scopeBody(cwd, project), [cwd, project]);
-  const inbox = useBridge("inbox", { domain: "personal" });
-  const misses = useBridge("misses", {});
-  const [captureText, setCaptureText] = (0, import_react5.useState)("");
-  const [captureKind] = (0, import_react5.useState)("\u60F3\u6CD5");
-  const [lastCapture, setLastCapture] = (0, import_react5.useState)(null);
-  const [feedback, setFeedback] = (0, import_react5.useState)(null);
-  const [busy, setBusy] = (0, import_react5.useState)(false);
-  const [suggestFeedback, setSuggestFeedback] = (0, import_react5.useState)(null);
-  function submitCapture() {
-    const text = captureText.trim();
-    if (text === "" || busy) return;
-    setBusy(true);
-    void call("capture", { content: text, kind: captureKind }).then((result) => {
-      if (result.ok) {
-        setLastCapture({ content: text });
-        setCaptureText("");
-        setFeedback({ ok: true, text: "\u5DF2\u5B58\u5165\u8BB0\u5F55\u6D41" });
-        inbox.reload();
-        snapshot.reload();
-        misses.reload();
-      } else {
-        setFeedback({ ok: false, text: result.reason ?? "\u6CA1\u5B58\u4E0A" });
-      }
-    }).catch((error) => {
-      setFeedback({ ok: false, text: `${error instanceof Error ? error.message : String(error)}` });
-    }).finally(() => {
-      setBusy(false);
-    });
-  }
-  function undoCapture() {
-    if (lastCapture === null || busy) return;
-    setBusy(true);
-    void call("inbox", { domain: "personal" }).then((list) => {
-      const match = [...list.entries].reverse().find((entry) => entry.content === lastCapture.content);
-      if (match === void 0) throw new Error("\u627E\u4E0D\u5230\u521A\u5B58\u5165\u7684\u90A3\u4E00\u6761\uFF08\u53EF\u80FD\u5DF2\u88AB\u5904\u7406\uFF09");
-      return call("deleteInbox", { domain: "personal", lineIndexes: [match.lineIndex] });
-    }).then(() => {
-      setLastCapture(null);
-      setFeedback({ ok: true, text: "\u5DF2\u64A4\u9500" });
-      inbox.reload();
-      snapshot.reload();
-    }).catch((error) => {
-      setFeedback({ ok: false, text: `${error instanceof Error ? error.message : String(error)}` });
-    }).finally(() => {
-      setBusy(false);
-    });
-  }
-  function confirmEntry(path) {
-    setBusy(true);
-    void call("confirm", { path }).then(() => {
-      const remaining = snapshot.data?.queue.filter((item) => item.id !== path).length ?? 0;
-      setSuggestFeedback({
-        ok: true,
-        text: "\u5DF2\u786E\u8BA4" + (remaining > 0 ? ` \xB7 \u8FD8\u5269 ${remaining} \u6761\u5F85\u62CD\u677F` : " \xB7 \u5F85\u62CD\u677F\u6E05\u7A7A\u4E86")
-      });
-      snapshot.reload();
-    }).catch((error) => {
-      setSuggestFeedback({ ok: false, text: hintOf(error) });
-    }).finally(() => {
-      setBusy(false);
-    });
-  }
-  const entries = snapshot.data?.entries ?? [];
-  const queue = snapshot.data?.queue ?? [];
-  const openInbox = (inbox.data?.entries ?? []).filter((row) => row.state === "open" || row.state === "todo").length;
-  const fillable = misses.data?.counts?.["should-fill"] ?? 0;
-  const todoTotal = queue.length + openInbox + fillable;
-  const isEmpty = snapshot.data !== void 0 && entries.length === 0;
-  const onGoto = (pane) => {
-    gotoPane(ctx, pane);
-  };
-  if (snapshot.phase === "loading") {
-    return (0, import_react5.createElement)(
-      "div",
-      null,
-      SkeletonRows({ rows: 1, height: 28 }),
-      SkeletonRows({ rows: 1, height: 22 }),
-      SkeletonRows({ rows: 2, height: 96 })
-    );
-  }
-  if (snapshot.phase === "error") {
-    return (0, import_react5.createElement)(
-      "div",
-      null,
-      h(ErrorAlert, {
-        title: "\u8BFB\u4E0D\u5230\u8BB0\u5FC6\u5E93",
-        body: "\u5E93\u6587\u4EF6\u6CA1\u6709\u4E22\uFF0C\u8FD9\u662F\u8BFB\u53D6\u95EE\u9898\u3002\u5148\u91CD\u8BD5\uFF1B\u5982\u679C\u4E00\u76F4\u5931\u8D25\uFF0C\u53BB\u300C\u5E93\u5065\u5EB7\u300D\u770B\u5E93\u6839\u76EE\u5F55\u8FD8\u5728\u4E0D\u5728\u3002",
-        actions: [
-          Primary({ children: "\u91CD\u8BD5", onClick: snapshot.reload, attrs: { "data-action": "retry" } }),
-          Btn({ children: "\u53BB\u5E93\u5065\u5EB7", onClick: () => {
-            onGoto("health");
-          }, attrs: { "data-action": "goto", "data-pane": "health" } })
-        ]
-      })
-    );
-  }
-  if (isEmpty) {
-    return (0, import_react5.createElement)(
-      "div",
-      { className: "dmo-pane" },
-      PaneHead({ lede: "\u8FD9\u662F\u4F60\u7684\u7B2C\u4E00\u6761\u8BB0\u5FC6", ledeSub: "\u5199\u4E00\u53E5\u4F60\u4ECA\u5929\u60F3\u8BB0\u4F4F\u7684\u8BDD\uFF0Cagent \u4E0B\u6B21\u5C31\u4F1A\u7528\u4E0A\u5B83\u3002" }),
-      (0, import_react5.createElement)(
-        "div",
-        { className: "dmo-capture" },
-        (0, import_react5.createElement)("textarea", {
-          className: "dmo-capture-input",
-          "data-field": "captureText",
-          "aria-label": "\u8BB0\u4E00\u6761",
-          placeholder: "\u4E00\u53E5\u8BDD\u8D76\u7D27\u5B58\u4E86\u2026",
-          value: captureText,
-          onChange: (event) => {
-            setCaptureText(event.target.value);
-          },
-          onKeyDown: (event) => {
-            if (event.key === "Enter" && (event.ctrlKey === true || event.metaKey === true)) {
-              event.preventDefault();
-              submitCapture();
-            }
-          }
-        }),
-        (0, import_react5.createElement)(
-          "div",
-          { className: "dmo-capture-foot" },
-          Primary({
-            children: busy ? "\u5B58\u5165\u4E2D\u2026" : "\u5B58\u8FDB\u53BB",
-            onClick: submitCapture,
-            disabled: busy || captureText.trim() === "",
-            attrs: { "data-action": "capture" }
-          }),
-          h("span", { className: "dmo-capture-hint" }, "Ctrl / \u2318 + Enter")
-        ),
-        feedback === null ? null : InlineDone({
-          ok: feedback.ok,
-          text: feedback.text,
-          onUndo: lastCapture === null ? void 0 : undoCapture
-        })
-      ),
-      lastCapture === null ? null : (0, import_react5.createElement)(
-        "div",
-        { style: { marginTop: "var(--s2)" } },
-        Btn({ children: "\u64A4\u9500\u521A\u624D\u90A3\u6761", onClick: undoCapture, disabled: busy, attrs: { "data-action": "undo-capture" } })
-      )
-    );
-  }
-  const lede = todoTotal === 0 ? `\u6CA1\u6709\u5F85\u529E\u3002\u5E93\u91CC ${count(entries.length)} \u6761\uFF0C\u8BB0\u5F55\u6D41 ${count(inbox.data?.throughput.total ?? 0)} \u6761` : `\u6709 ${count(todoTotal)} \u4EF6\u4E8B\u538B\u7740\uFF0C\u5148\u4ECE\u6700\u4E0A\u9762\u90A3\u4EF6\u5F00\u59CB`;
-  const sug = pickSuggestion(queue, fillable, openInbox, entries.length);
-  const tape = (0, import_react5.createElement)(
-    "div",
-    { className: "dmo-trail", role: "group", "aria-label": "\u5168\u5C40\u6307\u6807" },
-    trailLine(todoTotal, "\u4EF6\u4E8B\u538B\u7740", "todo", onGoto),
-    trailLine(misses.data?.total ?? 0, "\u641C\u4E0D\u5230", "todo", onGoto),
-    trailLine(entries.length, "\u6761\u8BB0\u5FC6", "memory", onGoto),
-    trailLine(
-      snapshot.data?.stats.layers.l0.tokens ?? 0,
-      "tokens \u7D22\u5F15",
-      "health",
-      onGoto
-    )
-  );
-  return (0, import_react5.createElement)(
-    "div",
-    { className: "dmo-pane" },
-    tape,
-    PaneHead({ lede, ledeSub: "\u8FD9\u4E2A\u9762\u677F\u53EA\u56DE\u7B54\u4E00\u4E2A\u95EE\u9898\uFF1A\u4F60\u73B0\u5728\u8BE5\u505A\u54EA\u4EF6\u4E8B\u3002\u5176\u4F59\u90FD\u6536\u5728\u4E0B\u9762\u3002" }),
-    (0, import_react5.createElement)(
-      "div",
-      { className: "dmo-suggest" },
-      h("p", { className: "dmo-suggest-label" }, sug.label),
-      h("h2", { className: "dmo-suggest-title" }, sug.title),
-      h("p", { className: "dmo-suggest-body" }, sug.body),
-      (0, import_react5.createElement)(
-        "div",
-        { className: "dmo-suggest-actions" },
-        Primary({
-          children: sug.primaryText,
-          onClick: () => {
-            if (sug.primary.action === "confirm" && sug.primary.path !== void 0) confirmEntry(sug.primary.path);
-            else if (sug.primary.pane !== void 0) onGoto(sug.primary.pane);
-          },
-          disabled: busy,
-          attrs: { "data-action": sug.primary.action === "confirm" ? "suggest-confirm" : "goto", "data-path": sug.primary.path ?? "" }
-        }),
-        (() => {
-          const sec = sug.secondary;
-          if (sec === void 0) return null;
-          if (sec.action === "open-detail") {
-            return Btn({
-              children: sec.text,
-              quiet: true,
-              onClick: () => {
-                (onOpenDetail ?? (() => {
-                  onGoto("memory");
-                }))(sec.path);
-              },
-              attrs: { "data-action": "open-detail", "data-path": sec.path }
-            });
-          }
-          return Btn({
-            children: sec.text,
-            quiet: true,
-            onClick: () => {
-              onGoto(sec.pane);
-            },
-            attrs: { "data-action": "goto", "data-pane": sec.pane }
-          });
-        })()
-      ),
-      suggestFeedback === null ? null : InlineDone({ ok: suggestFeedback.ok, text: suggestFeedback.text })
-    ),
-    SectionHead({ title: "\u968F\u624B\u8BB0\u4E00\u6761", count: "1 \u6B65" }),
-    (0, import_react5.createElement)(
-      "div",
-      { className: "dmo-capture" },
-      (0, import_react5.createElement)("textarea", {
-        className: "dmo-capture-input",
-        "data-field": "captureText",
-        "aria-label": "\u8BB0\u4E00\u6761",
-        placeholder: "\u4E00\u53E5\u8BDD\u8D76\u7D27\u5B58\u4E86\u2026",
-        value: captureText,
-        onChange: (event) => {
-          setCaptureText(event.target.value);
-        },
-        onKeyDown: (event) => {
-          if (event.key === "Enter" && (event.ctrlKey === true || event.metaKey === true)) {
-            event.preventDefault();
-            submitCapture();
-          }
-        }
-      }),
-      (0, import_react5.createElement)(
-        "div",
-        { className: "dmo-capture-foot" },
-        Btn({ children: busy ? "\u5B58\u5165\u4E2D\u2026" : "\u5B58\u8FDB\u53BB", onClick: submitCapture, disabled: busy || captureText.trim() === "", attrs: { "data-action": "capture" } }),
-        h("span", { className: "dmo-capture-hint" }, "Ctrl / \u2318 + Enter")
-      ),
-      feedback === null ? null : InlineDone({
-        ok: feedback.ok,
-        text: feedback.text,
-        onUndo: lastCapture === null ? void 0 : undoCapture
-      })
-    )
-  );
+async function undoReject(path) {
+  await call("undoReject", { path });
+}
+async function archiveEntry(path) {
+  await call("archive", { path });
+}
+async function keepEntry(path) {
+  await call("keep", { path });
+}
+async function captureOne(content, kind) {
+  const trimmed = content.trim();
+  if (trimmed === "") throw new Error("\u5185\u5BB9\u4E3A\u7A7A\uFF0C\u672A\u5199\u5165");
+  const result = await call("capture", { content: trimmed, kind });
+  if (result?.ok !== true) throw new Error(result?.reason ?? "\u6CA1\u5B58\u4E0A");
+  return result;
+}
+async function patchInboxRow(lineIndex, patch) {
+  await call("updateInbox", { domain: "personal", lineIndex, patch });
+}
+async function deleteInboxRows(lineIndexes) {
+  await call("deleteInbox", { domain: "personal", lineIndexes });
+}
+async function draftMiss(query) {
+  await call("missDraft", { query });
+}
+async function undoCapture(content) {
+  const list = await call("inbox", { domain: "personal" });
+  const match = [...list.entries].reverse().find((row) => row.content === content);
+  if (match === void 0) throw new Error("\u627E\u4E0D\u5230\u521A\u5B58\u5165\u7684\u90A3\u4E00\u6761\uFF08\u53EF\u80FD\u5DF2\u88AB\u5904\u7406\uFF09");
+  await deleteInboxRows([match.lineIndex]);
+}
+async function searchEntries(query, record) {
+  await call("search", { query, record });
+}
+async function writeBody(path, body) {
+  await call("writeBody", { path, body });
+}
+async function exportData(format, domain) {
+  return call("export", { format, domain });
+}
+async function batchArchive(paths, reason) {
+  if (paths.length === 0) throw new Error("\u6CA1\u6709\u8981\u5F52\u6863\u7684\u6761\u76EE");
+  await call("batchArchive", { paths, reason });
+}
+async function batchInboxState(lineIndexes, state2) {
+  if (lineIndexes.length === 0) throw new Error("\u6CA1\u6709\u8981\u6539\u7684\u884C");
+  await call("batchInboxState", { domain: "personal", lineIndexes, state: state2 });
+}
+async function promoteInboxRow(lineIndex) {
+  await call("promoteInbox", { domain: "personal", lineIndex });
+}
+async function confirmMiss(query, content) {
+  const trimmed = content.trim();
+  if (trimmed === "") throw new Error("\u8865\u4E0A\u7684\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
+  await call("missConfirm", { query, content: trimmed, type: "\u95EE\u9898", domain: "personal" });
+}
+async function batchDraftMiss(queries) {
+  if (queries.length === 0) throw new Error("\u6CA1\u6709\u8981\u5199\u8349\u7A3F\u7684\u6761\u76EE");
+  await call("missBatchDraft", { queries, type: "\u95EE\u9898" });
+}
+async function deleteMiss(query) {
+  await call("missDelete", { query });
 }
 
-// src/client/panes/capture.ts
+// src/client/v9/stage.ts
 var import_react6 = require("react");
-var KINDS = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
-var INBOX_STATE_LABEL = {
-  open: "\u672A\u5F00\u59CB",
-  todo: "\u8FDB\u884C\u4E2D",
-  done: "\u5DF2\u5B8C\u6210",
-  dropped: "\u5DF2\u4E22\u5F03"
-};
-function CapturePane() {
-  const inbox = useBridge("inbox", { domain: "personal" });
-  const [text, setText] = (0, import_react6.useState)("");
-  const [kind, setKind] = (0, import_react6.useState)("\u60F3\u6CD5");
-  const [busy, setBusy] = (0, import_react6.useState)(false);
-  const [feedback, setFeedback] = (0, import_react6.useState)(null);
-  const [lastLines, setLastLines] = (0, import_react6.useState)(null);
-  const [lastContent, setLastContent] = (0, import_react6.useState)("");
-  function submit() {
-    const content = text.trim();
-    if (content === "" || busy) return;
-    setBusy(true);
-    const lines = content.split("\n").map((line) => line.trim()).filter(Boolean);
-    const done = (ok, message, written) => {
-      setFeedback({ ok, text: message });
-      if (ok) {
-        setText("");
-        setLastLines(written);
-        setLastContent(lines.length === 1 ? lines[0] : `${lines[0]}\u2026\u7B49 ${lines.length} \u6761`);
-        inbox.reload();
-      }
-      setBusy(false);
-    };
-    if (lines.length > 1) {
-      void call(
-        "captureBatch",
-        { text: content, kind }
-      ).then((result) => {
-        const okCount = result.accepted?.length ?? 0;
-        const blockedCount = result.blocked?.length ?? 0;
-        done(
-          blockedCount === 0,
-          blockedCount === 0 ? `\u5DF2\u62C6\u6210 ${okCount} \u6761\u5B58\u5165\u8BB0\u5F55\u6D41` : `${okCount} \u6761\u5DF2\u5B58\u5165\uFF0C${blockedCount} \u6761\u88AB\u62E6\u622A`,
-          []
-        );
-      }).catch((error) => {
-        setFeedback({ ok: false, text: error instanceof Error ? error.message : String(error) });
-        setBusy(false);
-      });
-      return;
-    }
-    void call("capture", { content, kind }).then((result) => {
-      if (result.ok) {
-        void call("inbox", { domain: "personal" }).then((list) => {
-          const match = [...list.entries].reverse().find((entry) => entry.content === content);
-          done(true, "\u5DF2\u5B58\u5165\u8BB0\u5F55\u6D41", match === void 0 ? [] : [match.lineIndex]);
-        }).catch(() => done(true, "\u5DF2\u5B58\u5165\u8BB0\u5F55\u6D41", []));
-      } else {
-        done(false, result.reason ?? "\u6CA1\u5B58\u4E0A", []);
-      }
-    }).catch((error) => {
-      setFeedback({ ok: false, text: `\u6CA1\u5B58\u4E0A\uFF1A${error instanceof Error ? error.message : String(error)}\u3002\u5185\u5BB9\u8FD8\u5728\u8F93\u5165\u6846\u91CC\uFF0C\u53EF\u4EE5\u91CD\u8BD5\u3002` });
-      setBusy(false);
-    });
-  }
-  function undo() {
-    if (lastLines === null || lastLines.length === 0 || busy) return;
-    setBusy(true);
-    void call("deleteInbox", { domain: "personal", lineIndexes: lastLines }).then(() => {
-      setFeedback({ ok: true, text: `\u5DF2\u64A4\u9500\uFF1A\u300C${truncate(lastContent, 20)}\u300D` });
-      setLastLines(null);
-      inbox.reload();
-    }).catch((error) => {
-      setFeedback({ ok: false, text: error instanceof Error ? error.message : String(error) });
-    }).finally(() => {
-      setBusy(false);
-    });
-  }
-  const head = PaneHead({
-    pageName: "\u8BB0\u4E00\u6761",
-    lede: "\u5148\u5B58\u4E0B\u6765\uFF0C\u4E4B\u540E\u5728\u300C\u5F85\u529E\u300D\u91CC\u6574\u7406",
-    ledeSub: "\u4E0D\u9700\u8981\u60F3\u6E05\u695A\u600E\u4E48\u5199\u3002\u591A\u884C\u4F1A\u9010\u6761\u62C6\u5F00\u3002"
-  });
-  const captureCard = (0, import_react6.createElement)(
-    "section",
-    { className: "dmo-card-heavy" },
-    (0, import_react6.createElement)(
-      "div",
-      { className: "dmo-kindrow", role: "group", "aria-label": "\u8BB0\u5F55\u7C7B\u578B" },
-      KINDS.map((item) => (0, import_react6.createElement)("button", {
-        key: item,
-        type: "button",
-        className: "dmo-kindbtn",
-        "data-kind": item,
-        "aria-pressed": kind === item,
-        onClick: () => {
-          setKind(item);
-        }
-      }, item))
-    ),
-    (0, import_react6.createElement)(
-      "div",
-      { className: "dmo-capture" },
-      (0, import_react6.createElement)("textarea", {
-        className: "dmo-capture-input",
-        style: { minHeight: 88 },
-        "data-field": "captureText",
-        "aria-label": "\u8BB0\u5F55\u5185\u5BB9",
-        placeholder: "\u60F3\u5230\u4EC0\u4E48\u5199\u4EC0\u4E48\uFF0C\u591A\u884C\u4F1A\u9010\u6761\u62C6\u5F00",
-        value: text,
-        onChange: (event) => {
-          setText(event.target.value);
-        },
-        onKeyDown: (event) => {
-          if (event.key === "Enter" && (event.ctrlKey === true || event.metaKey === true)) {
-            event.preventDefault();
-            submit();
-          }
-        }
-      }),
-      (0, import_react6.createElement)(
-        "div",
-        { className: "dmo-capture-foot" },
-        Primary({
-          children: busy ? "\u5B58\u5165\u4E2D\u2026" : "\u5B58\u8FDB\u53BB",
-          onClick: submit,
-          disabled: busy || text.trim() === "",
-          attrs: { "data-action": "capture" }
-        }),
-        h("span", { className: "dmo-capture-hint" }, "Ctrl / \u2318 + Enter")
-      ),
-      feedback === null ? null : InlineDone({
-        ok: feedback.ok,
-        text: feedback.text,
-        onUndo: lastLines !== null && lastLines.length > 0 ? undo : void 0
-      })
-    ),
-    h(
-      "p",
-      { className: "dmo-note" },
-      "\u5B58\u4E4B\u524D\u4F1A\u68C0\u67E5\u6709\u6CA1\u6709\u5BC6\u94A5\u3001\u79C1\u94A5\u3001\u8EAB\u4EFD\u8BC1\u53F7\u3001\u5185\u7F51 IP\u2014\u2014\u6709\u5C31\u62D2\u5199\uFF0C\u5E76\u7ED9\u51FA\u8131\u654F\u7248\u672C\u3002"
-    )
-  );
-  if (inbox.phase === "loading") {
-    return (0, import_react6.createElement)(
-      "div",
-      { className: "dmo-pane" },
-      head,
-      captureCard,
-      (0, import_react6.createElement)(
-        "section",
-        { className: "dmo-card-quiet" },
-        SectionHead({ title: "\u6700\u8FD1\u8BB0\u7684" }),
-        SkeletonRows({ rows: 3, height: 40 })
-      )
-    );
-  }
-  if (inbox.phase === "error") {
-    return (0, import_react6.createElement)(
-      "div",
-      { className: "dmo-pane" },
-      head,
-      captureCard,
-      h(ErrorAlert, {
-        title: "\u8BFB\u4E0D\u5230\u5386\u53F2\u8BB0\u5F55",
-        body: "\u5199\u5165\u4ECD\u7136\u53EF\u7528\u2014\u2014\u4E0A\u9762\u90A3\u4E2A\u8F93\u5165\u6846\u4E0D\u53D7\u5F71\u54CD\u3002\u8FD9\u91CC\u53EA\u662F\u300C\u6700\u8FD1\u8BB0\u7684\u300D\u5217\u8868\u8BFB\u4E0D\u51FA\u6765\u3002",
-        actions: [Btn({ children: "\u91CD\u8BD5\u8BFB\u53D6", onClick: inbox.reload, attrs: { "data-action": "retry" } })]
-      })
-    );
-  }
-  if (inbox.data === void 0 || inbox.data.entries.length === 0) {
-    return (0, import_react6.createElement)(
-      "div",
-      { className: "dmo-pane" },
-      head,
-      captureCard,
-      (0, import_react6.createElement)(
-        "section",
-        { className: "dmo-card-quiet" },
-        SectionHead({ title: "\u6700\u8FD1\u8BB0\u7684" }),
-        h(EmptyState, {
-          title: "\u8FD8\u6CA1\u6709\u8BB0\u8FC7",
-          body: "\u8FD9\u91CC\u4F1A\u5217\u51FA\u4F60\u521A\u5B58\u4E0B\u7684\u6BCF\u4E00\u6761\u3002\u5B58\u5B8C\u7ACB\u523B\u80FD\u770B\u5230\uFF0C\u4E5F\u4F1A\u51FA\u73B0\u5728\u300C\u5F85\u529E\u300D\u91CC\u3002"
-        })
-      )
-    );
-  }
-  const rows = inbox.data.entries.map((row) => (0, import_react6.createElement)(
-    "li",
-    { key: row.lineIndex, className: "dmo-row" },
-    h("p", { className: "dmo-row-title" }, truncate(row.content, 90)),
-    h(
-      "div",
-      { className: "dmo-meta-row" },
-      h("span", { className: "dmo-meta" }, row.date),
-      h("span", { className: "dmo-meta" }, row.kind),
-      tag(INBOX_STATE_LABEL[row.state] ?? row.state, row.state === "done" ? "ok" : "warn"),
-      row.destination === "\u2014" || row.destination === "" ? null : h("span", { className: "dmo-meta" }, `\u2192 ${truncate(row.destination, 24)}`)
-    ),
-    row.kindValid ? null : tag("\u7C7B\u578B\u975E\u6CD5", "err"),
-    row.stateValid ? null : tag("\u72B6\u6001\u975E\u6CD5", "err")
-  ));
-  return (0, import_react6.createElement)(
-    "div",
-    { className: "dmo-pane" },
-    head,
-    captureCard,
-    (0, import_react6.createElement)(
-      "section",
-      { className: "dmo-card-quiet" },
-      SectionHead({ title: "\u6700\u8FD1\u8BB0\u7684", count: `${inbox.data.entries.length} \u6761` }),
-      (0, import_react6.createElement)("ul", { className: "dmo-list", role: "list" }, rows)
-    )
-  );
-}
 
-// src/client/panes/todo.ts
-var import_react7 = require("react");
-var INBOX_STATE_LABEL2 = {
-  open: "\u672A\u5F00\u59CB",
-  todo: "\u8FDB\u884C\u4E2D",
-  done: "\u5DF2\u5B8C\u6210",
-  dropped: "\u5DF2\u4E22\u5F03"
-};
-function TodoPane({ onOpenDetail }) {
-  const snapshot = useBridge("snapshot", {});
-  const inbox = useBridge("inbox", { domain: "personal" });
-  const misses = useBridge("misses", {});
-  const [busy, setBusy] = (0, import_react7.useState)(false);
-  const [feedback, setFeedback] = (0, import_react7.useState)(null);
-  const [suggestFeedback, setSuggestFeedback] = (0, import_react7.useState)(null);
-  const [rejecting, setRejecting] = (0, import_react7.useState)(null);
-  const [rejectReason, setRejectReason] = (0, import_react7.useState)("");
-  const [drafting, setDrafting] = (0, import_react7.useState)(null);
-  const [draftText, setDraftText] = (0, import_react7.useState)("");
-  function run(action, success, target = "capture") {
-    setBusy(true);
-    void action().then(() => {
-      if (target === "suggest") setSuggestFeedback({ ok: true, text: success });
-      else setFeedback({ ok: true, text: success });
-      snapshot.reload();
-      inbox.reload();
-      misses.reload();
-    }).catch((error) => {
-      const text = error instanceof Error ? error.message : String(error);
-      if (target === "suggest") setSuggestFeedback({ ok: false, text });
-      else setFeedback({ ok: false, text });
-    }).finally(() => {
-      setBusy(false);
-    });
+// src/client/v9/primitives.ts
+var import_react5 = require("react");
+var h = import_react5.createElement;
+var EMPTY = "\u2014";
+function num(value) {
+  if (value === null || value === void 0 || !Number.isFinite(value)) return EMPTY;
+  return value.toLocaleString("zh-CN");
+}
+function withUnit(value, unit) {
+  if (value === null || value === void 0 || !Number.isFinite(value)) return EMPTY;
+  return `${num(value)} ${unit}`;
+}
+function toneOf(tone) {
+  if (tone === "warn" || tone === "err" || tone === "ok") return tone;
+  return "idle";
+}
+var LEDE_MAX = 20;
+function assertLede(text) {
+  if ([...text].length > LEDE_MAX) {
+    throw new Error(`\u5224\u5B9A\u53E5\u8D85\u8FC7 ${LEDE_MAX} \u5B57\uFF1A${text}`);
   }
-  function confirmEntry(path) {
-    run(() => call("confirm", { path }), "\u5DF2\u786E\u8BA4\uFF08\u5269\u4F59\u5F85\u62CD\u677F\u89C1\u4E0A\u65B9\u8BA1\u6570\uFF09", "suggest");
+  if (/[\r\n]/.test(text)) {
+    throw new Error(`\u5224\u5B9A\u53E5\u4E0D\u8BB8\u6362\u884C\uFF1A${text}`);
   }
-  function undoRejectEntry(path) {
-    run(() => call("undoReject", { path }), "\u5DF2\u64A4\u9500\u9A73\u56DE");
-  }
-  function rejectEntry(path) {
-    if (rejectReason.trim() === "") return;
-    setBusy(true);
-    void call("reject", { path, reason: rejectReason.trim() }).then(() => {
-      setFeedback({ ok: true, text: "\u5DF2\u9A73\u56DE\uFF0C30 \u5929\u5185\u4E0D\u518D\u63A8\u8350" });
-      setRejecting(null);
-      setRejectReason("");
-      snapshot.reload();
-    }).catch((error) => {
-      setFeedback({ ok: false, text: error instanceof Error ? error.message : String(error) });
-    }).finally(() => {
-      setBusy(false);
-    });
-  }
-  const queue = snapshot.data?.queue ?? [];
-  const openRows = (inbox.data?.entries ?? []).filter((row) => row.state === "open" || row.state === "todo");
-  const fillable = misses.data?.pipeline["should-fill"] ?? [];
-  const draftingItems = misses.data?.pipeline.drafting ?? [];
-  const todoTotal = queue.length + openRows.length + fillable.length + draftingItems.length;
-  const head = PaneHead({
-    pageName: "\u5F85\u529E",
-    lede: todoTotal === 0 ? "\u4E09\u6BB5\u90FD\u6E05\u7A7A\u4E86" : `\u5171 ${todoTotal} \u4EF6\uFF0C\u5206\u4E09\u7C7B\uFF1A\u8981\u6211\u62CD\u677F\u7684\u3001\u8981\u6211\u6D41\u8F6C\u7684\u3001\u8981\u6211\u8865\u7684`
-  });
-  if (snapshot.phase === "error") {
-    return (0, import_react7.createElement)(
-      "div",
-      { className: "dmo-pane" },
-      head,
-      h(ErrorAlert, {
-        title: "\u8BFB\u4E0D\u5230\u5F85\u529E",
-        body: "\u8FD9\u6B21\u8BFB\u53D6\u6574\u4F53\u5931\u8D25\uFF0C\u6240\u4EE5\u4E09\u6BB5\u90FD\u6CA1\u51FA\u6765\u3002\u5E93\u6587\u4EF6\u6CA1\u6709\u4E22\u2014\u2014\u5148\u91CD\u8BD5\uFF0C\u8FD8\u4E0D\u884C\u5C31\u53BB\u300C\u8BB0\u5FC6\u300D\u76F4\u63A5\u770B\u6761\u76EE\u3002",
-        actions: [
-          Primary({ children: "\u91CD\u8BD5", onClick: snapshot.reload, attrs: { "data-action": "retry" } }),
-          Btn({ children: "\u53BB\u8BB0\u5FC6", onClick: () => {
-            requestPane("memory");
-          }, attrs: { "data-action": "goto", "data-pane": "memory" } })
-        ]
-      })
-    );
-  }
-  if (snapshot.phase === "loading") return SkeletonRows({ rows: 3, height: 64 });
-  if (todoTotal === 0) {
-    return (0, import_react7.createElement)(
-      "div",
-      { className: "dmo-pane" },
-      head,
-      (0, import_react7.createElement)(
-        "section",
-        { className: "dmo-card-heavy" },
-        h(EmptyState, {
-          title: "\u6E05\u7A7A\u4E86",
-          body: "\u4E0B\u6B21 agent \u641C\u4E0D\u5230\u4E1C\u897F\u3001\u6216\u8005\u6211\u4ECE\u5BF9\u8BDD\u91CC\u603B\u7ED3\u51FA\u65B0\u7684\u63A8\u65AD\u65F6\uFF0C\u8FD9\u91CC\u4F1A\u81EA\u52A8\u51FA\u73B0\u3002\u73B0\u5728\u4E0D\u7528\u7BA1\u5B83\u3002",
-          actions: [
-            Primary({ children: "\u8BB0\u4E00\u6761", onClick: () => {
-              requestPane("capture");
-            }, attrs: { "data-action": "goto", "data-pane": "capture" } }),
-            Btn({ children: "\u53BB\u8BB0\u5FC6", onClick: () => {
-              requestPane("memory");
-            }, attrs: { "data-action": "goto", "data-pane": "memory" } })
-          ]
-        }),
-        feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text })
-      )
-    );
-  }
-  const firstSection = queue.length > 0 ? "decisions" : fillable.length > 0 ? "fill" : "fill-notice";
-  const decisionRows = queue.map((item, index) => {
-    const usePrimary = firstSection === "decisions" && index === 0;
-    const conf = item.confidence === null ? "\u2014" : item.confidence.toFixed(1);
-    const evidence = item.evidence[0];
-    return (0, import_react7.createElement)(
-      "li",
-      { key: item.id, className: "dmo-row" },
-      h("p", { className: "dmo-row-title" }, truncate(item.title, 90)),
-      h(
-        "div",
-        { className: "dmo-meta-row" },
-        tag(
-          item.status === "stale" ? "\u5F85\u590D\u6838" : item.kind === "retire" ? `${item.days ?? 0} \u5929\u672A\u5F15\u7528` : "\u63A8\u65AD\u5F85\u786E\u8BA4",
-          item.kind === "retire" ? "err" : "warn"
-        ),
-        h("span", { className: "dmo-meta" }, item.domainLabel),
-        h("span", { className: "dmo-meta" }, `\u7F6E\u4FE1 ${conf}`)
-      ),
-      evidence === void 0 ? null : (0, import_react7.createElement)(
-        "div",
-        { className: "dmo-evidence" },
-        truncate(evidence.excerpt ?? "", 90),
-        h("div", { className: "dmo-evidence-src" }, `${item.origin} \xB7 ${evidence.session ?? ""}`)
-      ),
-      (0, import_react7.createElement)(
-        "div",
-        { className: "dmo-row-actions" },
-        /*
-         * 驳回静默期内的条目（rejected，30 天内仍在队列）：
-         * 唯一有意义的动作是「撤销驳回」——它不该再被确认或再驳回。
-         */
-        item.status === "rejected" ? Btn({
-          children: "\u64A4\u9500\u9A73\u56DE",
-          small: true,
-          disabled: busy,
-          onClick: () => {
-            undoRejectEntry(item.path);
-          },
-          attrs: { "data-action": "undoReject", "data-path": item.id }
-        }) : null,
-        item.status === "rejected" ? null : item.kind === "retire" ? usePrimary ? Primary({ children: "\u5F52\u6863", small: true, disabled: busy, onClick: () => {
-          run(() => call("archive", { path: item.path, reason: "\u5230\u671F\u9000\u5F79" }), "\u5DF2\u5F52\u6863");
-        }, attrs: { "data-action": "archive", "data-path": item.id } }) : Btn({ children: "\u5F52\u6863", small: true, disabled: busy, onClick: () => {
-          run(() => call("archive", { path: item.path, reason: "\u5230\u671F\u9000\u5F79" }), "\u5DF2\u5F52\u6863");
-        }, attrs: { "data-action": "archive", "data-path": item.id } }) : usePrimary ? Primary({ children: "\u786E\u8BA4", small: true, disabled: busy, onClick: () => {
-          confirmEntry(item.path);
-        }, attrs: { "data-action": "confirm", "data-path": item.id } }) : Btn({ children: "\u786E\u8BA4", small: true, disabled: busy, onClick: () => {
-          confirmEntry(item.path);
-        }, attrs: { "data-action": "confirm", "data-path": item.id } }),
-        TextLink({
-          children: "\u770B\u5168\u6587",
-          // v6 评审 P0-1：早先只有 attrs 没有 onClick——点了没反应。
-          onClick: () => {
-            (onOpenDetail ?? (() => {
-              requestPane("memory");
-            }))(item.path);
-          },
-          attrs: { "data-action": "open-detail", "data-path": item.id }
-        })
-      ),
-      rejecting === item.id ? h(RejectBox, {
-        reason: rejectReason,
-        onReason: setRejectReason,
-        busy,
-        onCancel: () => {
-          setRejecting(null);
-          setRejectReason("");
-        },
-        onSubmit: () => {
-          rejectEntry(item.path);
-        }
-      }) : (0, import_react7.createElement)(
-        "details",
-        { className: "dmo-more" },
-        (0, import_react7.createElement)("summary", null, "\u5176\u5B83\u5904\u7406\u65B9\u5F0F"),
-        (0, import_react7.createElement)(
-          "div",
-          { className: "dmo-more-body" },
-          Btn({
-            children: item.kind === "retire" ? "\u518D\u7559 90 \u5929" : "\u9A73\u56DE\uFF08\u9700\u8981\u5199\u7406\u7531\uFF09",
-            small: true,
-            disabled: busy,
-            onClick: () => {
-              if (item.kind === "retire") {
-                run(() => call("keep", { path: item.path }), "\u5DF2\u518D\u7559 90 \u5929");
-              } else {
-                setRejecting(item.id);
-              }
-            },
-            attrs: { "data-action": item.kind === "retire" ? "keep" : "reject", "data-path": item.id }
-          }),
-          h(
-            "p",
-            { className: "dmo-note" },
-            item.kind === "retire" ? "\u518D\u7559\u4F1A\u5237\u65B0 updated\uFF0C\u8BA9 134 \u5929\u5012\u8BA1\u65F6\u91CD\u65B0\u5F00\u59CB\u3002" : "\u9A73\u56DE\u4F1A\u9759\u9ED8 30 \u5929\uFF0C\u6240\u4EE5\u5FC5\u987B\u5199\u4E00\u53E5\u4E3A\u4EC0\u4E48\u3002"
-          )
-        )
-      )
-    );
-  });
-  const flowRows = openRows.map((row) => (0, import_react7.createElement)(
-    "li",
-    { key: row.lineIndex, className: "dmo-row" },
-    h("p", { className: "dmo-row-title" }, truncate(row.content, 90)),
-    h(
-      "div",
-      { className: "dmo-meta-row" },
-      h("span", { className: "dmo-meta" }, row.date),
-      h("span", { className: "dmo-meta" }, row.kind),
-      tag(INBOX_STATE_LABEL2[row.state] ?? row.state, "warn")
-    ),
-    (0, import_react7.createElement)(
-      "div",
-      { className: "dmo-row-actions" },
-      Btn({
-        children: "\u6807\u5B8C\u6210",
-        small: true,
-        disabled: busy,
-        onClick: () => {
-          run(() => call("updateInbox", { domain: "personal", lineIndex: row.lineIndex, patch: { state: "done" } }), "\u6807\u4E3A\u5DF2\u5B8C\u6210\uFF0C\u4ECE\u5F85\u529E\u79FB\u9664\u4E86");
-        },
-        attrs: { "data-action": "inbox-done", "data-line": String(row.lineIndex) }
-      }),
-      TextLink({ children: "\u6539\u5185\u5BB9", onClick: () => {
-        setDrafting(`edit-${row.lineIndex}`);
-        setDraftText(row.content);
-      }, attrs: { "data-action": "inbox-edit", "data-line": String(row.lineIndex) } })
-    ),
-    drafting === `edit-${row.lineIndex}` ? (0, import_react7.createElement)(
-      "div",
-      { style: { marginTop: "var(--s2)" } },
-      (0, import_react7.createElement)("textarea", {
-        className: "dmo-textarea",
-        "aria-label": "\u7F16\u8F91\u8BB0\u5F55\u5185\u5BB9",
-        value: draftText,
-        onChange: (event) => {
-          setDraftText(event.target.value);
-        }
-      }),
-      (0, import_react7.createElement)(
-        "div",
-        { className: "dmo-row-actions" },
-        Btn({
-          // v6 评审 P1-2：内联编辑提交降为次按钮——流转段永远不持有
-          // 整页主按钮名额，这里再用 Primary 就会与拍板段同屏 2 处蓝实底。
-          children: "\u4FDD\u5B58",
-          small: true,
-          disabled: busy || draftText.trim() === "",
-          onClick: () => {
-            run(
-              () => call("updateInbox", { domain: "personal", lineIndex: row.lineIndex, patch: { content: draftText.trim() } }),
-              "\u5185\u5BB9\u5DF2\u6539"
-            );
-            setDrafting(null);
-          },
-          attrs: { "data-action": "inbox-save", "data-line": String(row.lineIndex) }
-        }),
-        Btn({ children: "\u53D6\u6D88", small: true, onClick: () => {
-          setDrafting(null);
-        } })
-      )
-    ) : (0, import_react7.createElement)(
-      "details",
-      { className: "dmo-more" },
-      (0, import_react7.createElement)("summary", null, "\u4E0D\u505A\u4E86"),
-      (0, import_react7.createElement)(
-        "div",
-        { className: "dmo-more-body" },
-        /*
-         * 提升到档案：把这条速记沉淀成正式条目（新建/追加 md 并标 done+去向）。
-         * 这是 INBOX 的唯一「毕业」出口，不能只留在记录流页里。
-         */
-        Btn({
-          children: "\u63D0\u5347\u5230\u6863\u6848",
-          small: true,
-          disabled: busy,
-          onClick: () => {
-            run(() => call("promoteInbox", { domain: "personal", lineIndex: row.lineIndex }), "\u5DF2\u63D0\u5347\u5230\u6863\u6848");
-          },
-          attrs: { "data-action": "promoteInbox", "data-line": String(row.lineIndex) }
-        }),
-        Btn({
-          children: "\u4E22\u6389\u8FD9\u6761",
-          small: true,
-          disabled: busy,
-          onClick: () => {
-            run(() => call("updateInbox", { domain: "personal", lineIndex: row.lineIndex, patch: { state: "dropped" } }), "\u4E22\u6389\u4E86\uFF0C\u4E0D\u518D\u51FA\u73B0\u5728\u5F85\u529E\u91CC");
-          },
-          attrs: { "data-action": "inbox-drop", "data-line": String(row.lineIndex) }
-        }),
-        h("p", { className: "dmo-note" }, "\u4E22\u6389\u8868\u793A\u300C\u6211\u5DF2\u7ECF\u5224\u65AD\u4E0D\u505A\u300D\u3002\u5B83\u4F1A\u4ECE\u5F85\u529E\u79FB\u9664\uFF0C\u8BB0\u5F55\u4ECD\u5728\u8BB0\u5F55\u6D41\u91CC\u3002")
-      )
-    )
-  ));
-  const fillSection = (() => {
-    if (fillable.length > 0) {
-      const rows = fillable.map((item, index) => {
-        const usePrimary2 = firstSection === "fill" && index === 0;
-        const writeBtn = usePrimary2 ? Primary({ children: "\u5199\u7ED3\u8BBA", small: true, onClick: () => {
-          setDrafting(item.query);
-          setDraftText("");
-        }, attrs: { "data-action": "miss-write", "data-query": item.query } }) : Btn({ children: "\u5199\u7ED3\u8BBA", small: true, onClick: () => {
-          setDrafting(item.query);
-          setDraftText("");
-        }, attrs: { "data-action": "miss-write", "data-query": item.query } });
-        return (0, import_react7.createElement)(
-          "li",
-          { key: item.query, className: "dmo-row" },
-          h("p", { className: "dmo-row-title" }, truncate(item.query, 90)),
-          h(
-            "div",
-            { className: "dmo-meta-row" },
-            tag("\u7B49\u4F60\u8865", "warn"),
-            h("span", { className: "dmo-meta" }, `\u95EE\u8FC7 ${item.count} \u6B21`),
-            h("span", { className: "dmo-meta" }, `${item.sessions} \u4E2A\u4F1A\u8BDD`)
-          ),
-          (0, import_react7.createElement)(
-            "div",
-            { className: "dmo-row-actions" },
-            writeBtn,
-            TextLink({ children: "\u4E0D\u8865", onClick: () => {
-              run(() => call("missDelete", { query: item.query }), "\u5DF2\u6807\u8BB0\u4E0D\u8865");
-            }, attrs: { "data-action": "miss-delete", "data-query": item.query } })
-          ),
-          drafting === item.query ? (0, import_react7.createElement)(
-            "div",
-            { style: { marginTop: "var(--s2)" } },
-            (0, import_react7.createElement)("textarea", {
-              className: "dmo-textarea",
-              "aria-label": "\u5199\u7ED3\u8BBA",
-              placeholder: "\u5199\u4E0B\u8FD9\u6761\u95EE\u9898\u7684\u7ED3\u8BBA\uFF0C\u786E\u8BA4\u540E\u843D\u5E93\u5E76\u8FDB\u5165 7 \u5929\u9A8C\u8BC1\u671F\u2026",
-              value: draftText,
-              onChange: (event) => {
-                setDraftText(event.target.value);
-              }
-            }),
-            (0, import_react7.createElement)(
-              "div",
-              { className: "dmo-row-actions" },
-              Btn({
-                // v6 评审 P1-2：同上——草稿提交降次按钮，
-                // 该行可能同时显示条件主按钮「写结论」，不许 2 处蓝实底。
-                children: "\u786E\u8BA4\u843D\u5E93",
-                small: true,
-                disabled: busy || draftText.trim() === "",
-                onClick: () => {
-                  run(
-                    () => call("missConfirm", { query: item.query, content: draftText.trim(), type: "\u95EE\u9898" }),
-                    "\u5DF2\u843D\u5E93\uFF0C\u8FDB\u5165 7 \u5929\u9A8C\u8BC1\u671F"
-                  );
-                  setDrafting(null);
-                },
-                attrs: { "data-action": "miss-confirm", "data-query": item.query }
-              }),
-              Btn({ children: "\u53D6\u6D88", small: true, onClick: () => {
-                setDrafting(null);
-              } })
-            )
-          ) : null
-        );
-      });
-      return (0, import_react7.createElement)(
-        "section",
-        { className: "dmo-card-quiet" },
-        SectionHead({
-          title: "\u8981\u6211\u8865\u7684",
-          count: String(fillable.length),
-          /*
-           * 批量草稿：只生成草稿、**不落库**——草稿必须人逐条确认才写入，
-           * 这条产品立场（自动写库会产生无法审计的臆想）不变。
-           */
-          action: fillable.length > 1 ? Btn({
-            children: `\u6279\u91CF\u751F\u6210 ${fillable.length} \u6761\u8349\u7A3F`,
-            small: true,
-            disabled: busy,
-            onClick: () => {
-              run(
-                () => call("missBatchDraft", { queries: fillable.map((item) => item.query), type: "\u95EE\u9898" }),
-                "\u5DF2\u751F\u6210\u8349\u7A3F\uFF0C\u53BB\u300C\u8349\u7A3F\u300D\u9010\u6761\u786E\u8BA4"
-              );
-            },
-            attrs: { "data-action": "missBatchDraft" }
-          }) : void 0
-        }),
-        (0, import_react7.createElement)("ul", { className: "dmo-list", role: "list" }, rows)
-      );
-    }
-    const missTotal = misses.data?.total ?? 0;
-    if (missTotal === 0) return [];
-    const usePrimary = firstSection === "fill-notice";
-    const fillBtn = usePrimary ? Primary({ children: "\u4ECD\u7136\u8865\u4E00\u6761", onClick: () => {
-      setDrafting("");
-      setDraftText("");
-    }, attrs: { "data-action": "miss-write" } }) : Btn({ children: "\u4ECD\u7136\u8865\u4E00\u6761", small: true, attrs: { "data-action": "miss-write" } });
-    return (0, import_react7.createElement)(
-      "section",
-      { className: "dmo-card-quiet" },
-      SectionHead({ title: "\u8981\u6211\u8865\u7684", count: "0" }),
-      Notice({
-        title: "\u8FD8\u6CA1\u6709\u5230\u8BE5\u8865\u7684\u65F6\u5019",
-        text: `${missTotal} \u4E2A\u95EE\u9898\u5404\u88AB\u641C\u8FC7 1 \u6B21\uFF0C\u8FD8\u6CA1\u5230 3 \u6B21\u7684\u9608\u503C\u3002\u540C\u4E00\u4E2A\u95EE\u9898\u518D\u88AB\u641C\u5230 2 \u6B21\uFF0C\u5B83\u5C31\u4F1A\u81EA\u52A8\u51FA\u73B0\u5728\u8FD9\u91CC\u7B49\u4F60\u8865\u3002\u73B0\u5728\u8865\u4E5F\u884C\u2014\u2014\u53EA\u662F\u7CFB\u7EDF\u8FD8\u6CA1\u8BC1\u636E\u8BF4\u660E\u5B83\u503C\u5F97\u5360\u4F4D\u3002`,
-        tone: "warn"
-      }),
-      (0, import_react7.createElement)(
-        "div",
-        { className: "dmo-row-actions" },
-        fillBtn,
-        h("span", { className: "dmo-note", style: { margin: 0 } }, `\u4F1A\u4ECE\u4E0A\u9762 ${missTotal} \u4E2A\u95EE\u9898\u91CC\u6311\u4E00\u4E2A\u5F00\u59CB`)
-      )
-    );
-  })();
-  return (0, import_react7.createElement)(
+  return text;
+}
+function Figure({ value }) {
+  return h("span", { className: "mo-t0 mo-num", "data-figure": "" }, num(value));
+}
+function Lede({ text }) {
+  return h("p", { className: "mo-lede", "data-lede": "" }, assertLede(text));
+}
+function SectionHead({ title, note }) {
+  return h(
     "div",
-    { className: "dmo-pane" },
-    head,
-    /*
-     * 拍板段的反馈落在段首（动作来源是这一段），不塞到页面末尾——
-     * 三段齐全时页面末尾在视口之外，「就地反馈」会变成看不见的反馈。
-     *
-     * v6 评审 P0-1：三段各自装进容器。拍板段 = 本页唯一重卡
-     * （card-fill + l3 + 主操作所在）；流转与补库 = 静卡。
-     * 行分隔的 border-l1 从此只在卡内出现。
-     */
-    suggestFeedback === null ? null : InlineDone({ ok: suggestFeedback.ok, text: suggestFeedback.text }),
-    queue.length === 0 ? null : (0, import_react7.createElement)(
-      "section",
-      { className: "dmo-card-heavy" },
-      SectionHead({ title: "\u8981\u6211\u62CD\u677F\u7684", count: String(queue.length) }),
-      (0, import_react7.createElement)("ul", { className: "dmo-list", role: "list" }, decisionRows)
-    ),
-    openRows.length === 0 ? null : (0, import_react7.createElement)(
-      "section",
-      { className: "dmo-card-quiet" },
-      SectionHead({
-        title: "\u8981\u6211\u6D41\u8F6C\u7684",
-        count: String(openRows.length),
-        /* 超过 1 条才给批量——单条时逐行点更快，批量按钮只是噪音 */
-        action: openRows.length > 1 ? Btn({
-          children: "\u5168\u90E8\u6807\u5B8C\u6210",
-          small: true,
-          disabled: busy,
-          onClick: () => {
-            run(
-              () => call("batchInboxState", {
-                domain: "personal",
-                lineIndexes: openRows.map((row) => row.lineIndex),
-                state: "done"
-              }),
-              `\u5DF2\u6807\u5B8C\u6210 ${openRows.length} \u6761`
-            );
-          },
-          attrs: { "data-action": "batchInboxState" }
-        }) : void 0
-      }),
-      (0, import_react7.createElement)("ul", { className: "dmo-list", role: "list" }, flowRows)
-    ),
-    /* 补库段自己带容器（静卡），未达阈值时是说明卡，missTotal=0 时是 null */
-    fillSection,
-    feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
-    busy ? h("p", { className: "dmo-note" }, "\u5904\u7406\u4E2D\u2026") : null
+    { className: "mo-section-head" },
+    h("h2", { className: "mo-section-title" }, title),
+    note === void 0 ? null : h("span", { className: "mo-section-note mo-num" }, note)
   );
 }
-
-// src/client/panes/memory.ts
-var import_react8 = require("react");
-var STATUS_GROUPS = [
-  { id: "", label: "\u5168\u90E8", match: () => true },
-  { id: "pending", label: "\u8981\u6211\u62CD\u677F", match: (s) => s === "hypothesis" || s === "observed" },
-  { id: "stale", label: "\u5F85\u590D\u6838", match: (s) => s === "stale" },
-  { id: "confirmed", label: "\u5DF2\u786E\u8BA4", match: (s) => s === "confirmed" || s === "active" }
-];
-function MemoryPane({ ctx, detailPath, onOpenDetail }) {
-  if (detailPath !== void 0) {
-    return (0, import_react8.createElement)(MemoryDetail, { path: detailPath, onBack: () => {
-      onOpenDetail(null);
-    } });
-  }
-  return (0, import_react8.createElement)(MemoryList, { ctx, onOpenDetail });
-}
-function MemoryList({ ctx, onOpenDetail }) {
-  const { cwd, project } = useSessionProject(ctx);
-  const [scope, setScope] = (0, import_react8.useState)("all");
-  const [query, setQuery] = (0, import_react8.useState)("");
-  const [submitted, setSubmitted] = (0, import_react8.useState)("");
-  const [statusFilter, setStatusFilter] = (0, import_react8.useState)("");
-  const [domainFilter, setDomainFilter] = (0, import_react8.useState)("");
-  const [selected, setSelected] = (0, import_react8.useState)([]);
-  const [busy, setBusy] = (0, import_react8.useState)(false);
-  const [feedback, setFeedback] = (0, import_react8.useState)(null);
-  const scopeParams = scope === "project" ? scopeBody(cwd, project) : {};
-  const snapshot = useBridge("snapshot", scopeParams, [scope, cwd, project]);
-  const search = useBridge(
-    "search",
-    { query: submitted, ...scopeParams, record: submitted.trim() !== "" },
-    [submitted, scope, cwd, project]
-  );
-  function runBatch(action, success) {
-    setBusy(true);
-    void action().then((result) => {
-      const failed = result?.failed?.length ?? 0;
-      setFeedback({
-        ok: failed === 0,
-        text: failed === 0 ? success : `${success}\uFF0C\u4F46\u6709 ${failed} \u6761\u5931\u8D25\uFF08\u53EF\u80FD\u5DF2\u88AB\u6539\u52A8\uFF09`
-      });
-      setSelected([]);
-      snapshot.reload();
-    }).catch((error) => {
-      setFeedback({ ok: false, text: error instanceof Error ? error.message : String(error) });
-    }).finally(() => {
-      setBusy(false);
-    });
-  }
-  const entries = snapshot.data?.entries ?? [];
-  const searching = submitted.trim() !== "";
-  const rawList = searching ? (search.data?.hits ?? []).map((hit) => ({
-    id: hit.id,
-    path: hit.path,
-    title: hit.title,
-    status: hit.status,
-    tokens: hit.tokens,
-    domainLabel: hit.domainLabel,
-    citeCount: void 0,
-    snippet: hit.snippet
-  })) : entries.map((entry) => ({
-    id: entry.id,
-    path: entry.path,
-    title: entry.title,
-    status: entry.status,
-    tokens: entry.tokens,
-    domainLabel: entry.domainLabel,
-    citeCount: entry.citeCount,
-    snippet: void 0
-  }));
-  const statusCounts = STATUS_GROUPS.map((group) => ({
-    ...group,
-    num: rawList.filter((item) => group.match(item.status)).length
-  }));
-  const statusMatched = statusFilter === "" ? rawList : rawList.filter((item) => STATUS_GROUPS.find((g) => g.id === statusFilter)?.match(item.status) ?? true);
-  const list = domainFilter === "" ? statusMatched : statusMatched.filter((item) => item.domainLabel === domainFilter);
-  const domainOptions = [...new Set(rawList.map((item) => item.domainLabel))];
-  const listEmpty = list.length === 0;
-  const searchBtn = listEmpty ? Btn({ children: "\u641C", onClick: () => {
-    setSubmitted(query);
-  }, attrs: { "data-action": "search" } }) : Primary({ children: "\u641C", onClick: () => {
-    setSubmitted(query);
-  }, attrs: { "data-action": "search" } });
-  const head = PaneHead({
-    pageName: "\u8BB0\u5FC6",
-    lede: `\u5E93\u91CC\u4E00\u5171 ${count(entries.length)} \u6761\uFF0C${count(snapshot.data?.stats.tokens ?? 0)} tokens`,
-    ledeSub: snapshot.data === void 0 ? void 0 : `\u6700\u91CD\u7684\u4E00\u6761\u5360 ${count(Math.max(...entries.map((e) => e.tokens), 0))} tokens\uFF1B\u8D85 80 \u884C ${count(snapshot.data.stats.overLimit)} \u7BC7\u3002`
-  });
-  const filterCard = (0, import_react8.createElement)(
-    "section",
-    { className: "dmo-card-quiet" },
-    (0, import_react8.createElement)(
-      "div",
-      { className: "dmo-toolbar" },
-      (0, import_react8.createElement)("input", {
-        className: "dmo-input",
-        "data-field": "query",
-        value: query,
-        placeholder: "\u641C\u6807\u9898\u6216\u57DF\u2026",
-        "aria-label": "\u68C0\u7D22\u8BB0\u5FC6",
-        onChange: (event) => {
-          setQuery(event.target.value);
-        },
-        onKeyDown: (event) => {
-          if (event.key === "Enter") setSubmitted(query);
-          if (event.key === "Escape") {
-            setQuery("");
-            setSubmitted("");
-          }
-        }
-      }),
-      searchBtn
-    ),
-    (0, import_react8.createElement)(
-      "div",
-      { className: "dmo-kindrow", role: "group", "aria-label": "\u6309\u72B6\u6001\u7B5B\u9009" },
-      statusCounts.map((group) => (0, import_react8.createElement)("button", {
-        key: group.id,
-        type: "button",
-        className: "dmo-kindbtn",
-        "data-status": group.id,
-        "aria-pressed": statusFilter === group.id,
-        onClick: () => {
-          setStatusFilter(group.id);
-          setSelected([]);
-        }
-      }, `${group.label} ${group.num}`))
-    ),
-    (0, import_react8.createElement)(
-      "div",
-      { className: "dmo-kindrow", role: "group", "aria-label": "\u6309\u57DF\u7B5B\u9009" },
-      (0, import_react8.createElement)("button", {
-        type: "button",
-        className: "dmo-kindbtn",
-        "data-scope": "",
-        "aria-pressed": scope === "all" && domainFilter === "",
-        onClick: () => {
-          setScope("all");
-          setDomainFilter("");
-          setSelected([]);
-        }
-      }, `\u5168\u5E93 ${entries.length}`),
-      (0, import_react8.createElement)("button", {
-        type: "button",
-        className: "dmo-kindbtn",
-        "data-scope": "project",
-        "aria-pressed": scope === "project",
-        onClick: () => {
-          setScope(scope === "project" ? "all" : "project");
-          setSelected([]);
-        }
-      }, scope === "project" && snapshot.data?.project !== null && snapshot.data?.project !== void 0 ? `\u4EC5\u672C\u9879\u76EE \xB7 ${snapshot.data.project}` : "\u4EC5\u672C\u9879\u76EE"),
-      domainOptions.map((name) => (0, import_react8.createElement)("button", {
-        key: name,
-        type: "button",
-        className: "dmo-kindbtn",
-        "data-domain": name,
-        "aria-pressed": domainFilter === name,
-        onClick: () => {
-          setDomainFilter(domainFilter === name ? "" : name);
-          setSelected([]);
-        }
-      }, name))
-    )
-  );
-  if (snapshot.phase === "loading") return SkeletonRows({ rows: 4, height: 56 });
-  if (snapshot.phase === "error") {
-    return (0, import_react8.createElement)(
-      "div",
-      { className: "dmo-pane" },
-      head,
-      h(ErrorAlert, {
-        title: "\u8BFB\u4E0D\u5230\u8BB0\u5FC6",
-        body: "\u5E93\u6587\u4EF6\u6CA1\u6709\u4E22\uFF0C\u8FD9\u662F\u8BFB\u53D6\u95EE\u9898\u3002\u8BB0\u5FC6\u4E0D\u4F1A\u56E0\u4E3A\u8FD9\u6B21\u5931\u8D25\u800C\u6D88\u5931\u3002",
-        actions: [Primary({ children: "\u91CD\u8BD5", onClick: snapshot.reload, attrs: { "data-action": "retry" } })]
-      })
-    );
-  }
-  const emptyBlock = searching ? h(EmptyState, {
-    title: `\u6CA1\u641C\u5230\u300C${truncate(submitted, 20)}\u300D`,
-    body: "\u68C0\u7D22\u843D\u7A7A\u672C\u8EAB\u5C31\u662F\u4E00\u6761\u4FE1\u53F7\u2014\u2014\u5B83\u5DF2\u8BB0\u8FDB\u300C\u5F85\u529E \xB7 \u8981\u6211\u8865\u7684\u300D\u3002\u6362\u4E2A\u8BCD\uFF0C\u6216\u53BB\u5F85\u529E\u770B\u8FD9\u6B21\u843D\u7A7A\u3002",
-    actions: [
-      Primary({ children: "\u6362\u4E2A\u8BCD", onClick: () => {
-        setQuery("");
-        setSubmitted("");
-      }, attrs: { "data-action": "clear-search" } }),
-      // v6 评审 P0-1：导航出口必须真的跳，不能只带测试钩子
-      Btn({ children: "\u53BB\u5F85\u529E\u770B", onClick: () => {
-        gotoPane(ctx, "todo");
-      }, attrs: { "data-action": "goto", "data-pane": "todo" } })
-    ]
-  }) : entries.length === 0 ? h(EmptyState, {
-    title: "\u5E93\u662F\u7A7A\u7684",
-    body: "\u8FD8\u6CA1\u6709\u4EFB\u4F55\u8BB0\u5FC6\u3002\u8BB0\u4E00\u6761\uFF0C\u5B83\u5C31\u4F1A\u51FA\u73B0\u5728\u8FD9\u91CC\u3002",
-    actions: [Primary({ children: "\u8BB0\u4E00\u6761", onClick: () => {
-      gotoPane(ctx, "capture");
-    }, attrs: { "data-action": "goto", "data-pane": "capture" } })]
-  }) : h(EmptyState, {
-    title: "\u8FD9\u4E2A\u7B5B\u9009\u4E0B\u6CA1\u6709",
-    body: "\u6362\u4E2A\u7B5B\u9009\uFF0C\u6216\u8005\u6E05\u7A7A\u7B5B\u9009\u770B\u5168\u90E8\u3002",
-    actions: [
-      Primary({ children: "\u6E05\u7A7A\u7B5B\u9009", onClick: () => {
-        setStatusFilter("");
-        setDomainFilter("");
-        setScope("all");
-      }, attrs: { "data-action": "clear-filter" } }),
-      Btn({ children: "\u8BB0\u4E00\u6761", onClick: () => {
-        gotoPane(ctx, "capture");
-      }, attrs: { "data-action": "goto", "data-pane": "capture" } })
-    ]
-  });
-  const rows = list.map((entry) => (0, import_react8.createElement)(
+function Row({ spec, onSelect }) {
+  const tone = toneOf(spec.tone);
+  return h(
     "li",
-    { key: entry.id, className: "dmo-row" },
-    (0, import_react8.createElement)("button", {
-      type: "button",
-      className: "dmo-row-button",
-      "data-action": "open-detail",
-      "data-path": entry.path,
-      onClick: () => {
-        onOpenDetail(entry.path);
-      }
-    }, truncate(entry.title, 60)),
+    { className: "mo-row-item" },
     h(
-      "div",
-      { className: "dmo-meta-row" },
-      tag(statusLabel(entry.status), entry.status === "confirmed" || entry.status === "active" ? "ok" : entry.status === "rejected" ? "err" : entry.status === "stale" || entry.status === "observed" || entry.status === "hypothesis" ? "warn" : ""),
-      h("span", { className: "dmo-meta" }, `${entry.tokens} tokens`),
-      h("span", { className: "dmo-meta" }, entry.domainLabel),
+      "button",
+      {
+        type: "button",
+        className: "mo-row-button",
+        "data-select": spec.id,
+        "aria-current": spec.current === true ? "true" : void 0,
+        onClick: () => {
+          onSelect(spec.id);
+        }
+      },
+      h("span", { className: `mo-tonebar mo-tone-${tone}` }),
+      h("span", { className: "mo-row-title", "data-dense": spec.dense === true ? "true" : void 0 }, spec.title),
+      h("span", { className: "mo-row-col mo-row-col-src" }, spec.source ?? ""),
       h(
         "span",
-        { className: "dmo-meta" },
-        entry.citeCount === void 0 || entry.citeCount === 0 ? "\u672A\u5F15\u7528" : `\u5F15\u7528 ${entry.citeCount} \u6B21`
+        { className: "mo-row-col mo-row-col-num mo-num" },
+        spec.num === void 0 ? EMPTY : num(spec.num)
       ),
-      entry.snippet === void 0 ? null : h("span", { className: "dmo-meta" }, truncate(entry.snippet, 60)),
-      (0, import_react8.createElement)("input", {
-        type: "checkbox",
-        className: "dmo-check",
-        checked: selected.includes(entry.path),
-        "aria-label": `\u9009\u62E9\uFF1A${truncate(entry.title, 20)}`,
-        onClick: (event) => {
-          event.stopPropagation();
-        },
-        onChange: () => {
-          setSelected((current) => current.includes(entry.path) ? current.filter((p) => p !== entry.path) : [...current, entry.path]);
-        }
-      })
+      h(
+        "span",
+        { className: "mo-row-col mo-row-col-state" },
+        h("span", { className: `mo-tonebar-inline mo-tone-${tone}` }),
+        spec.state ?? ""
+      ),
+      h("span", { className: "mo-row-meta" }, spec.meta ?? "")
     )
-  ));
-  return (0, import_react8.createElement)(
-    "div",
-    { className: "dmo-pane" },
-    head,
-    filterCard,
-    selected.length === 0 ? null : (0, import_react8.createElement)(
-      "div",
-      { className: "dmo-bulk" },
-      h("span", { className: "dmo-meta" }, `\u5DF2\u9009 ${selected.length} / ${list.length} \u6761`),
-      Btn({
-        children: `\u5F52\u6863\u9009\u4E2D ${selected.length} \u6761`,
-        small: true,
-        disabled: busy,
-        onClick: () => {
-          runBatch(() => call("batchArchive", { paths: selected, reason: "\u6279\u91CF\u9000\u5F79" }), `\u5DF2\u5F52\u6863 ${selected.length} \u6761`);
-        },
-        attrs: { "data-action": "batchArchive" }
-      }),
-      Btn({ children: "\u6E05\u7A7A\u9009\u62E9", small: true, disabled: busy, onClick: () => {
-        setSelected([]);
-      } })
-    ),
-    /* v6 评审 P0-1：台账装进本页唯一重卡；空态出口也留在卡内（空屏不许是灰字） */
-    (0, import_react8.createElement)(
-      "section",
-      { className: "dmo-card-heavy" },
-      SectionHead({ title: searching ? "\u68C0\u7D22\u7ED3\u679C" : "\u5168\u90E8\u8BB0\u5FC6", count: `${list.length} \u6761` }),
-      searching && search.phase === "loading" ? SkeletonRows({ rows: 2, height: 44 }) : listEmpty ? emptyBlock : (0, import_react8.createElement)("ul", { className: "dmo-list dmo-list-clickable", role: "list" }, rows),
-      searching && search.phase === "ready" && search.data !== void 0 && !listEmpty ? h(
-        "p",
-        { className: "dmo-note" },
-        `\u547D\u4E2D ${count(search.data.total)} \u6761 \xB7 \u672C\u6B21\u8BFB\u53D6\u7EA6 ${count(search.data.cost)} tokens\uFF08\u5DF2\u8BB0\u8D26\uFF09`
-      ) : null
-    ),
-    feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text })
   );
 }
-function MemoryDetail({ path, onBack }) {
-  const detail = useBridge("detail", { path }, [path]);
-  const [busy, setBusy] = (0, import_react8.useState)(false);
-  const [feedback, setFeedback] = (0, import_react8.useState)(null);
-  const [rejecting, setRejecting] = (0, import_react8.useState)(false);
-  const [rejectReason, setRejectReason] = (0, import_react8.useState)("");
-  const [editing, setEditing] = (0, import_react8.useState)(false);
-  const [draft, setDraft] = (0, import_react8.useState)(null);
-  function run(action, success) {
-    setBusy(true);
-    void action().then(() => {
-      setFeedback({ ok: true, text: success });
-      setRejecting(false);
-      setRejectReason("");
-      setEditing(false);
-      setDraft(null);
-    }).catch((error) => {
-      setFeedback({ ok: false, text: error instanceof Error ? error.message : String(error) });
-    }).finally(() => {
-      setBusy(false);
+function TableHead({ columns }) {
+  return h(
+    "div",
+    { className: "mo-table-head" },
+    columns.map((column, index) => h("span", {
+      key: column.label,
+      className: column.num === true ? "mo-is-num" : void 0,
+      style: index === 0 ? void 0 : void 0
+    }, column.label))
+  );
+}
+function Skeleton({ rows = 4, label = "\u8BFB\u53D6\u4E2D" }) {
+  return h(
+    "div",
+    { className: "mo-skel-wrap", role: "presentation" },
+    Array.from({ length: rows }, (_, index) => h("div", { key: index, className: "mo-skel-row" })),
+    h("p", { className: "mo-skel-note" }, label)
+  );
+}
+function EmptyBlock({ title, text, hint, action }) {
+  return h(
+    "div",
+    { className: "mo-state-block mo-state-empty" },
+    h("h2", { className: "mo-state-title" }, title),
+    h("p", { className: "mo-state-text" }, text),
+    hint === void 0 ? null : h("p", { className: "mo-state-hint mo-num" }, hint),
+    action === void 0 ? null : h(
+      "div",
+      { className: "mo-state-actions" },
+      h("button", { type: "button", className: "mo-btn-ghost", "data-act": action.actName, onClick: action.act }, action.label)
+    )
+  );
+}
+function ErrorBlock({ title, text, example, onRetry }) {
+  return h(
+    "div",
+    { className: "mo-state-block mo-state-error", role: "alert" },
+    h("h2", { className: "mo-state-title" }, title),
+    h("p", { className: "mo-state-text" }, text),
+    example === void 0 ? null : h("p", { className: "mo-state-hint mo-num" }, `\u793A\u4F8B\uFF1A${example}`),
+    h("button", { type: "button", className: "mo-btn-ghost", "data-act": "retry", onClick: onRetry }, "\u91CD\u8BD5")
+  );
+}
+function Props({ rows }) {
+  return h(
+    "dl",
+    { className: "mo-props" },
+    rows.map((row) => h(
+      "div",
+      { key: row.label, className: "mo-prop" },
+      h("dt", null, row.label),
+      h("dd", null, row.value)
+    ))
+  );
+}
+function BtnInk({ children, onClick, disabled, actName, id }) {
+  return h("button", {
+    type: "button",
+    id,
+    className: "mo-btn-ink",
+    "data-act": actName,
+    disabled,
+    onClick: disabled === true ? void 0 : onClick
+  }, children);
+}
+function BtnGhost({ children, onClick, disabled, actName, id }) {
+  return h("button", {
+    type: "button",
+    id,
+    className: "mo-btn-ghost",
+    "data-act": actName,
+    disabled,
+    onClick: disabled === true ? void 0 : onClick
+  }, children);
+}
+function TextLink({ children, onClick, actName }) {
+  return h("button", { type: "button", className: "mo-textlink", "data-act": actName, onClick }, children);
+}
+function InlineDone({ ok, text, undo }) {
+  return h(
+    "div",
+    { className: "mo-inline-done", "data-tone": ok ? "ok" : "err", role: "status" },
+    h("span", { className: `mo-tonebar-inline mo-tone-${ok ? "ok" : "err"}` }),
+    h("span", null, text),
+    undo === void 0 ? null : TextLink({ children: undo.label, onClick: undo.act, actName: "undo" })
+  );
+}
+function FaceSwitch({ face, onChange }) {
+  const button = (id, label) => h("button", {
+    type: "button",
+    className: "mo-face-btn",
+    role: "switch",
+    "aria-checked": face === id === true ? "true" : "false",
+    "data-face": id,
+    onClick: () => {
+      onChange(id);
+    }
+  }, label);
+  return h(
+    "div",
+    { className: "mo-faces" },
+    h(
+      "div",
+      { className: "mo-face-switch", role: "group", "aria-label": "\u6E05\u5355\u89C6\u89D2" },
+      button("content", "\u5185\u5BB9\u9762"),
+      button("cost", "\u6210\u672C\u9762")
+    ),
+    h(
+      "span",
+      { className: "mo-face-note" },
+      face === "cost" ? "\u6309\u4F53\u79EF\u964D\u5E8F\uFF0C\u56DE\u7B54\u300C\u54EA\u6761\u6700\u8D35\u300D" : "\u6309\u5E93\u5185\u987A\u5E8F\uFF0C\u56DE\u7B54\u300C\u6211\u5B58\u4E86\u4EC0\u4E48\u300D"
+    )
+  );
+}
+function KindButtons({ kinds, kind, onKind }) {
+  return h(
+    "div",
+    { className: "mo-toolbar", role: "group", "aria-label": "\u7C7B\u578B" },
+    kinds.map((item) => h("button", {
+      key: item,
+      type: "button",
+      className: "mo-kindbtn",
+      "data-kind": item,
+      "aria-pressed": item === kind ? "true" : "false",
+      onClick: () => {
+        onKind(item);
+      }
+    }, item))
+  );
+}
+
+// src/client/v9/view-model.ts
+function estimateTokens(text) {
+  const value = String(text ?? "");
+  if (value === "") return 0;
+  let wide = 0;
+  let rest = 0;
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    const isWide = code >= 11904 && code <= 40959 || code >= 44032 && code <= 55215 || code >= 63744 && code <= 64255 || code >= 65280 && code <= 65519 || code >= 12288 && code <= 12351;
+    if (isWide) wide += 1;
+    else rest += 1;
+  }
+  return Math.ceil(wide + rest / 4);
+}
+var PANES = [
+  { id: "today", idx: "01", label: "\u4ECA\u5929", unit: "\u4EF6\u8981\u52A8\u624B" },
+  { id: "capture", idx: "02", label: "\u8BB0\u4E00\u6761", unit: "\u6761\u4ECA\u5929\u5DF2\u8BB0" },
+  { id: "todo", idx: "03", label: "\u5F85\u529E", unit: "\u4EF6\u538B\u7740" },
+  { id: "memory", idx: "04", label: "\u8BB0\u5FC6", unit: "\u6761\u8BB0\u5FC6" },
+  { id: "health", idx: "05", label: "\u5E93\u5065\u5EB7", unit: "tokens / \u8BF7\u6C42" }
+];
+var LEDE_MAX2 = 20;
+function clip(text, max = LEDE_MAX2) {
+  const chars = [...text];
+  if (chars.length <= max) return text;
+  return `${chars.slice(0, max - 1).join("")}\u2026`;
+}
+function plain(value) {
+  if (value === null || value === void 0 || !Number.isFinite(value)) return "\u2014";
+  return value.toLocaleString("zh-CN");
+}
+function memoryEntries(snapshot) {
+  if (snapshot === void 0) return [];
+  return snapshot.entries.filter((entry) => !entry.id.endsWith(".INBOX"));
+}
+function openInboxRows(inbox) {
+  if (inbox === void 0) return [];
+  return inbox.entries.filter((row) => row.state === "open" || row.state === "todo");
+}
+function daysSince(date, now = /* @__PURE__ */ new Date()) {
+  const parts = date.split("-").map(Number);
+  if (parts.length < 3 || parts.some((part) => !Number.isFinite(part))) return null;
+  const at = Date.UTC(parts[0], parts[1] - 1, parts[2]);
+  const diff = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - at;
+  if (!Number.isFinite(diff)) return null;
+  return Math.max(0, Math.round(diff / 864e5));
+}
+function todayKey(now = /* @__PURE__ */ new Date()) {
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${mm}-${dd}`;
+}
+function countsOf(input) {
+  const entries = memoryEntries(input.snapshot);
+  const queue = input.snapshot?.queue.length ?? 0;
+  const flow = openInboxRows(input.inbox).length;
+  const fillable = input.misses?.counts?.["should-fill"] ?? 0;
+  const observing = input.misses?.counts?.["observing"] ?? 0;
+  const today = todayKey();
+  const capturedToday = (input.inbox?.entries ?? []).filter((row) => row.date === today).length;
+  const resident = input.overview?.kpi.residentTokens ?? input.overview?.resident.billedTokens ?? 0;
+  return {
+    queue,
+    flow,
+    refill: fillable + observing,
+    fillable,
+    observing,
+    entries: entries.length,
+    confirmed: input.snapshot?.stats.counts.confirmed ?? 0,
+    inboxTotal: input.inbox?.entries.length ?? 0,
+    capturedToday,
+    resident,
+    injected: input.overview?.resident.injectedTokens ?? 0,
+    frame: input.overview?.resident.frameTokens ?? 0,
+    catalog: input.overview?.resident.catalogTokens ?? 0,
+    overLimit: input.snapshot?.stats.overLimit ?? 0,
+    misses: input.misses?.total ?? 0,
+    pinned: entries.filter((entry) => entry.pinned).length,
+    urgent: queue + flow + fillable + observing
+  };
+}
+function countFor(pane, counts) {
+  if (pane === "capture") return counts.capturedToday;
+  if (pane === "todo") return counts.urgent;
+  if (pane === "memory") return counts.entries;
+  if (pane === "health") return counts.resident;
+  return counts.urgent;
+}
+function countDisplay(pane, phase, counts) {
+  if (phase === "error" || phase === "loading") return null;
+  if (phase === "empty") return pane === "health" ? counts.resident : 0;
+  return countFor(pane, counts);
+}
+function figureFor(pane, phase, counts) {
+  if (phase === "error" || phase === "loading") return null;
+  if (phase === "empty") {
+    return pane === "health" ? counts.resident : 0;
+  }
+  return countFor(pane, counts);
+}
+function ledeFor(pane, phase, counts) {
+  if (phase === "error") return "\u8BFB\u4E0D\u5230\u6570\u636E\uFF0C\u5148\u91CD\u8BD5";
+  if (phase === "loading") return "\u6B63\u5728\u8BFB\u53D6\u8FD9\u4E00\u9875";
+  if (phase === "empty") {
+    if (pane === "today") return "\u73B0\u5728\u6CA1\u6709\u538B\u7740\u7684\u4E8B";
+    if (pane === "capture") return "\u4ECA\u5929\u8FD8\u6CA1\u8BB0\u4EFB\u4F55\u4E00\u6761";
+    if (pane === "todo") return "\u4E09\u6BB5\u90FD\u7A7A\u4E86";
+    if (pane === "memory") return "\u8FD9\u6761\u7B5B\u9009\u4E0B\u6CA1\u6709\u6761\u76EE";
+    return "\u6CA1\u6709\u4EFB\u4F55\u5E38\u9A7B\u5185\u5BB9";
+  }
+  if (pane === "today") {
+    return clip(counts.queue > 0 ? `${plain(counts.urgent)} \u4EF6\u8981\u52A8\u624B\uFF0C\u5148\u62CD\u8FD9 ${plain(counts.queue)} \u6761` : `${plain(counts.urgent)} \u4EF6\u8981\u52A8\u624B\uFF0C\u5148\u770B\u6700\u4E0A\u9762\u90A3\u4EF6`);
+  }
+  if (pane === "capture") return "\u5199\u4E00\u6761\uFF0C\u843D\u8FDB\u4E2A\u4EBA INBOX";
+  if (pane === "todo") {
+    return clip(counts.queue > 0 ? `${plain(counts.urgent)} \u4EF6\u538B\u7740\uFF0C\u5148\u6E05\u5F85\u62CD\u677F` : `${plain(counts.urgent)} \u4EF6\u538B\u7740\uFF0C\u5148\u770B\u6D41\u8F6C\u4E2D`);
+  }
+  if (pane === "memory") return clip(`${plain(counts.entries)} \u6761\u91CC ${plain(counts.confirmed)} \u6761\u5DF2\u786E\u8BA4`);
+  return clip(counts.injected > 0 ? `${plain(counts.resident)} \u91CC\u4F60\u80FD\u5173\u7684\u53EA\u6709 ${plain(counts.injected)}` : `${plain(counts.resident)} \u5168\u662F\u5BBF\u4E3B\u6CE8\u5165\u7684`);
+}
+function bandNoteFor(pane, phase, counts) {
+  if (phase === "error") return "\u8BFB\u4E0D\u5230\uFF1A\u8FD9\u4E00\u5E26\u7684\u6570\u5B57\u663E\u793A\u4E3A \u2014";
+  if (phase === "loading") return "\u8BFB\u53D6\u4E2D";
+  if (phase === "empty") {
+    return counts.resident === 0 ? "0 \u6761\u7F6E\u9876 \xB7 \u6CA1\u6709\u6BCF\u8BF7\u6C42\u6210\u672C" : clip(`0 \u6761\u7F6E\u9876 \xB7 \u6BCF\u8BF7\u6C42\u4ECD\u6709 ${plain(counts.resident)}\uFF08\u6846\u67B6\u4E0E\u6280\u80FD\u4E0D\u53EF\u5173\uFF09`, 56);
+  }
+  if (pane === "health") {
+    return clip(
+      `${plain(counts.resident)} = \u6846\u67B6 ${plain(counts.frame)} + \u6280\u80FD ${plain(counts.catalog)} + \u7F6E\u9876 ${plain(counts.injected)}`,
+      56
+    );
+  }
+  return clip(
+    `\u7F6E\u9876 ${plain(counts.pinned)} \u6761 \xB7 \u5168\u90E8\u6CE8\u5165 \xB7 \u6BB5\u9884\u7B97 256 \u5DF2\u7528 ${plain(counts.injected)}`,
+    56
+  );
+}
+function bandFigureFor(phase, counts) {
+  if (phase === "error" || phase === "loading") return null;
+  return counts.resident;
+}
+function cluesOf(input, now = /* @__PURE__ */ new Date()) {
+  const counts = countsOf(input);
+  const clues = [];
+  const firstFlow = openInboxRows(input.inbox)[0];
+  if (counts.queue > 0) {
+    const first = input.snapshot?.queue[0];
+    const days = first?.days ?? null;
+    clues.push({
+      id: "clue-decide",
+      title: `${plain(counts.queue)} \u6761\u63A8\u65AD\u7B49\u4F60\u62CD\u677F`,
+      meta: `\u6700\u65E9\u4E00\u6761\uFF1A${clip(first?.title ?? "", 18)} \xB7 \u7B49 ${plain(days)} \u5929`,
+      group: "\u62CD\u677F",
+      num: counts.queue,
+      state: "\u5F85\u62CD\u677F",
+      tone: "warn",
+      action: "goto-todo",
+      actionLabel: "\u53BB\u62CD\u677F",
+      detail: "\u91C7\u7EB3\u540E\u8FDB\u5165\u68C0\u7D22\u4E0E\u7F6E\u9876\u901A\u9053\uFF1B\u9A73\u56DE\u843D\u6863 30 \u5929\u9759\u9ED8\u3002\u7CFB\u7EDF\u81EA\u52A8\u5347\u7EA7\u6700\u591A\u5230\u300C\u89C2\u5BDF\u5230\u300D\uFF0C\u4E0D\u4F1A\u66FF\u4F60\u786E\u8BA4\u3002",
+      gotoKey: first?.path === void 0 ? void 0 : `q:${first.path}`
     });
   }
-  if (detail.phase === "loading") return SkeletonRows({ rows: 4 });
-  if (detail.phase === "error") {
+  if (counts.fillable > 0) {
+    const target = (input.misses?.pipeline["should-fill"] ?? [])[0];
+    clues.push({
+      id: "clue-fill",
+      title: `${plain(counts.fillable)} \u4E2A\u95EE\u9898\u95EE\u8FC7\u591A\u6B21\u5374\u6CA1\u7B54\u6848`,
+      meta: target === void 0 ? "\u5DF2\u8FC7\u8865\u9F50\u9608\u503C" : `\u7B2C\u4E00\u6B21\u95EE\uFF1A${clip(target.query, 20)}`,
+      group: "\u8865\u5E93",
+      num: counts.fillable,
+      state: "\u7F3A\u8FD9\u53E3",
+      tone: "warn",
+      action: "draft-miss",
+      actionLabel: "\u5199\u8349\u7A3F",
+      detail: "\u8349\u7A3F\u53EA\u8FDB INBOX\uFF0C\u843D\u6863\u4ECD\u9700\u4F60\u786E\u8BA4\u3002\u5199\u5B8C\u540E 7 \u5929\u5185\u6709\u547D\u4E2D\u624D\u7B97\u9A8C\u8BC1\u901A\u8FC7\u3002",
+      gotoKey: target === void 0 ? void 0 : `m:${target.query}`,
+      query: target?.query
+    });
+  } else if (counts.observing > 0) {
+    const target = (input.misses?.pipeline["observing"] ?? [])[0];
+    clues.push({
+      id: "clue-observe",
+      title: `${plain(counts.observing)} \u4E2A\u95EE\u9898\u53EA\u88AB\u95EE\u8FC7\u4E00\u4E24\u6B21`,
+      meta: `\u6EE1 ${plain(input.misses?.fillThreshold ?? 3)} \u6B21\u624D\u5EFA\u8BAE\u8865\u5E93`,
+      group: "\u8865\u5E93",
+      num: counts.observing,
+      state: "\u89C2\u5BDF\u4E2D",
+      tone: "idle",
+      action: "goto-todo",
+      actionLabel: "\u770B\u660E\u7EC6",
+      detail: "\u73B0\u5728\u8865\u4E5F\u884C\uFF0C\u4F46\u4E00\u6B21\u6027\u7684\u95EE\u9898\u4E0D\u503C\u5F97\u5360\u7528\u4E00\u6761\u8BB0\u5FC6\u3002\u8FBE\u9608\u503C\u540E\u8FD9\u91CC\u4F1A\u53D8\u6210\u300C\u7F3A\u8FD9\u53E3\u300D\u3002",
+      gotoKey: target === void 0 ? void 0 : `m:${target.query}`
+    });
+  }
+  if (counts.overLimit > 0) {
+    clues.push({
+      id: "clue-compact",
+      title: `${plain(counts.overLimit)} \u7BC7\u8D85\u8FC7 80 \u884C`,
+      meta: "\u964D\u5230 80 \u884C\u4EE5\u5185\u624D\u80FD\u88AB\u4E00\u6B21\u8BFB\u5B8C",
+      group: "\u7EF4\u62A4",
+      num: counts.overLimit,
+      state: "\u53EF\u6574\u7406",
+      tone: "idle",
+      action: "goto-memory",
+      actionLabel: "\u770B\u6E05\u5355",
+      detail: "\u65E0\u635F\u538B\u7F29\uFF08\u7A7A\u884C\u3001\u91CD\u590D\u6807\u9898\uFF09\u7531\u300C\u5E93\u5065\u5EB7 \xB7 \u53D8\u77ED\u300D\u6267\u884C\uFF1B\u5269\u4E0B\u7684\u9700\u8981\u4F60\u624B\u52A8\u6458\u8981\u6216\u62C6\u6587\u4EF6\u3002"
+    });
+  }
+  clues.push({
+    id: "clue-cost",
+    title: `\u6BCF\u8BF7\u6C42 ${plain(counts.resident)} tokens\uFF0C${plain(counts.injected)} \u4F60\u80FD\u5173`,
+    meta: `\u6846\u67B6 ${plain(counts.frame)} \u7531\u5BBF\u4E3B\u751F\u6210 \xB7 \u6280\u80FD ${plain(counts.catalog)}`,
+    group: "\u6210\u672C",
+    num: counts.resident,
+    state: "\u53EF\u964D",
+    tone: "idle",
+    action: "goto-health",
+    actionLabel: "\u770B\u6784\u6210",
+    detail: "\u6846\u67B6\u4E0E\u5DE5\u5177 schema \u4F60\u52A8\u4E0D\u4E86\uFF1B\u7F6E\u9876\u6761\u76EE\u9010\u6761\u53EF\u5173\u3002\u5173\u6389\u4E00\u6761\u5C31\u662F\u6BCF\u4E2A\u8BF7\u6C42\u90FD\u5C11\u4ED8\u4E00\u6B21\u3002",
+    gotoKey: "b:injected"
+  });
+  if (counts.flow > 0) {
+    clues.push({
+      id: "clue-flow",
+      title: `${plain(counts.flow)} \u6761\u8BB0\u4E86\u8FD8\u6CA1\u7ED3`,
+      meta: "\u5F00\u7740\u7684\u6761\u76EE\u8D85\u8FC7 7 \u5929\u4F1A\u964D\u6743\uFF0C\u4F46\u4E0D\u4F1A\u88AB\u5220",
+      group: "\u6D41\u8F6C",
+      num: counts.flow,
+      state: "\u6D41\u8F6C\u4E2D",
+      tone: "idle",
+      action: "goto-todo",
+      actionLabel: "\u53BB\u6D41\u8F6C",
+      detail: "\u505A\u5B8C\u6807\u5B8C\u6210\uFF0C\u4E0D\u505A\u5C31\u4E22\u6389\u3002\u7559\u5728 INBOX \u91CC\u4F1A\u8BA9\u300C\u5F85\u529E\u300D\u8FD9\u4E2A\u6570\u5931\u53BB\u610F\u4E49\u3002",
+      gotoKey: firstFlow === void 0 ? void 0 : `i:${firstFlow.lineIndex}`
+    });
+  }
+  void now;
+  return clues.slice(0, 6);
+}
+function todoSectionsOf(input, now = /* @__PURE__ */ new Date()) {
+  const queue = input.snapshot?.queue ?? [];
+  const decide = queue.map((item) => ({
+    key: `q:${item.path}`,
+    kind: "decide",
+    title: item.title,
+    meta: `${item.reason} \xB7 ${item.domainLabel} \xB7 \u7B49 ${plain(item.days)} \u5929`,
+    group: "\u62CD\u677F",
+    num: item.days,
+    state: "\u5F85\u62CD\u677F",
+    tone: "warn",
+    path: item.path
+  }));
+  const flow = openInboxRows(input.inbox).map((row) => ({
+    key: `i:${row.lineIndex}`,
+    kind: "flow",
+    title: row.content,
+    meta: `${row.kind} \xB7 \u8BB0\u4E8E ${row.date}`,
+    group: "\u6D41\u8F6C",
+    num: daysSince(row.date, now),
+    state: row.state === "open" ? "\u5F00\u7740" : "\u6D41\u8F6C\u4E2D",
+    tone: "idle",
+    lineIndex: row.lineIndex
+  }));
+  const misses = input.misses;
+  const shouldFill = misses?.pipeline["should-fill"] ?? [];
+  const observing = misses?.pipeline["observing"] ?? [];
+  const refill = [...shouldFill, ...observing].map((item) => ({
+    key: `m:${item.query}`,
+    kind: "refill",
+    title: item.query,
+    meta: `${plain(item.count)} \u6B21 \xB7 ${plain(item.sessions)} \u4E2A\u4F1A\u8BDD \xB7 \u6700\u8FD1 ${item.lastAt.slice(0, 10)}`,
+    group: "\u8865\u5E93",
+    num: item.count,
+    state: (item.state === "should-fill" || item.state === "observing") && item.hits >= (misses?.fillThreshold ?? 3) ? "\u7F3A\u8FD9\u53E3" : "\u89C2\u5BDF\u4E2D",
+    tone: item.hits >= (misses?.fillThreshold ?? 3) ? "warn" : "idle",
+    query: item.query,
+    fillable: item.hits >= (misses?.fillThreshold ?? 3)
+  }));
+  return [
+    {
+      id: "decide",
+      title: "\u5F85\u62CD\u677F",
+      note: `${decide.length} \u6761 \xB7 \u53EA\u6709\u4EBA\u80FD\u5B9A \xB7 \u53F3\u5217\u7B49\u51E0\u5929`,
+      rows: decide,
+      emptyText: "\u6CA1\u6709\u5F85\u62CD\u677F\u7684\u63A8\u65AD\uFF1A\u5E93\u91CC\u6CA1\u6709\u88AB\u81EA\u52A8\u63D0\u53D6\u3001\u7B49\u4F60\u70B9\u5934\u7684\u6761\u76EE\u3002"
+    },
+    {
+      id: "flow",
+      title: "\u6D41\u8F6C\u4E2D",
+      note: `${flow.length} \u6761 \xB7 \u8D85\u8FC7 7 \u5929\u4F1A\u964D\u6743 \xB7 \u53F3\u5217\u7B49\u51E0\u5929`,
+      rows: flow,
+      emptyText: "\u8BB0\u5F55\u6D41\u91CC\u6CA1\u6709\u5F00\u7740\u7684\u6761\u76EE\u3002\u8BB0\u4E86\u53C8\u6CA1\u7ED3\u7684\u4E8B\u4F1A\u5806\u5728\u8FD9\u91CC\u3002"
+    },
+    {
+      id: "refill",
+      title: "\u5F85\u8865\u5E93",
+      note: `${refill.length} \u6761 \xB7 \u7F3A\u7684\u6BD4\u591A\u7684\u66F4\u503C\u5F97\u770B \xB7 \u53F3\u5217\u95EE\u8FC7\u51E0\u6B21`,
+      rows: refill,
+      emptyText: `\u6CA1\u6709\u8BE5\u8865\u7684\uFF1A\u88AB\u95EE\u8FC7\u7684 ${plain(misses?.total ?? 0)} \u4E2A\u95EE\u9898\u90FD\u6CA1\u5230\u8865\u9F50\u7EBF\uFF08\u540C\u4E00\u4E2A\u95EE\u9898\u95EE\u6EE1 ${plain(misses?.fillThreshold ?? 3)} \u6B21\uFF09\u3002`
+    }
+  ];
+}
+function memoryGroup(entry) {
+  return entry.domainLabel || entry.domain || "\u672A\u5F52\u7C7B";
+}
+function statusToneOf(status) {
+  if (status === "confirmed" || status === "active") return "ok";
+  if (status === "rejected") return "err";
+  if (status === "hypothesis" || status === "observed" || status === "stale") return "warn";
+  return "idle";
+}
+function statusLabelOf(status) {
+  switch (status) {
+    case "hypothesis":
+      return "\u5019\u9009";
+    case "observed":
+      return "\u89C2\u5BDF\u5230";
+    case "reinforced":
+      return "\u5DF2\u5F3A\u5316";
+    case "confirmed":
+      return "\u5DF2\u786E\u8BA4";
+    case "rejected":
+      return "\u5DF2\u9A73\u56DE";
+    case "stale":
+      return "\u5F85\u590D\u6838";
+    case "archived":
+      return "\u5DF2\u5F52\u6863";
+    case "active":
+      return "\u6709\u6548";
+    default:
+      return status;
+  }
+}
+function anchorLabelOf(state2) {
+  if (state2 === "fresh") return "\u6709\u6548";
+  if (state2 === "stale") return "\u8BE5\u590D\u6838";
+  if (state2 === "missing") return "\u5931\u6548";
+  if (state2 === "unverifiable") return "\u65E0\u6CD5\u6838\u5BF9";
+  return "\u65E0\u951A\u70B9";
+}
+function memoryRowsOf(snapshot, face, query) {
+  const keyword = query.trim().toLowerCase();
+  let entries = memoryEntries(snapshot);
+  if (keyword !== "") {
+    entries = entries.filter((entry) => `${entry.title} ${entry.path} ${entry.domain}`.toLowerCase().includes(keyword));
+  }
+  if (face === "cost") {
+    entries = [...entries].sort((a, b) => b.tokens - a.tokens);
+  }
+  return entries.map((entry) => ({
+    id: entry.id,
+    title: entry.title,
+    meta: face === "cost" ? `\u6309\u9700\u8BFB\u53D6\uFF0C\u672A\u547D\u4E2D\u4E0D\u4ED8\u8D39 \xB7 ${plain(entry.lines)} \u884C` : `\u951A\u70B9 ${entry.anchor === null ? "\u65E0" : "\u5DF2\u6807\u6CE8"} \xB7 \u8BC1\u636E ${plain(entry.evidence.length)} \u6761`,
+    group: memoryGroup(entry),
+    num: face === "cost" ? entry.tokens : entry.citeCount,
+    state: face === "cost" ? "\u6309\u9700" : statusLabelOf(entry.status),
+    tone: face === "cost" ? "idle" : statusToneOf(entry.status)
+  }));
+}
+function pinnedItemTokens(id, title) {
+  return estimateTokens(`- [${id}] ${title}`);
+}
+function bucketsOf(input) {
+  const resident = input.overview?.resident;
+  const entries = memoryEntries(input.snapshot);
+  const pinned = entries.filter((entry) => entry.pinned);
+  const catalogItems = (resident?.items ?? []).filter((item) => item.kind === "catalog");
+  const injectedTokens = resident?.injectedTokens ?? 0;
+  const catalogTokens = resident?.catalogTokens ?? 0;
+  const frameTokens = resident?.frameTokens ?? 0;
+  return [
+    {
+      id: "catalog",
+      name: "\u6280\u80FD\u76EE\u5F55",
+      en: "catalog",
+      tokens: catalogTokens,
+      state: catalogItems.length === 0 ? "empty" : "ok",
+      note: catalogItems.length === 0 ? resident?.error !== "" && resident?.error !== void 0 ? resident.error : "\u5BBF\u4E3B\u8BFB\u5230 0 \u4E2A\u5E26 description \u7684 skill\uFF1A0 \u6761\u6210\u672C\uFF0C\u4E0D\u662F\u300C\u8BFB\u4E0D\u5230\u300D" : `${catalogItems.length} \u4E2A skill \u7684 description\uFF0C\u6BCF\u8BF7\u6C42\u90FD\u4ED8`,
+      items: catalogItems.map((item) => ({
+        id: item.id,
+        name: item.title,
+        tokens: item.tokens,
+        source: "skill description",
+        injected: false,
+        editable: false
+      }))
+    },
+    {
+      id: "frame",
+      name: "\u76EE\u5F55\u6846\u67B6",
+      en: "frame",
+      tokens: frameTokens,
+      state: "ok",
+      note: "\u5BBF\u4E3B\u751F\u6210\uFF0C\u63D2\u4EF6\u65E0\u6743\u6539\uFF1B\u53EA\u8BFB",
+      readonly: "\u5BBF\u4E3B\u751F\u6210\uFF0C\u63D2\u4EF6\u65E0\u6743\u6539",
+      items: [{
+        id: "frame.available-skills",
+        name: "<available_skills> \u76EE\u5F55\u6846\u67B6",
+        tokens: frameTokens,
+        source: "\u5BBF\u4E3B\u5185\u7F6E",
+        injected: false,
+        editable: false
+      }]
+    },
+    {
+      id: "injected",
+      name: "\u7F6E\u9876\u6761\u76EE",
+      en: "injected",
+      tokens: injectedTokens,
+      state: injectedTokens === 0 ? "empty" : "ok",
+      note: pinned.length === 0 ? "\u6CA1\u6709 pinned: true \u7684\u6761\u76EE\uFF1A\u8FD9\u4E00\u6BB5\u5F53\u524D 0 tokens" : `${pinned.length} \u6761 \xB7 \u9010\u6761\u4F30\u7B97 \xB7 \u5408\u8BA1 ${plain(injectedTokens)} \xB7 \u6BB5\u9884\u7B97 256`,
+      items: pinned.map((entry) => ({
+        id: entry.id,
+        name: entry.title,
+        tokens: pinnedItemTokens(entry.id, entry.title),
+        source: entry.path,
+        injected: true,
+        editable: true
+      }))
+    },
+    {
+      id: "toolschema",
+      name: "\u5DE5\u5177 schema",
+      en: "toolschema",
+      tokens: null,
+      state: "error",
+      note: "\u672C\u63D2\u4EF6\u8BFB\u4E0D\u5230\u5BBF\u4E3B\u7684\u5DE5\u5177 schema\uFF1A\u5408\u8BA1\u4E0D\u542B\u8FD9\u4E00\u6BB5\uFF0C\u4E5F\u4E0D\u6309 0 \u8BA1\u7B97",
+      items: []
+    }
+  ];
+}
+var PLUGIN_VERSION = "0.1.0";
+function versionInfoOf(pluginVersion) {
+  return {
+    version: pluginVersion === "" ? "\u2014" : pluginVersion,
+    source: "memory-ops-dsh",
+    install: "\u2014",
+    commit: "\u2014",
+    target: "\u5BBF\u4E3B\u4E0D\u5217\u51FA\u7248\u672C",
+    checkable: false,
+    reason: "\u5BBF\u4E3B\u6CA1\u6709\u66B4\u9732\u7248\u672C\u670D\u52A1\uFF08\u63D2\u4EF6\u62FF\u4E0D\u5230 registry \u7248\u672C\u4E0E\u63D0\u4EA4\u5DEE\u5F02\uFF09\uFF0C\u6240\u4EE5\u8FD9\u91CC\u4E0D\u7ED9\u300C\u53EF\u66F4\u65B0\u5230 X\u300D\u8FD9\u79CD\u6570\u5B57\u3002"
+  };
+}
+function statusRightOf(input) {
+  const root = input.snapshot?.root ?? "\u2014";
+  if (input.phase === "error" || input.phase === "loading" || input.snapshot === void 0) {
+    return `${root} \xB7 \u8BB0\u5FC6\u6761\u6570 \u2014 \xB7 \u8BB0\u5F55\u6D41\u53E6\u8BA1`;
+  }
+  const counts = countsOf({ snapshot: input.snapshot, overview: input.overview });
+  return `${root} \xB7 ${plain(counts.entries)} \u6761\u8BB0\u5FC6 \xB7 \u8BB0\u5F55\u6D41\u53E6\u8BA1`;
+}
+
+// src/client/v9/stage.ts
+function InspectorFrame(spec) {
+  return (0, import_react6.createElement)(
+    "aside",
+    {
+      className: "mo-insp",
+      "aria-labelledby": "mo-insp-title",
+      "data-phase": spec.phase
+    },
+    (0, import_react6.createElement)(
+      "div",
+      { className: "mo-insp-head" },
+      (0, import_react6.createElement)("h2", { className: "mo-insp-title", id: "mo-insp-title" }, spec.title),
+      (0, import_react6.createElement)("p", { className: "mo-insp-sub", id: "mo-insp-sub" }, spec.sub)
+    ),
+    (0, import_react6.createElement)("div", { className: "mo-insp-body", id: "mo-insp-body" }, spec.body),
+    spec.foot === void 0 ? null : (0, import_react6.createElement)("div", { className: "mo-insp-foot", id: "mo-insp-foot" }, spec.foot)
+  );
+}
+function onTabKey(event, pane, onGoto) {
+  const index = PANES.findIndex((item) => item.id === pane);
+  let next = index;
+  if (event.key === "ArrowDown") next = (index + 1) % PANES.length;
+  else if (event.key === "ArrowUp") next = (index - 1 + PANES.length) % PANES.length;
+  else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = PANES.length - 1;
+  else return;
+  event.preventDefault();
+  const target = PANES[next];
+  onGoto(target.id);
+  const button = document.getElementById(`mo-tab-${target.id}`);
+  if (button !== null) button.focus();
+}
+function Stage(props) {
+  const {
+    pane,
+    phase,
+    counts,
+    lede,
+    figure,
+    unit,
+    bandNote,
+    bandFigure,
+    bandFolded,
+    onToggleBand,
+    onGoto,
+    center,
+    inspector,
+    notice,
+    statusLeft,
+    statusRight,
+    live
+  } = props;
+  const current = PANES.find((item) => item.id === pane) ?? PANES[0];
+  const rail = (0, import_react6.createElement)(
+    "nav",
+    {
+      className: "mo-rail",
+      role: "tablist",
+      "aria-label": "\u8BB0\u5FC6\u5E93\u5206\u533A",
+      "aria-orientation": "vertical"
+    },
+    (0, import_react6.createElement)(
+      "ul",
+      { className: "mo-rail-list" },
+      PANES.map((item) => (0, import_react6.createElement)(
+        "li",
+        { key: item.id },
+        (0, import_react6.createElement)(
+          "button",
+          {
+            type: "button",
+            className: "mo-tab",
+            role: "tab",
+            id: `mo-tab-${item.id}`,
+            "data-pane": item.id,
+            "aria-controls": "mo-pane-host",
+            "aria-selected": item.id === pane ? "true" : "false",
+            tabIndex: item.id === pane ? 0 : -1,
+            onClick: () => {
+              onGoto(item.id);
+            },
+            onKeyDown: (event) => {
+              onTabKey(event, pane, onGoto);
+            }
+          },
+          (0, import_react6.createElement)("span", { className: "mo-tab-idx mo-num" }, item.idx),
+          (0, import_react6.createElement)("span", { className: "mo-tab-label" }, item.label),
+          (0, import_react6.createElement)(
+            "span",
+            { className: "mo-tab-count mo-num" },
+            countDisplay(item.id, phase, counts) === null ? "\u2014" : num(countDisplay(item.id, phase, counts))
+          )
+        )
+      ))
+    )
+  );
+  const topbar = (0, import_react6.createElement)(
+    "header",
+    { className: "mo-topbar", role: "banner" },
+    (0, import_react6.createElement)(
+      "div",
+      { className: "mo-brand" },
+      (0, import_react6.createElement)("span", { className: "mo-brand-name" }, "\u8BB0\u5FC6\u5E93"),
+      (0, import_react6.createElement)("span", { className: "mo-brand-scope" }, current.label)
+    ),
+    (0, import_react6.createElement)(Lede, { text: lede }),
+    (0, import_react6.createElement)(
+      "div",
+      { className: "mo-readout" },
+      Figure({ value: figure }),
+      (0, import_react6.createElement)("span", { className: "mo-unit" }, unit)
+    )
+  );
+  const band = (0, import_react6.createElement)(
+    "section",
+    {
+      className: "mo-band",
+      "data-folded": bandFolded ? "true" : "false",
+      "aria-label": "\u6BCF\u8BF7\u6C42\u90FD\u5728"
+    },
+    (0, import_react6.createElement)("span", { className: "mo-band-tag" }, "\u6BCF\u8BF7\u6C42\u90FD\u5728"),
+    (0, import_react6.createElement)("span", { className: "mo-band-note", id: "mo-band-note" }, bandNote),
+    (0, import_react6.createElement)("button", {
+      type: "button",
+      className: "mo-textlink",
+      "data-act": "fold-budget",
+      "aria-expanded": bandFolded ? "false" : "true",
+      "aria-controls": "mo-band-note",
+      onClick: onToggleBand
+    }, bandFolded ? "\u5C55\u5F00" : "\u6298\u8D77"),
+    (0, import_react6.createElement)(
+      "span",
+      { className: "mo-band-figure" },
+      (0, import_react6.createElement)("span", { className: "mo-value mo-num" }, bandFigure === null ? "\u2014" : num(bandFigure)),
+      (0, import_react6.createElement)("span", { className: "mo-band-figure-unit" }, "tokens")
+    )
+  );
+  const main = (0, import_react6.createElement)(
+    "main",
+    {
+      className: "mo-center",
+      id: "mo-pane-host",
+      role: "tabpanel",
+      "aria-labelledby": `mo-tab-${pane}`,
+      tabIndex: 0,
+      "data-phase": phase
+    },
+    band,
+    notice === void 0 || notice === null ? null : (0, import_react6.createElement)(
+      "div",
+      { className: "mo-notice-bar", "data-tone": notice.ok ? "ok" : "err" },
+      InlineDone({ ok: notice.ok, text: notice.text, undo: notice.undo })
+    ),
+    (0, import_react6.createElement)("div", { className: "mo-pane", id: "mo-pane-body" }, center)
+  );
+  return (0, import_react6.createElement)(
+    "div",
+    { className: "mo-app", "data-pane": pane },
+    topbar,
+    (0, import_react6.createElement)("div", { className: "mo-workarea" }, rail, main, inspector),
+    (0, import_react6.createElement)(
+      "footer",
+      { className: "mo-statusbar", role: "status" },
+      (0, import_react6.createElement)("span", { className: "mo-status-left" }, statusLeft),
+      (0, import_react6.createElement)("span", { className: "mo-status-right mo-num" }, statusRight)
+    ),
+    (0, import_react6.createElement)("div", { className: "mo-sr-only", role: "status", "aria-live": "polite", "data-live": "" }, live)
+  );
+}
+
+// src/client/ui.ts
+var import_react7 = require("react");
+var h2 = import_react7.createElement;
+var EMPTY2 = "\u2014";
+function orEmpty(value) {
+  if (value === void 0 || value === null) return EMPTY2;
+  const text = String(value).trim();
+  return text === "" ? EMPTY2 : text;
+}
+function truncate(text, max = 46) {
+  const chars = [...String(text ?? "")];
+  if (chars.length <= max) return String(text ?? "");
+  return `${chars.slice(0, max - 1).join("")}\u2026`;
+}
+function count(value) {
+  if (value === null || value === void 0 || !Number.isFinite(value)) return EMPTY2;
+  return value.toLocaleString("zh-CN");
+}
+function SkeletonRows({ rows = 3, height = 52 }) {
+  return h2(
+    "div",
+    { "aria-busy": "true", "aria-live": "polite" },
+    Array.from({ length: rows }, (_, i) => h2("div", { key: i, className: "dmo-skeleton", style: { height } }))
+  );
+}
+function Badge({ tone = "idle", children, title }) {
+  return h2("span", { className: `dmo-badge dmo-badge-${tone}`, title }, children);
+}
+function Button({ children, onClick, variant = "plain", disabled = false, title, small = false }) {
+  const variantClass = variant === "primary" ? " dmo-btn-primary" : variant === "danger" ? " dmo-btn-danger" : "";
+  return h2("button", {
+    type: "button",
+    className: `dmo-btn${variantClass}${small ? " dmo-btn-sm" : ""}`,
+    onClick: disabled ? void 0 : onClick,
+    disabled,
+    title
+  }, children);
+}
+function Empty({ title, children }) {
+  return h2(
+    "div",
+    { className: "dmo-empty" },
+    title === void 0 ? null : h2("div", { className: "dmo-empty-title" }, title),
+    children
+  );
+}
+function ErrorState({ message, onRetry }) {
+  return h2(
+    "div",
+    { className: "dmo-error", role: "alert" },
+    h2("div", null, message),
+    onRetry === void 0 ? null : h2(
+      "div",
+      { style: { marginTop: "var(--s2)" } },
+      h2(Button, { onClick: onRetry, small: true }, "\u91CD\u8BD5")
+    )
+  );
+}
+function Skeleton2({ rows = 3, height = 52 }) {
+  return SkeletonRows({ rows, height });
+}
+function MemoryIcon({ size = 18 }) {
+  return h2(
+    "svg",
+    {
+      className: "dmo-icon",
+      viewBox: "0 0 20 20",
+      width: size,
+      height: size,
+      "aria-hidden": true,
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 1.6,
+      strokeLinecap: "round",
+      strokeLinejoin: "round"
+    },
+    h2("rect", { x: 2.5, y: 3, width: 15, height: 11, rx: 2 }),
+    h2("path", { d: "M5.5 17h9" }),
+    h2("path", { d: "M6.5 7h7M6.5 10h4.5" })
+  );
+}
+function Chip({ label, count: num2, active, onClick }) {
+  return h2(
+    "button",
+    {
+      type: "button",
+      className: "dmo-chip",
+      "aria-pressed": active,
+      onClick
+    },
+    label,
+    num2 === void 0 ? null : h2("span", { className: "dmo-chip-num" }, num2)
+  );
+}
+function AnchorNote({ state: state2, children }) {
+  return h2("div", { className: "dmo-anchor-note", "data-state": state2, role: "note" }, children);
+}
+
+// src/client/v9/panes/capture.ts
+var import_react8 = require("react");
+var INBOX_KINDS = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
+function inboxStateOf(state2) {
+  if (state2 === "open") return { label: "\u5F00\u7740", tone: "warn" };
+  if (state2 === "todo") return { label: "\u6D41\u8F6C\u4E2D", tone: "idle" };
+  if (state2 === "done") return { label: "\u5B8C\u6210", tone: "ok" };
+  if (state2 === "dropped") return { label: "\u4E22\u6389", tone: "idle" };
+  return { label: state2, tone: "idle" };
+}
+function CaptureCenter(props) {
+  const { phase, data, draft, onDraft, run, pending, onSelect, sel } = props;
+  const [kind, setKind] = (0, import_react8.useState)("\u60F3\u6CD5");
+  const submit = () => {
+    const text = draft.trim();
+    if (text === "" || pending) return;
+    run(async () => {
+      await captureOne(text, kind);
+      onDraft("");
+    }, "\u5DF2\u5B58\u5165 personal/INBOX.md\uFF08\u672B\u884C\uFF09\xB7 \u72B6\u6001 open", {
+      label: "\u64A4\u9500\u8FD9\u6B21\u5199\u5165",
+      run: () => undoCapture(text)
+    });
+  };
+  const form = (0, import_react8.createElement)(
+    "div",
+    { className: "mo-capture-box" },
+    KindButtons({ kinds: INBOX_KINDS, kind, onKind: setKind }),
+    (0, import_react8.createElement)("label", { className: "mo-sr-only", htmlFor: "mo-capture-text" }, "\u8981\u8BB0\u7684\u5185\u5BB9"),
+    (0, import_react8.createElement)("textarea", {
+      className: "mo-capture-input",
+      id: "mo-capture-text",
+      "aria-label": "\u8981\u8BB0\u7684\u5185\u5BB9",
+      placeholder: "\u4E00\u53E5\u8BDD\u5C31\u591F\u3002\u4F8B\uFF1A\u5BBF\u4E3B\u5BF9 git \u76F4\u88C5\u5224 not-updatable\uFF0C\u66F4\u65B0\u8981\u7ED9\u51FA\u4EBA\u8BDD\u89E3\u91CA",
+      value: draft,
+      onChange: (event) => {
+        onDraft(event.target.value);
+      },
+      onKeyDown: (event) => {
+        if (event.key === "Enter" && (event.ctrlKey === true || event.metaKey === true)) {
+          event.preventDefault();
+          submit();
+        }
+      }
+    }),
+    (0, import_react8.createElement)(
+      "p",
+      { className: "mo-capture-note" },
+      "\u4F1A\u5148\u843D\u8FDB ",
+      (0, import_react8.createElement)("span", { className: "mo-num" }, "personal/INBOX.md"),
+      "\uFF0C\u72B6\u6001 open\uFF1B\u5BC6\u94A5\u3001\u79C1\u94A5\u3001\u8EAB\u4EFD\u8BC1\u3001\u5185\u7F51 IP \u4F1A\u88AB\u62E6\u4E0B\u3002"
+    ),
+    (0, import_react8.createElement)(
+      "div",
+      { className: "mo-capture-actions" },
+      BtnInk({
+        children: pending ? "\u5199\u5165\u4E2D" : "\u5B58\u8FDB\u53BB",
+        actName: "capture",
+        disabled: pending || draft.trim() === "",
+        onClick: submit
+      }),
+      (0, import_react8.createElement)(
+        "span",
+        { className: "mo-section-note mo-num" },
+        `${num(draft.trim() === "" ? 0 : estimateTokens(draft))} tokens`
+      )
+    )
+  );
+  if (phase === "error") {
     return (0, import_react8.createElement)(
+      "div",
+      { className: "mo-pane-inner" },
+      form,
+      ErrorBlock({
+        title: "\u8BFB\u4E0D\u5230\u300C\u6700\u8FD1\u8BB0\u7684\u300D",
+        text: "INBOX \u5199\u5165\u4ECD\u53EF\u7528\uFF08\u4E0A\u9762\u8FD9\u4E2A\u6846\uFF09\uFF0C\u4F46\u8FD9\u4E00\u680F\u8BFB\u4E0D\u5230\u2014\u2014\u4E0D\u662F\u300C\u4E00\u6761\u90FD\u6CA1\u6709\u300D\u3002",
+        example: "\u70B9\u4E0B\u9762\u7684\u300C\u91CD\u8BD5\u300D\uFF1B\u4ECD\u5931\u8D25\u5C31\u68C0\u67E5\u5E93\u6839\u76EE\u5F55",
+        onRetry: () => {
+          data.reloadAll();
+        }
+      })
+    );
+  }
+  if (phase === "loading") {
+    return (0, import_react8.createElement)("div", { className: "mo-pane-inner" }, form, Skeleton({ rows: 3, label: "\u8BFB\u53D6\u4E2D\uFF1A\u6B63\u5728\u53D6\u6700\u8FD1\u8BB0\u7684" }));
+  }
+  const recent = [...data.inbox.data?.entries ?? []].reverse().slice(0, 3);
+  if (phase === "empty") {
+    return (0, import_react8.createElement)(
+      "div",
+      { className: "mo-pane-inner" },
+      form,
+      EmptyBlock({
+        title: "\u4ECA\u5929\u8FD8\u6CA1\u8BB0\u4EFB\u4F55\u4E00\u6761",
+        text: "\u8BB0\u4E00\u6761\u53EA\u8981\u4E00\u53E5\u8BDD\u3002\u5B83\u4F1A\u5148\u843D\u8FDB INBOX\uFF0C\u7B49\u4F60\u786E\u8BA4\u540E\u624D\u6210\u4E3A\u8BB0\u5FC6\u3002",
+        hint: `INBOX \u5F53\u524D ${num(data.inbox.data?.throughput.open ?? 0)} \u6761 open`
+      })
+    );
+  }
+  return (0, import_react8.createElement)(
+    "div",
+    { className: "mo-pane-inner" },
+    form,
+    SectionHead({
+      title: "\u6700\u8FD1\u8BB0\u7684",
+      note: `${num(recent.length)} \u6761 \xB7 \u672A\u786E\u8BA4 \xB7 \u53F3\u5217\u7B49\u51E0\u5929`
+    }),
+    (0, import_react8.createElement)(
+      "ul",
+      { className: "mo-rows", role: "list" },
+      recent.map((row) => {
+        const state2 = inboxStateOf(row.state);
+        return Row({
+          spec: {
+            id: `i:${row.lineIndex}`,
+            title: clip(row.content, 80),
+            meta: `${row.kind} \xB7 \u8BB0\u4E8E ${row.date}`,
+            source: "INBOX",
+            num: daysSince(row.date),
+            state: state2.label,
+            tone: state2.tone,
+            dense: true,
+            current: sel === `i:${row.lineIndex}`
+          },
+          onSelect
+        });
+      })
+    )
+  );
+}
+function CaptureInspector(props) {
+  const { data, sel, notice, run, pending } = props;
+  const rows = data.inbox.data?.entries ?? [];
+  const selected = rows.find((row) => `i:${row.lineIndex}` === sel);
+  if (notice !== null && !notice.ok) {
+    const privacy = notice.kind === "privacy";
+    return InspectorFrame({
+      title: privacy ? "\u8FD9\u4E00\u7B14\u88AB\u9690\u79C1\u95F8\u95E8\u62E6\u4E0B" : "\u8FD9\u4E00\u7B14\u6CA1\u5199\u8FDB\u53BB",
+      sub: privacy ? "\u672A\u5199\u5165\u4EFB\u4F55\u6587\u4EF6" : "\u5199\u5165\u5931\u8D25 \xB7 \u5E93\u91CC\u6CA1\u6709\u8FD9\u6B21\u6539\u52A8",
+      body: (0, import_react8.createElement)(
+        "div",
+        null,
+        (0, import_react8.createElement)(
+          "div",
+          { className: "mo-verdicts" },
+          (0, import_react8.createElement)(
+            "div",
+            { className: `mo-verdict mo-verdict-${privacy ? "refuse" : "warn"}` },
+            (0, import_react8.createElement)("span", { className: "mo-verdict-tag" }, privacy ? "\u62E6\u4E0B" : "\u5931\u8D25"),
+            (0, import_react8.createElement)("span", null, notice.text)
+          )
+        ),
+        (0, import_react8.createElement)(
+          "p",
+          { className: "mo-insp-text" },
+          privacy ? "\u8131\u654F\u540E\u53EF\u4EE5\u91CD\u5B58\uFF1A\u628A\u503C\u6362\u6210\u5360\u4F4D\u7B26\uFF08\u5982 sk-***\uFF09\uFF0C\u539F\u6587\u4E0D\u8981\u8FDB\u5E93\u3002" : "\u5E93\u6587\u4EF6\u6CA1\u6709\u4E22\uFF0C\u8FD9\u662F\u5199\u5165\u95EE\u9898\u3002\u7B49\u4E00\u4E24\u79D2\u91CD\u8BD5\uFF1B\u82E5\u63D0\u793A\u6587\u4EF6\u88AB\u5360\u7528\uFF0C\u8BF4\u660E\u53E6\u4E00\u4E2A\u8FDB\u7A0B\u6B63\u5728\u5199\u540C\u4E00\u4E2A\u6587\u4EF6\u3002"
+        )
+      )
+    });
+  }
+  if (notice !== null && notice.ok) {
+    return InspectorFrame({
+      title: "\u5DF2\u5B58\u8FDB INBOX",
+      sub: "personal/INBOX.md",
+      body: (0, import_react8.createElement)(
+        "div",
+        null,
+        Props({
+          rows: [
+            { label: "\u72B6\u6001", value: "open" },
+            { label: "\u4F4D\u7F6E", value: "personal/INBOX.md \u672B\u884C" },
+            { label: "\u4E0B\u4E00\u6B65", value: "\u5728\u300C\u5F85\u529E \xB7 \u6D41\u8F6C\u4E2D\u300D\u6539\u6210\u5F85\u529E" }
+          ]
+        }),
+        (0, import_react8.createElement)(
+          "p",
+          { className: "mo-insp-text" },
+          "\u8981\u5728\u5E93\u91CC\u751F\u6548\uFF0C\u9700\u8981\u4EBA\u786E\u8BA4\uFF1B\u7CFB\u7EDF\u4E0D\u4F1A\u81EA\u52A8\u628A\u5B83\u53D8\u6210\u8BB0\u5FC6\u3002"
+        ),
+        notice.undo === void 0 ? null : (0, import_react8.createElement)(
+          "div",
+          { style: { marginTop: "var(--mo-s2)" } },
+          BtnGhost({ children: notice.undo.label, onClick: notice.undo.act, disabled: pending })
+        )
+      )
+    });
+  }
+  if (selected !== void 0) {
+    const state2 = inboxStateOf(selected.state);
+    return InspectorFrame({
+      title: clip(selected.content, 40),
+      sub: `${selected.kind} \xB7 ${selected.date}`,
+      body: (0, import_react8.createElement)(
+        "div",
+        null,
+        Props({
+          rows: [
+            { label: "\u72B6\u6001", value: state2.label },
+            { label: "\u884C\u53F7", value: String(selected.lineIndex + 1) },
+            { label: "\u53BB\u5411", value: selected.destination === "" ? "\u2014" : selected.destination }
+          ]
+        }),
+        (0, import_react8.createElement)(
+          "p",
+          { className: "mo-insp-text" },
+          "INBOX \u662F append-only \u7684\u6587\u672C\u8868\uFF1A\u6539\u72B6\u6001\u53EA\u6539\u8FD9\u4E00\u884C\u7684\u72B6\u6001\u5217\uFF0C\u6B63\u6587\u4E0E\u884C\u5E8F\u90FD\u4E0D\u52A8\u3002"
+        )
+      ),
+      foot: (0, import_react8.createElement)(
+        "div",
+        { style: { display: "flex", gap: "var(--mo-s2)" } },
+        BtnGhost({
+          children: "\u4E22\u6389",
+          actName: "inbox-drop",
+          disabled: pending,
+          onClick: () => {
+            run(async () => {
+              await patchInboxRow(selected.lineIndex, { state: "dropped" });
+            }, "\u5DF2\u6807\u4E3A\u4E22\u6389");
+          }
+        }),
+        BtnGhost({
+          children: pending ? "\u5904\u7406\u4E2D\u2026" : "\u6807\u5B8C\u6210",
+          actName: "inbox-done",
+          disabled: pending,
+          onClick: () => {
+            run(async () => {
+              await patchInboxRow(selected.lineIndex, { state: "done" });
+            }, "\u5DF2\u6807\u4E3A\u5B8C\u6210");
+          }
+        })
+      )
+    });
+  }
+  return InspectorFrame({
+    title: "\u8BB0\u4E00\u6761",
+    sub: "INBOX \u2192 \u4EBA\u786E\u8BA4 \u2192 \u8BB0\u5FC6",
+    body: (0, import_react8.createElement)(
       "div",
       null,
       (0, import_react8.createElement)(
-        "div",
-        { className: "dmo-back" },
-        TextLink({ children: "\u2190 \u8FD4\u56DE\u5217\u8868", onClick: onBack, attrs: { "data-action": "back-to-list" } })
+        "p",
+        { className: "mo-insp-text" },
+        "\u4E09\u6761\u89C4\u77E9\uFF1A\u5148\u5199 INBOX\uFF0C\u4E0D\u76F4\u63A5\u843D\u6863\uFF1B\u9690\u79C1\u547D\u4E2D\u4E0D\u5199\u5165\uFF1B\u5199\u5165\u662F\u539F\u5B50\u8FFD\u52A0\uFF0C\u5E76\u53D1\u4E0D\u4F1A\u51FA\u73B0\u534A\u884C\u3002"
       ),
-      h(ErrorAlert, {
-        title: "\u8BFB\u4E0D\u5230\u8FD9\u6761\u8BB0\u5FC6",
-        body: "\u5B83\u53EF\u80FD\u5DF2\u88AB\u5220\u9664\u6216\u6539\u540D\u3002\u8FD4\u56DE\u5217\u8868\u91CD\u65B0\u627E\u2014\u2014\u8FD9\u4E0D\u5F71\u54CD\u5E93\u91CC\u5176\u5B83\u6761\u76EE\u3002",
-        actions: [Primary({ children: "\u8FD4\u56DE\u5217\u8868", onClick: onBack, attrs: { "data-action": "back-to-list" } })]
-      })
-    );
-  }
-  const data = detail.data;
-  if (data === void 0) {
-    return (0, import_react8.createElement)(
-      "div",
-      { className: "dmo-pane" },
-      (0, import_react8.createElement)(
-        "div",
-        { className: "dmo-back" },
-        TextLink({ children: "\u2190 \u8FD4\u56DE\u5217\u8868", onClick: onBack, attrs: { "data-action": "back-to-list" } })
-      ),
-      h(ErrorAlert, {
-        title: "\u6CA1\u8BFB\u5230\u8FD9\u6761\u8BB0\u5FC6",
-        body: "\u4E0D\u662F\u5B83\u6CA1\u4E86\uFF0C\u662F\u8FD9\u6B21\u6CA1\u8BFB\u5230\u2014\u2014\u4E24\u8005\u4E0D\u4E00\u6837\u3002\u5148\u91CD\u8BD5\uFF0C\u6216\u8FD4\u56DE\u5217\u8868\u91CD\u65B0\u627E\u3002",
-        actions: [
-          Primary({ children: "\u91CD\u8BD5", onClick: detail.reload, attrs: { "data-action": "retry" } }),
-          Btn({ children: "\u8FD4\u56DE\u5217\u8868", onClick: onBack, attrs: { "data-action": "back-to-list" } })
+      Props({
+        rows: [
+          { label: "\u7C7B\u578B", value: "\u60F3\u6CD5 / \u8BA1\u5212 / \u95EE\u9898 / \u5F85\u529E / \u51B3\u7B56" },
+          { label: "\u72B6\u6001\u673A", value: "open \u2192 todo \u2192 done / dropped" }
         ]
       })
-    );
-  }
-  const { entry, trust } = data;
-  const canConfirm = entry.status === "stale" || entry.status === "observed" || entry.status === "hypothesis";
-  const canReject = entry.status !== "rejected";
-  return (0, import_react8.createElement)(
-    "div",
-    { className: "dmo-pane" },
-    (0, import_react8.createElement)(
-      "div",
-      { className: "dmo-back" },
-      TextLink({ children: "\u2190 \u8FD4\u56DE\u5217\u8868", onClick: onBack, attrs: { "data-action": "back-to-list" } })
-    ),
-    (0, import_react8.createElement)(
-      "section",
-      { className: "dmo-card-heavy" },
-      h("h1", { className: "dmo-detail-title" }, entry.title),
-      h(
-        "div",
-        { className: "dmo-meta-row", style: { marginTop: 0 } },
-        tag(
-          statusLabel(entry.status),
-          entry.status === "confirmed" || entry.status === "active" ? "ok" : entry.status === "rejected" ? "err" : entry.status === "stale" || entry.status === "observed" || entry.status === "hypothesis" ? "warn" : ""
-        ),
-        h("span", { className: "dmo-meta" }, entry.domainLabel),
-        h("span", { className: "dmo-meta" }, `${entry.tokens} tokens`),
-        h("span", { className: "dmo-meta" }, `${entry.lines} \u884C`),
-        h("span", { className: "dmo-meta" }, `\u5F15\u7528 ${count(trust.citeCount)} \u6B21`)
-      ),
-      SectionHead({ title: "\u51ED\u4EC0\u4E48\u53EF\u4FE1" }),
-      h(
-        "div",
-        { className: "dmo-meta-row", style: { marginTop: 0 } },
-        h("span", { className: "dmo-meta" }, `\u7F6E\u4FE1\uFF1A${entry.confidence === null ? "\u2014" : entry.confidence.toFixed(1)}`),
-        h("span", { className: "dmo-meta" }, `\u8BC1\u636E\uFF1A${count(trust.evidenceCount)}`),
-        h("span", { className: "dmo-meta" }, `\u6700\u540E\u5F15\u7528\uFF1A${trust.lastCitedAt ?? "\u4ECE\u672A"}`)
-      ),
-      entry.evidence.length === 0 ? h("p", { className: "dmo-note" }, "\u8FD9\u6761\u6CA1\u6709\u8BC1\u636E\u6458\u5F55\u2014\u2014\u5B83\u6765\u81EA\u4F60\u4EB2\u53E3\u8BF4\u7684\u8BDD\uFF0C\u4E0D\u9700\u8981\u518D\u4E3E\u8BC1\u3002") : entry.evidence.map((item, index) => (0, import_react8.createElement)(
-        "div",
-        { key: index, className: "dmo-evidence" },
-        truncate(item.excerpt ?? "", 120),
-        h("div", { className: "dmo-evidence-src" }, `${item.gate ?? ""} \xB7 ${item.session ?? ""}`)
-      )),
-      SectionHead({ title: "\u6B63\u6587" }),
-      editing ? (0, import_react8.createElement)(
-        "div",
-        null,
-        (0, import_react8.createElement)("textarea", {
-          className: "dmo-textarea",
-          style: { minHeight: 190 },
-          "aria-label": "\u6B63\u6587\u6E90\u7801",
-          value: draft ?? entry.body,
-          onChange: (event) => {
-            setDraft(event.target.value);
-          }
-        }),
-        (0, import_react8.createElement)(
-          "div",
-          { className: "dmo-row-actions" },
-          Primary({
-            children: busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58",
-            disabled: busy,
-            onClick: () => {
-              run(() => call("writeBody", { path, body: draft ?? entry.body }), "\u5DF2\u4FDD\u5B58");
-            },
-            attrs: { "data-action": "writeBody", "data-path": path }
-          }),
-          Btn({ children: "\u53D6\u6D88", onClick: () => {
-            setEditing(false);
-            setDraft(null);
-          } })
-        )
-      ) : h("div", { className: "dmo-body-block" }, entry.body.trim() === "" ? "\uFF08\u7A7A\uFF09" : entry.body),
-      feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text }),
-      (0, import_react8.createElement)(
-        "div",
-        { className: "dmo-row-actions" },
-        canConfirm && !editing ? Primary({
-          children: "\u786E\u8BA4\u8FD9\u6761",
-          disabled: busy,
-          onClick: () => {
-            run(() => call("confirm", { path }), "\u5DF2\u786E\u8BA4");
-          },
-          attrs: { "data-action": "confirm", "data-path": path }
-        }) : Btn({ children: "\u7F16\u8F91\u6B63\u6587", disabled: busy || editing, onClick: () => {
-          setEditing(true);
-          setDraft(entry.body);
-        }, attrs: { "data-action": "edit" } })
-      ),
-      canReject || editing ? (0, import_react8.createElement)(
-        "div",
-        { className: "dmo-row-actions" },
-        canReject ? Btn({
-          children: "\u9A73\u56DE\uFF08\u9700\u8981\u5199\u7406\u7531\uFF09",
-          small: true,
-          disabled: busy,
-          onClick: () => {
-            setRejecting((value) => !value);
-          },
-          attrs: { "data-action": "reject", "data-path": path }
-        }) : null,
-        Btn({
-          children: "\u518D\u7559 90 \u5929",
-          small: true,
-          disabled: busy,
-          onClick: () => {
-            run(() => call("keep", { path }), "\u5DF2\u518D\u7559 90 \u5929");
-          },
-          attrs: { "data-action": "keep", "data-path": path }
-        }),
-        Btn({
-          children: "\u5F52\u6863\u9000\u5F79",
-          small: true,
-          disabled: busy,
-          onClick: () => {
-            run(() => call("archive", { path }), "\u5DF2\u5F52\u6863");
-          },
-          attrs: { "data-action": "archive", "data-path": path }
-        }),
-        h(
-          "p",
-          { className: "dmo-note" },
-          "\u9A73\u56DE\u4F1A\u9759\u9ED8 30 \u5929\uFF0C\u671F\u95F4\u4E0D\u518D\u63A8\u8350\u8FD9\u6761\u3002\u5F52\u6863\u540E\u4ECD\u53EF\u68C0\u7D22\uFF0C\u53EA\u662F\u4E0D\u518D\u8FDB\u4E0A\u4E0B\u6587\u3002"
-        )
-      ) : null,
-      rejecting ? h(RejectBox, {
-        reason: rejectReason,
-        onReason: setRejectReason,
-        busy,
-        onCancel: () => {
-          setRejecting(false);
-          setRejectReason("");
-        },
-        onSubmit: () => {
-          run(() => call("reject", { path, reason: rejectReason.trim() }), "\u5DF2\u9A73\u56DE\uFF0C30 \u5929\u5185\u4E0D\u518D\u63A8\u8350");
-        }
-      }) : null
     )
-  );
-}
-function statusLabel(status) {
-  const labels = {
-    hypothesis: "\u5019\u9009",
-    observed: "\u89C2\u5BDF\u4E2D",
-    reinforced: "\u5DF2\u5F3A\u5316",
-    confirmed: "\u5DF2\u786E\u8BA4",
-    rejected: "\u5DF2\u9A73\u56DE",
-    stale: "\u5F85\u590D\u6838",
-    archived: "\u5DF2\u5F52\u6863",
-    active: "\u6709\u6548",
-    pending: "\u5F85\u786E\u8BA4"
-  };
-  return labels[status] ?? status;
+  });
 }
 
-// src/client/panes/health.ts
+// src/client/v9/panes/health.ts
 var import_react10 = require("react");
 
 // src/client/panes/maintenance.ts
@@ -2042,7 +1635,7 @@ function MaintenancePanel({ onOpenMemory }) {
   );
 }
 function Loading({ phase, error, onRetry, what }) {
-  if (phase === "loading") return (0, import_react9.createElement)(Skeleton, { rows: 2, height: 34 });
+  if (phase === "loading") return (0, import_react9.createElement)(Skeleton2, { rows: 2, height: 34 });
   if (phase === "error") return (0, import_react9.createElement)(ErrorState, { message: `\u8BFB\u53D6${what}\u5931\u8D25\uFF1A${orEmpty(error)}`, onRetry });
   return null;
 }
@@ -2427,246 +2020,1671 @@ function RepairSection({ data, phase, error, busy, run, onRetry, onOpenMemory })
   );
 }
 
-// src/client/panes/health.ts
-function CostRow({ name, value, note }) {
-  return (0, import_react10.createElement)(
-    "div",
-    null,
-    (0, import_react10.createElement)(
-      "div",
-      { className: "dmo-cost-row" },
-      h("span", { className: "dmo-cost-name" }, name),
-      h("span", { className: "dmo-cost-num" }, value)
-    ),
-    h("p", { className: "dmo-cost-note" }, note)
-  );
+// src/client/v9/panes/health.ts
+var OPS = [
+  { id: "anchor", name: "\u6838\u5BF9\u5F15\u7528", note: "\u951A\u70B9\u91CC\u7684\u4EE3\u7801\u8FD8\u5728\u4E0D\u5728", route: "verifyAnchor" },
+  { id: "compact", name: "\u53D8\u77ED", note: "\u7A7A\u884C\u4E0E\u91CD\u590D\u6807\u9898\uFF0C\u65E0\u635F\u538B\u7F29", route: "compact" },
+  { id: "review", name: "\u6BCF\u5468\u590D\u76D8", note: "\u53EA\u8BFB\uFF1A\u8FD9\u4E00\u5468\u53D1\u751F\u4E86\u4EC0\u4E48", route: "review" },
+  { id: "repair", name: "\u4FEE\u8865\u5143\u6570\u636E", note: "\u7F3A\u5931\u6216\u810F\u7684 frontmatter", route: "repairMeta" },
+  { id: "promote", name: "\u53EF\u4FE1\u5EA6\u722C\u5347", note: "\u591A\u4E2A\u4F1A\u8BDD\u91CD\u590D\u7684\u63A8\u65AD", route: "promote" }
+];
+function meterSegments(buckets, total) {
+  return buckets.filter((bucket) => bucket.tokens !== null && bucket.tokens > 0).map((bucket) => {
+    const pct = total <= 0 ? 0 : Math.round((bucket.tokens ?? 0) / total * 100);
+    const kind = bucket.id === "injected" ? "own" : "fixed";
+    return (0, import_react10.createElement)("span", {
+      key: bucket.id,
+      className: `mo-meter-seg mo-meter-${kind}`,
+      style: { width: `${pct}%` },
+      title: `${bucket.name} ${num(bucket.tokens)} tokens`
+    });
+  });
 }
-function HealthPane({ onGotoToday }) {
-  const overview = useBridge("overview", {});
+function HealthCenter(props) {
+  const { phase, data, counts, sel, onSelect, goto } = props;
   const health = useBridge("health", {});
-  const [exporting, setExporting] = (0, import_react10.useState)(false);
-  const [feedback, setFeedback] = (0, import_react10.useState)(null);
-  function doExport(format, domain) {
-    setExporting(true);
-    void call("export", { format, domain }).then((result) => {
-      setFeedback({ ok: true, text: `\u5DF2\u5BFC\u51FA ${result.count} \u6761\u5230 ${result.filename}` });
-    }).catch((error) => {
-      setFeedback({ ok: false, text: error instanceof Error ? error.message : String(error) });
-    }).finally(() => {
-      setExporting(false);
+  if (phase === "loading") return Skeleton({ rows: 5, label: "\u8BFB\u53D6\u4E2D\uFF1A\u6B63\u5728\u53D6\u5E38\u9A7B\u6784\u6210\u4E0E\u7248\u672C" });
+  if (phase === "error") {
+    return ErrorBlock({
+      title: "\u8BFB\u4E0D\u5230\u5E38\u9A7B\u6784\u6210",
+      text: "skills \u670D\u52A1\u8BFB\u53D6\u5931\u8D25\u3002\u300C\u8BFB\u4E0D\u5230\u300D\u4E0D\u7B49\u4E8E\u300C\u6CA1\u6709\u300D\uFF1A\u6570\u5B57\u663E\u793A\u300C\u2014\u300D\uFF0C\u4E0D\u663E\u793A 0\u3002",
+      example: "\u70B9\u4E0B\u9762\u7684\u300C\u91CD\u8BD5\u300D\uFF0C\u6216\u68C0\u67E5\u5BBF\u4E3B\u662F\u5426\u63D0\u4F9B skills \u670D\u52A1",
+      onRetry: () => {
+        void health.reload();
+        data.reloadAll();
+      }
     });
   }
-  if (overview.phase === "loading") return SkeletonRows({ rows: 3, height: 60 });
-  if (overview.phase === "error") {
+  const buckets = bucketsOf({ snapshot: data.snapshot.data, overview: data.overview.data });
+  const total = counts.resident;
+  const readable = buckets.filter((bucket) => bucket.tokens !== null);
+  const sum = readable.reduce((acc, bucket) => acc + (bucket.tokens ?? 0), 0);
+  const unknown = buckets.filter((bucket) => bucket.tokens === null).map((bucket) => bucket.name);
+  const diff = total - sum;
+  const verdict = diff === 0 ? "\u5BF9\u5F97\u4E0A" : `\u5DEE ${num(diff)}\uFF08\u6709\u5E38\u9A7B\u9879\u6CA1\u88AB\u5206\u8FDB\u8FD9\u56DB\u6876\uFF09`;
+  if (phase === "empty") {
     return (0, import_react10.createElement)(
       "div",
-      null,
-      h(ErrorAlert, {
-        title: "\u8BFB\u4E0D\u5230\u6210\u672C\u6570\u636E",
-        body: "\u5E93\u672C\u8EAB\u53EF\u80FD\u6CA1\u95EE\u9898\uFF0C\u53EA\u662F\u8FD9\u6B21\u7B97\u4E0D\u51FA\u6765\u3002\u300C\u7B97\u4E0D\u51FA\u6765\u300D\u548C\u300C\u662F\u96F6\u300D\u662F\u4E24\u4EF6\u4E8B\uFF0C\u6240\u4EE5\u8FD9\u91CC\u4E0D\u663E\u793A 0\u3002",
-        actions: [Primary({ children: "\u91CD\u8BD5", onClick: overview.reload, attrs: { "data-action": "retry" } })]
-      })
-    );
-  }
-  const data = overview.data;
-  if (data === void 0) {
-    return (0, import_react10.createElement)(
-      "div",
-      null,
-      h(ErrorAlert, {
-        title: "\u6CA1\u8BFB\u5230\u6210\u672C\u6570\u636E",
-        body: "\u4E0D\u662F\u300C\u90FD\u662F\u96F6\u300D\uFF0C\u662F\u8FD9\u6B21\u6CA1\u8BFB\u5230\u2014\u2014\u4E24\u8005\u4E0D\u4E00\u6837\u3002\u5148\u91CD\u8BD5\uFF1B\u5982\u679C\u4E00\u76F4\u7A7A\u767D\uFF0C\u53BB\u300C\u4ECA\u5929\u300D\u770B\u5E93\u6839\u76EE\u5F55\u8FD8\u5728\u4E0D\u5728\u3002",
-        actions: [Primary({ children: "\u91CD\u8BD5", onClick: overview.reload, attrs: { "data-action": "retry" } })]
-      })
-    );
-  }
-  return (0, import_react10.createElement)(
-    "div",
-    { className: "dmo-pane" },
-    PaneHead({
-      pageName: "\u5E93\u5065\u5EB7",
-      lede: "\u6BCF\u8BF7\u6C42\u90FD\u4ED8\u7684\u94B1\uFF0C\u548C\u53EA\u5728\u88AB\u8BFB\u65F6\u624D\u4ED8\u7684\u94B1",
-      ledeSub: "\u6DF7\u5728\u4E00\u8D77\u770B\u4F1A\u4F18\u5316\u9519\u4E1C\u897F\u2014\u2014\u6309\u5B83\u4F18\u5316\u7D22\u5F15\u6587\u4EF6\uFF0C\u6BCF\u8BF7\u6C42\u6210\u672C\u4E00\u5206\u4E0D\u7701\u3002"
-    }),
-    /* v6 评审 P0-1：成本区 = 本页唯一重卡；维护/导出 = 静卡。
-       行分隔的 border-l1 从此只在卡内出现。 */
-    (0, import_react10.createElement)(
-      "section",
-      { className: "dmo-card-heavy" },
-      h("p", { className: "dmo-suggest-label" }, "\u6210\u672C\u6784\u6210"),
+      { className: "mo-state-block" },
+      (0, import_react10.createElement)("h2", { className: "mo-state-title" }, "\u6CA1\u6709\u4EFB\u4F55\u5E38\u9A7B\u5185\u5BB9"),
+      (0, import_react10.createElement)(
+        "p",
+        { className: "mo-state-text" },
+        "\u6CA1\u6709 skill description\uFF0C\u4E5F\u6CA1\u6709\u7F6E\u9876\u6761\u76EE\u3002\u6B64\u65F6\u6BCF\u8BF7\u6C42\u53EA\u5269\u76EE\u5F55\u6846\u67B6\u3002"
+      ),
+      (0, import_react10.createElement)(
+        "p",
+        { className: "mo-state-hint mo-num" },
+        `catalog 0 \xB7 injected 0 \xB7 frame ${num(counts.frame)}`
+      ),
       (0, import_react10.createElement)(
         "div",
-        { className: "dmo-cost" },
-        CostRow({
-          name: "\u6BCF\u8BF7\u6C42\u6210\u672C",
-          value: count(data.kpi.residentTokens),
-          note: `tokens / \u8BF7\u6C42\uFF0C\u9884\u7B97 ${count(data.kpi.residentBudget)}\u3002\u8FD9\u662F\u552F\u4E00\u6BCF\u8BF7\u6C42\u90FD\u4ED8\u7684\u94B1\uFF1Askill description + \u76EE\u5F55\u6846\u67B6\u3002\u8D85\u4E86\u8981\u538B\u7F29 skill description\uFF0C\u6539\u7D22\u5F15\u6587\u4EF6\u4E00\u5206\u4E0D\u7701\u3002`
-        }),
-        CostRow({
-          name: "\u7D22\u5F15\u4F53\u79EF",
-          value: count(data.kpi.indexTokens),
-          note: "\u6240\u6709 layer: l0 \u6587\u4EF6\u4E4B\u548C\uFF0C\u53EA\u5728\u88AB read \u65F6\u624D\u8FDB\u4E0A\u4E0B\u6587\u3002\u8FD9\u4E2A\u6570\u5927\u4E0D\u4EE3\u8868\u8D35\u3002"
-        }),
-        CostRow({
-          name: "\u5168\u5E93\u4F53\u79EF",
-          value: count(data.tokens),
-          note: `${count(data.files)} \u6761\u8BB0\u5FC6\u7684\u6B63\u6587\u5408\u8BA1\uFF0C\u542B frontmatter \u4E0E\u8BC1\u636E\u94FE\u3002`
-        }),
+        { className: "mo-state-actions" },
+        BtnGhost({ children: "\u53BB\u5199\u7B2C\u4E00\u6761", actName: "go-capture", onClick: () => {
+          goto("capture");
+        } })
+      )
+    );
+  }
+  const legend = buckets.map((bucket) => {
+    const share = bucket.tokens === null || total <= 0 ? "\u4E0D\u53EF\u8BFB" : `${Math.round(bucket.tokens / total * 100)}%`;
+    const tone = bucket.tokens === null ? "err" : bucket.tokens > 0 ? "ok" : "idle";
+    return (0, import_react10.createElement)(
+      "span",
+      { key: bucket.id, className: "mo-legend-item" },
+      (0, import_react10.createElement)("span", { className: `mo-tonebar-inline mo-tone-${tone}` }),
+      `${bucket.name} ${bucket.tokens === null ? EMPTY : num(bucket.tokens)} \xB7 ${share}`
+    );
+  });
+  const bucketRows = buckets.map((bucket) => {
+    const tone = bucket.state === "error" ? "err" : bucket.state === "empty" ? "idle" : "ok";
+    const value = bucket.tokens === null ? "\u4E0D\u53EF\u8BFB" : `${num(bucket.tokens)} tokens`;
+    return (0, import_react10.createElement)(
+      "li",
+      { key: bucket.id },
+      (0, import_react10.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "mo-bucket-row",
+          "data-select": `b:${bucket.id}`,
+          "aria-current": sel === `b:${bucket.id}` ? "true" : void 0,
+          onClick: () => {
+            onSelect(`b:${bucket.id}`);
+          }
+        },
+        (0, import_react10.createElement)("span", { className: `mo-tonebar mo-tone-${tone}` }),
         (0, import_react10.createElement)(
-          "div",
-          { className: "dmo-meta-row" },
-          h("span", { className: "dmo-meta" }, `\u9A73\u56DE\u9759\u9ED8 ${count(health.data?.silenced.length ?? 0)} \u6761`),
-          h("span", { className: "dmo-meta" }, `\u5F85\u590D\u6838 ${count(health.data?.stale.length ?? 0)} \u6761`),
-          h("span", { className: "dmo-meta" }, `\u8D85 80 \u884C ${count(health.data?.overLimit ?? 0)} \u7BC7`),
-          h("span", { className: "dmo-meta" }, `\u547D\u4E2D\u7387 ${data.rates.hitRate === null ? "\u2014" : `${Math.round(data.rates.hitRate * 100)}%`}`),
-          h("span", { className: "dmo-meta" }, `\u786E\u8BA4\u7387 ${data.rates.confirmRate === null ? "\u2014" : `${Math.round(data.rates.confirmRate * 100)}%`}`),
-          h("span", { className: "dmo-meta" }, `\u5F85\u62CD\u677F ${count(data.kpi.pending)}`),
-          h("span", { className: "dmo-meta" }, "\u300C\u2014\u300D= \u5206\u6BCD\u4E3A 0\uFF0C\u4E0D\u662F 0%")
+          "span",
+          { className: "mo-bucket-name" },
+          bucket.name,
+          " ",
+          (0, import_react10.createElement)("span", {
+            className: "mo-num",
+            style: { color: "var(--dsw-alias-label-tertiary)" }
+          }, bucket.en)
+        ),
+        (0, import_react10.createElement)("span", {
+          className: "mo-bucket-num",
+          "data-unknown": bucket.tokens === null ? "true" : void 0
+        }, value),
+        (0, import_react10.createElement)("span", { className: "mo-bucket-note" }, bucket.note)
+      )
+    );
+  });
+  const version = versionInfoOf(PLUGIN_VERSION);
+  return (0, import_react10.createElement)(
+    "div",
+    { className: "mo-pane-inner" },
+    SectionHead({
+      title: "\u6BCF\u8BF7\u6C42\u90FD\u4ED8\u7684\u90E8\u5206",
+      /* 三个口径必须分清：每请求 / 索引层（按需）/ 全库。挤在一行 note 里，
+         是为了守住「5 页首屏 0 滚动」——多一行 p 就会把导出挤出首屏。 */
+      note: `${num(total)} tokens \xB7 \u53E6\u6709\u7D22\u5F15\u5C42 ${num(data.overview.data?.kpi.indexTokens)} \u6309\u9700 \xB7 \u5168\u5E93 ${num(data.overview.data?.tokens)}`
+    }),
+    (0, import_react10.createElement)(
+      "div",
+      { className: "mo-meter-wrap" },
+      (0, import_react10.createElement)("div", {
+        className: "mo-meter",
+        role: "img",
+        "aria-label": `\u5E38\u9A7B\u524D\u7F00\u6309\u56DB\u6876\u5206\u6BB5\uFF1A\u5408\u8BA1 ${num(total)}\uFF1B\u5DE5\u5177 schema \u4E0D\u53EF\u8BFB\u4E0D\u8BA1\u5165`
+      }, meterSegments(buckets, total)),
+      (0, import_react10.createElement)("div", { className: "mo-meter-legend" }, legend),
+      (0, import_react10.createElement)(
+        "p",
+        { className: "mo-check-line" },
+        `${num(counts.catalog)} + ${num(counts.frame)} + ${num(counts.injected)} = ${num(sum)}\uFF08${verdict}\uFF1B${unknown.length === 0 ? "\u56DB\u6876\u5168\u90E8\u53EF\u8BFB" : `\u4E0D\u542B${unknown.join("\u3001")}\uFF1A\u5F53\u524D\u4E0D\u53EF\u8BFB`}\uFF09`
+      )
+    ),
+    (0, import_react10.createElement)("ul", { className: "mo-bucket-rows", role: "list" }, bucketRows),
+    /* 版本不单开一段：note 里已经写明「点这里看五项」，多一段会把导出挤出首屏。 */
+    (0, import_react10.createElement)(
+      "ul",
+      { className: "mo-bucket-rows", role: "list" },
+      (0, import_react10.createElement)(
+        "li",
+        null,
+        (0, import_react10.createElement)(
+          "button",
+          {
+            type: "button",
+            className: "mo-bucket-row",
+            "data-select": "version",
+            "aria-current": sel === "version" ? "true" : void 0,
+            onClick: () => {
+              onSelect("version");
+            }
+          },
+          (0, import_react10.createElement)("span", { className: "mo-tonebar mo-tone-idle" }),
+          (0, import_react10.createElement)("span", { className: "mo-bucket-name" }, "\u7248\u672C\u4E0E\u66F4\u65B0"),
+          (0, import_react10.createElement)("span", { className: "mo-bucket-num mo-num" }, version.version),
+          (0, import_react10.createElement)(
+            "span",
+            { className: "mo-bucket-note" },
+            `\u5B89\u88C5\u65B9\u5F0F\uFF1A${version.install === EMPTY ? "\u5BBF\u4E3B\u672A\u63D0\u4F9B" : version.install} \xB7 \u76EE\u6807\uFF1A${version.target} \xB7 \u70B9\u8FD9\u91CC\u770B\u4E94\u9879`
+          )
         )
       )
     ),
+    SectionHead({ title: "\u7EF4\u62A4\u4F5C\u4E1A", note: "\u6309\u9700\u89E6\u53D1 \xB7 \u5BFC\u51FA\u5728\u4E0B\u65B9" }),
     (0, import_react10.createElement)(
-      "section",
-      { className: "dmo-card-quiet" },
-      SectionHead({ title: "\u7EF4\u62A4", count: "\u6309\u9700\u8DD1" }),
-      h(
+      "p",
+      { className: "mo-check-line" },
+      `\u9A73\u56DE\u9759\u9ED8 ${num(health.data?.silenced.length)} \u6761 \xB7 \u5F85\u590D\u6838 ${num(health.data?.stale.length)} \u6761 \xB7 \u8D85 ${num(health.data?.lineLimit ?? 80)} \u884C ${num(health.data?.overLimit ?? counts.overLimit)} \u7BC7`
+    ),
+    (0, import_react10.createElement)(
+      "ul",
+      { className: "mo-bucket-rows", role: "list" },
+      OPS.map((op) => (0, import_react10.createElement)(
+        "li",
+        { key: op.id },
+        (0, import_react10.createElement)(
+          "button",
+          {
+            type: "button",
+            className: "mo-bucket-row mo-ops-row",
+            "data-select": `ops:${op.id}`,
+            "aria-current": sel === `ops:${op.id}` ? "true" : void 0,
+            onClick: () => {
+              onSelect(`ops:${op.id}`);
+            }
+          },
+          (0, import_react10.createElement)("span", { className: "mo-bucket-name" }, op.name),
+          (0, import_react10.createElement)("span", {
+            className: "mo-bucket-num",
+            style: { color: "var(--dsw-alias-label-secondary)" }
+          }, op.note)
+        )
+      ))
+    ),
+    /* 导出不单开一段：它是低频动作，挤出一个 SectionHead 会把首屏撑出滚动。 */
+    (0, import_react10.createElement)(
+      "div",
+      { className: "mo-toolbar", style: { padding: 0 } },
+      BtnGhost({
+        children: "\u5168\u90E8 Markdown",
+        actName: "export",
+        disabled: props.pending,
+        onClick: () => {
+          props.run(async () => {
+            const result = await exportData("markdown");
+            if (result.count === 0) throw new Error("\u8FD9\u6B21\u5BFC\u51FA 0 \u6761\uFF1A\u5E93\u53EF\u80FD\u662F\u7A7A\u7684");
+          }, "\u5DF2\u5BFC\u51FA\u5168\u90E8\u8BB0\u5FC6\uFF0C\u6587\u4EF6\u540D\u5728\u56DE\u6267\u91CC");
+        }
+      }),
+      BtnGhost({
+        children: "\u4EC5\u4E2A\u4EBA\u57DF",
+        actName: "export-personal",
+        disabled: props.pending,
+        onClick: () => {
+          props.run(async () => {
+            await exportData("markdown", "personal");
+          }, "\u5DF2\u5BFC\u51FA\u4E2A\u4EBA\u57DF\u8BB0\u5FC6");
+        }
+      }),
+      BtnGhost({
+        children: "\u4EC5\u5DE5\u4F5C\u57DF",
+        actName: "export-work",
+        disabled: props.pending,
+        onClick: () => {
+          props.run(async () => {
+            await exportData("markdown", "work");
+          }, "\u5DF2\u5BFC\u51FA\u5DE5\u4F5C\u57DF\u8BB0\u5FC6");
+        }
+      })
+    )
+  );
+}
+function bucketFrame(bucket, props, health) {
+  const { sel, onSelect, data, pending } = props;
+  if (bucket.state === "error") {
+    return InspectorFrame({
+      title: `${bucket.name} \xB7 \u4E0D\u53EF\u8BFB`,
+      sub: "state = error",
+      body: (0, import_react10.createElement)(
+        "div",
+        null,
+        (0, import_react10.createElement)(
+          "div",
+          { className: "mo-verdicts" },
+          (0, import_react10.createElement)(
+            "div",
+            { className: "mo-verdict mo-verdict-refuse" },
+            (0, import_react10.createElement)("span", { className: "mo-verdict-tag" }, "\u539F\u56E0"),
+            (0, import_react10.createElement)("span", null, bucket.note)
+          )
+        ),
+        (0, import_react10.createElement)(
+          "p",
+          { className: "mo-insp-text" },
+          "\u5408\u8BA1\u884C\u5DF2\u5199\u660E\u300C\u4E0D\u542B\u8FD9\u4E00\u6BB5\u300D\u3002\u628A\u4E0D\u53EF\u8BFB\u6E32\u67D3\u6210 0\uFF0C\u4F1A\u8BA9\u4EBA\u4EE5\u4E3A\u5DF2\u7ECF\u7B97\u5168\u4E86\u3002"
+        )
+      ),
+      foot: BtnGhost({
+        children: "\u91CD\u8BD5\u8BFB\u53D6",
+        actName: "retry",
+        disabled: pending,
+        onClick: () => {
+          health.reload();
+          data.reloadAll();
+        }
+      })
+    });
+  }
+  const itemRows = bucket.items.map((item) => (0, import_react10.createElement)(
+    "li",
+    { key: item.id },
+    (0, import_react10.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "mo-bucket-row",
+        "data-select": `p:${item.id}`,
+        "aria-current": sel === `p:${item.id}` ? "true" : void 0,
+        onClick: () => {
+          onSelect(`p:${item.id}`);
+        }
+      },
+      (0, import_react10.createElement)("span", { className: "mo-tonebar mo-tone-ok" }),
+      (0, import_react10.createElement)("span", { className: "mo-bucket-name" }, clip(item.name, 26)),
+      (0, import_react10.createElement)("span", { className: "mo-bucket-num mo-num" }, num(item.tokens)),
+      (0, import_react10.createElement)(
+        "span",
+        { className: "mo-bucket-note" },
+        `${item.source === "" ? "\u5BBF\u4E3B\u6CE8\u5165" : item.source} \xB7 ${item.injected ? "\u5DF2\u8FDB\u7CFB\u7EDF\u63D0\u793A\u8BCD" : "\u672A\u6CE8\u5165"} \xB7 ${item.editable ? "\u53EF\u7F16\u8F91" : "\u53EA\u8BFB"}`
+      )
+    )
+  ));
+  return InspectorFrame({
+    title: bucket.name,
+    sub: `${bucket.en} \xB7 ${bucket.tokens === null ? "\u4E0D\u53EF\u8BFB" : `${num(bucket.tokens)} tokens`}`,
+    body: (0, import_react10.createElement)(
+      "div",
+      null,
+      bucket.state === "empty" ? (0, import_react10.createElement)(
+        "div",
+        null,
+        (0, import_react10.createElement)(
+          "div",
+          { className: "mo-verdicts" },
+          (0, import_react10.createElement)(
+            "div",
+            { className: "mo-verdict mo-verdict-ok" },
+            (0, import_react10.createElement)("span", { className: "mo-verdict-tag" }, "\u7A7A"),
+            (0, import_react10.createElement)("span", null, bucket.note)
+          )
+        ),
+        (0, import_react10.createElement)(
+          "p",
+          { className: "mo-insp-text" },
+          "\u786E\u5B9E\u4E00\u6761\u90FD\u6CA1\u6709\u3002\u8FD9\u548C\u300C\u8BFB\u4E0D\u5230\u300D\u662F\u4E24\u79CD\u72B6\u6001\uFF0C\u6587\u6848\u4E0D\u8BB8\u5408\u5E76\u3002"
+        )
+      ) : (0, import_react10.createElement)("ul", { className: "mo-bucket-rows", role: "list" }, itemRows),
+      bucket.readonly === void 0 ? null : (0, import_react10.createElement)("p", { className: "mo-effect" }, bucket.readonly)
+    )
+  });
+}
+function EntryEditor({ item, props }) {
+  const { run, pending } = props;
+  const detail = useBridge("detail", { path: item.source }, [item.source]);
+  const [draft, setDraft] = (0, import_react10.useState)(null);
+  (0, import_react10.useEffect)(() => {
+    setDraft(null);
+  }, [item.id]);
+  const body = detail.data?.entry.body;
+  const lines = body === void 0 ? [] : body.split("\n");
+  const firstIndex = lines.findIndex((line) => line.trim() !== "");
+  const firstLine = firstIndex >= 0 ? lines[firstIndex] ?? "" : "";
+  const isHeading = /^#{1,3}\s/.test(firstLine);
+  const original = firstLine.replace(/^#+\s*/, "");
+  const value = draft ?? original;
+  const before = estimateTokens(original);
+  const after = estimateTokens(value);
+  const delta = after - before;
+  const changed = value !== original;
+  const problems = [];
+  if (value.trim() === "") problems.push("\u7A7A\u6807\u9898\u4F1A\u8BA9\u6A21\u578B\u62FF\u5230\u4E00\u6761\u65E0\u610F\u4E49\u89C4\u5219");
+  if (value.includes("{{")) problems.push("\u542B {{\uFF1A\u4E0D\u4F1A\u505A\u53D8\u91CF\u63D2\u503C\uFF0C\u539F\u6587\u7167\u53D1");
+  if (after > 64) problems.push("\u5355\u6761\u8D85 64 tokens\uFF1B\u8D85\u9884\u7B97\u6761\u76EE\u4F1A\u88AB\u8DF3\u8FC7\uFF0C\u7B49\u4E8E\u6CA1\u6CE8\u5165");
+  const blocking = problems.some((problem) => problem.startsWith("\u7A7A\u6807\u9898")) || !isHeading;
+  if (detail.phase === "loading") {
+    return InspectorFrame({
+      title: item.name,
+      sub: "\u8BFB\u53D6\u4E2D",
+      body: Skeleton({ rows: 2, label: "\u8BFB\u53D6\u4E2D\uFF1A\u6B63\u5728\u53D6\u6B63\u6587" })
+    });
+  }
+  if (detail.phase === "error" || body === void 0 || firstLine === "") {
+    return InspectorFrame({
+      title: "\u8BFB\u4E0D\u5230\u8FD9\u6761\u6B63\u6587",
+      sub: "state = error",
+      body: (0, import_react10.createElement)(
+        "div",
+        null,
+        (0, import_react10.createElement)(
+          "div",
+          { className: "mo-verdicts" },
+          (0, import_react10.createElement)(
+            "div",
+            { className: "mo-verdict mo-verdict-refuse" },
+            (0, import_react10.createElement)("span", { className: "mo-verdict-tag" }, "\u963B\u65AD"),
+            (0, import_react10.createElement)("span", null, "\u8BFB\u4E0D\u5230\u5E93\uFF1A\u5148\u91CD\u8BD5\uFF0C\u518D\u7F16\u8F91\u3002\u9519\u8BEF\u6001\u4E0B\u4E0D\u7ED9\u53EF\u5199\u56DE\u7684\u6309\u94AE\u3002")
+          )
+        )
+      )
+    });
+  }
+  return InspectorFrame({
+    title: "\u7F16\u8F91\u7F6E\u9876\u6761\u76EE",
+    sub: `pinned \xB7 ${item.id}`,
+    body: (0, import_react10.createElement)(
+      "div",
+      null,
+      (0, import_react10.createElement)("p", { className: "mo-insp-label" }, "\u6807\u9898\u884C"),
+      (0, import_react10.createElement)("input", {
+        className: "mo-title-input",
+        id: "mo-pin-title",
+        "aria-label": "\u7F6E\u9876\u6761\u76EE\u6807\u9898",
+        value,
+        onChange: (event) => {
+          setDraft(event.target.value);
+        }
+      }),
+      (0, import_react10.createElement)("p", { className: "mo-insp-label" }, "\u6539\u52A8\u5BF9\u7167"),
+      changed ? (0, import_react10.createElement)(
+        "div",
+        { className: "mo-diff", "aria-label": "\u6539\u52A8\u5BF9\u7167" },
+        (0, import_react10.createElement)(
+          "div",
+          { className: "mo-diff-line mo-diff-removed" },
+          (0, import_react10.createElement)("span", { className: "mo-diff-no mo-num" }, String(firstIndex + 1)),
+          (0, import_react10.createElement)("span", { className: "mo-diff-text" }, original)
+        ),
+        (0, import_react10.createElement)(
+          "div",
+          { className: "mo-diff-line mo-diff-added" },
+          (0, import_react10.createElement)("span", { className: "mo-diff-no mo-num" }, String(firstIndex + 1)),
+          (0, import_react10.createElement)("span", { className: "mo-diff-text" }, value === "" ? "\uFF08\u7A7A\uFF09" : value)
+        )
+      ) : (0, import_react10.createElement)("p", { className: "mo-check-line" }, "\u672A\u6539\u52A8\uFF1A\u8349\u7A3F\u4E0E\u539F\u6587\u9010\u5B57\u4E00\u81F4\uFF08\u0394 0\uFF09\uFF0C\u4E0D\u753B\u5047 diff"),
+      isHeading ? null : (0, import_react10.createElement)(
         "p",
-        { className: "dmo-note", style: { marginTop: 0 } },
-        "\u8FD9\u4E9B\u90FD\u4F1A\u6539\u8BB0\u5FC6\u7684\u5185\u5BB9\u6216\u53EF\u4FE1\u5EA6\uFF0C\u6240\u4EE5\u4E00\u5F8B\u5148\u7ED9\u9884\u89C8\u3001\u4F60\u70B9\u4E86\u624D\u6267\u884C\u3002"
+        { className: "mo-check-line" },
+        "\u8FD9\u6761\u6B63\u6587\u7684\u9996\u884C\u4E0D\u662F\u6807\u9898\uFF08# / ##\uFF09\uFF1A\u53EA\u80FD\u6539\u6B63\u6587\u5F00\u5934\u662F\u6807\u9898\u7684\u6761\u76EE\uFF0C\u907F\u514D\u628A\u4E00\u6BB5\u6B63\u6587\u6539\u5199\u6210 H1\u3002"
       ),
-      (0, import_react10.createElement)(MaintenancePanel, { onOpenMemory: () => {
-      } })
-    ),
-    (0, import_react10.createElement)(
-      "section",
-      { className: "dmo-card-quiet" },
-      SectionHead({ title: "\u5BFC\u51FA" }),
+      Props({
+        rows: [
+          { label: "tokens", value: `${num(before)} \u2192 ${num(after)}\uFF08\u0394 ${delta > 0 ? "+" : ""}${num(delta)}\uFF09` },
+          { label: "\u6765\u6E90", value: item.source },
+          { label: "\u6761\u6570", value: "1 \u6761\uFF08\u6539\u6807\u9898\u4E0D\u6539 id\uFF09" }
+        ]
+      }),
       (0, import_react10.createElement)(
         "div",
-        { className: "dmo-row-actions", style: { marginTop: 0 } },
-        Btn({ children: "\u5168\u90E8 Markdown", small: true, disabled: exporting, onClick: () => {
-          doExport("markdown");
-        }, attrs: { "data-action": "export" } }),
-        Btn({ children: "\u4EC5\u4E2A\u4EBA\u57DF", small: true, disabled: exporting, onClick: () => {
-          doExport("markdown", "personal");
-        }, attrs: { "data-action": "export" } }),
-        Btn({ children: "\u4EC5\u5DE5\u4F5C\u57DF", small: true, disabled: exporting, onClick: () => {
-          doExport("markdown", "work");
-        }, attrs: { "data-action": "export" } })
+        { className: "mo-verdicts" },
+        problems.length === 0 ? (0, import_react10.createElement)(
+          "div",
+          { className: "mo-verdict mo-verdict-ok" },
+          (0, import_react10.createElement)("span", { className: "mo-verdict-tag" }, "\u901A\u8FC7"),
+          (0, import_react10.createElement)("span", null, "\u53EF\u4FDD\u5B58")
+        ) : problems.map((problem) => (0, import_react10.createElement)(
+          "div",
+          {
+            key: problem,
+            className: `mo-verdict ${problem.startsWith("\u7A7A\u6807\u9898") ? "mo-verdict-refuse" : "mo-verdict-warn"}`
+          },
+          (0, import_react10.createElement)("span", { className: "mo-verdict-tag" }, "\u8B66"),
+          (0, import_react10.createElement)("span", null, problem)
+        ))
       ),
-      feedback === null ? null : InlineDone({ ok: feedback.ok, text: feedback.text })
+      (0, import_react10.createElement)(
+        "p",
+        { className: "mo-effect" },
+        "\u751F\u6548\u65F6\u673A\uFF1A\u6CE8\u5165\u6BB5\u7F13\u5B58 30 \u79D2\u5185\u5237\u65B0\uFF1B\u65B0\u4F1A\u8BDD\u4E00\u5B9A\u8BFB\u5230\u65B0\u6807\u9898\u3002\u5F53\u524D\u4F1A\u8BDD\u5DF2\u7EC4\u88C5\u7684\u63D0\u793A\u8BCD\u4E0D\u8FFD\u6539\u3002"
+      )
     ),
-    /* 前进方向：只读诊断页不该走死路（v4 裁决保留）。
-       v6 评审 P1-3：本页唯一重卡是成本卡，这张前进卡降为静卡。 */
-    (0, import_react10.createElement)(
-      "section",
-      { className: "dmo-card-quiet" },
-      h("p", { className: "dmo-note", style: { marginTop: 0 } }, "\u770B\u5B8C\u4E86\u3002\u73B0\u5728\u8BE5\u505A\u7684\u4E8B\u5728\u300C\u4ECA\u5929\u300D\u3002"),
+    foot: (0, import_react10.createElement)(
+      "div",
+      { style: { display: "flex", gap: "var(--mo-s2)" } },
+      BtnGhost({
+        children: "\u53D6\u6D88",
+        actName: "cancel-edit",
+        disabled: pending || !changed,
+        onClick: () => {
+          setDraft(null);
+        }
+      }),
+      BtnInk({
+        children: pending ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58",
+        actName: "save-pin",
+        id: "mo-save-pin",
+        disabled: pending || blocking || !changed,
+        onClick: () => {
+          const nextLines = [...lines];
+          nextLines[firstIndex] = `# ${value.trim()}`;
+          const next = nextLines.join("\n");
+          run(async () => {
+            await writeBody(item.source, next);
+            setDraft(null);
+          }, `\u5DF2\u5199\u56DE ${item.source}\uFF08\u6539 1 \u884C\uFF09\xB7 \u65B0\u4F1A\u8BDD\u751F\u6548`);
+        }
+      })
+    )
+  });
+}
+function versionFrame() {
+  const version = versionInfoOf(PLUGIN_VERSION);
+  return InspectorFrame({
+    title: `\u7248\u672C \xB7 ${version.version}`,
+    sub: "V3 \xB7 \u7248\u672C\u4E94\u9879\u4E0E\u5DEE\u5F02\u6E05\u5355",
+    body: (0, import_react10.createElement)(
+      "div",
+      null,
+      Props({
+        rows: [
+          { label: "\u5F53\u524D\u7248\u672C", value: version.version },
+          { label: "\u4EE3\u7801\u6765\u6E90", value: version.source },
+          { label: "\u5B89\u88C5\u65B9\u5F0F", value: version.install },
+          { label: "\u5F53\u524D\u63D0\u4EA4", value: version.commit },
+          { label: "\u76EE\u6807", value: version.target }
+        ]
+      }),
       (0, import_react10.createElement)(
         "div",
-        { className: "dmo-row-actions" },
-        Primary({ children: "\u56DE\u4ECA\u5929\uFF0C\u770B\u8BE5\u505A\u4EC0\u4E48", onClick: onGotoToday, attrs: { "data-action": "goto", "data-pane": "today" } })
+        { className: "mo-verdicts" },
+        (0, import_react10.createElement)(
+          "div",
+          { className: "mo-verdict mo-verdict-warn" },
+          (0, import_react10.createElement)("span", { className: "mo-verdict-tag" }, "\u65E0\u6CD5\u6BD4\u8F83"),
+          (0, import_react10.createElement)("span", null, version.reason)
+        )
+      ),
+      (0, import_react10.createElement)(
+        "p",
+        { className: "mo-insp-text" },
+        "\u8FD9\u4E0D\u662F\u5931\u8D25\uFF1A\u6CA1\u6709\u53EF\u6BD4\u8F83\u7684\u7248\u672C\u53F7\u5C31\u4E0D\u8BE5\u7ED9\u4F60\u4E00\u4E2A\u300C\u53EF\u66F4\u65B0\u5230 X\u300D\u3002\u8981\u66F4\u65B0\u5C31\u7528\u5BBF\u4E3B\u63D2\u4EF6\u9875\u7684\u66F4\u65B0\u5165\u53E3\uFF1B\u70ED\u66F4\u65B0\u5931\u8D25\u5BBF\u4E3B\u4F1A\u81EA\u52A8\u56DE\u6EDA\u65E7\u7248\u672C\u3002"
+      ),
+      (0, import_react10.createElement)("p", { className: "mo-check-line" }, "\u5DEE\u5F02\u6E05\u5355\uFF1A\u2014\uFF08\u5BBF\u4E3B\u672A\u63D0\u4F9B commits \u5BF9\u6BD4\uFF09")
+    ),
+    foot: BtnGhost({
+      children: "\u590D\u5236\u63D2\u4EF6\u6765\u6E90",
+      actName: "copy-source",
+      onClick: () => {
+        const source = "github:Lixb53/memory-ops-dsh#path:packages/dsh-plugin";
+        if (typeof navigator !== "undefined" && navigator.clipboard !== void 0) {
+          void navigator.clipboard.writeText(source);
+        }
+      }
+    })
+  });
+}
+function opsFrame(sel, onOpenMemory) {
+  const op = OPS.find((item) => `ops:${item.id}` === sel) ?? OPS[0];
+  return InspectorFrame({
+    title: `\u7EF4\u62A4\uFF1A${op.name}`,
+    sub: `${op.route} \xB7 \u5148\u9884\u89C8\uFF0C\u518D\u6267\u884C`,
+    body: (0, import_react10.createElement)(
+      "div",
+      null,
+      (0, import_react10.createElement)("p", { className: "mo-insp-text" }, op.note),
+      (0, import_react10.createElement)(
+        "p",
+        { className: "mo-insp-text" },
+        "\u8FD9\u4E9B\u4F5C\u4E1A\u90FD\u4F1A\u6539\u8BB0\u5FC6\u7684\u5185\u5BB9\u6216\u53EF\u4FE1\u5EA6\uFF0C\u6240\u4EE5\u4E00\u5F8B\u5148\u7ED9\u9884\u89C8\u3001\u4F60\u70B9\u4E86\u624D\u6267\u884C\u3002"
+      ),
+      /*
+       * onOpenMemory 不能是空函数：维护面板把「看这条」挂在 5 个分区的
+       * 可点行与 Enter/Space 上，空实现 = 可聚焦、可激活、零结果。
+       */
+      (0, import_react10.createElement)(MaintenancePanel, { onOpenMemory })
+    )
+  });
+}
+function HealthInspector(props) {
+  const { data, sel, goto } = props;
+  const health = useBridge("health", {});
+  const buckets = bucketsOf({ snapshot: data.snapshot.data, overview: data.overview.data });
+  if (sel.startsWith("ops:")) return opsFrame(sel, (path) => {
+    goto("memory", path);
+  });
+  if (sel === "version") return versionFrame();
+  if (sel.startsWith("p:")) {
+    const id = sel.slice(2);
+    const injected = buckets.find((bucket2) => bucket2.id === "injected");
+    const item = injected?.items.find((entry) => entry.id === id);
+    if (item !== void 0) return (0, import_react10.createElement)(EntryEditor, { item, props });
+  }
+  const bucket = buckets.find((entry) => sel === `b:${entry.id}`) ?? buckets[0];
+  if (bucket !== void 0) return bucketFrame(bucket, props, health);
+  return InspectorFrame({
+    title: "\u9009\u4E00\u884C",
+    sub: "\u6876 / \u7248\u672C / \u7EF4\u62A4\u4F5C\u4E1A",
+    body: (0, import_react10.createElement)(
+      "p",
+      { className: "mo-insp-text" },
+      "\u56DB\u6876\u4E4B\u548C\u5FC5\u987B\u7B49\u4E8E\u9876\u680F\u90A3\u4E2A\u6570\u3002\u5BF9\u4E0D\u4E0A\u65F6\uFF0C\u8FD9\u4E00\u680F\u4F1A\u5199\u51FA\u5DEE\u989D\u548C\u539F\u56E0\uFF0C\u800C\u4E0D\u662F\u6084\u6084\u53D6\u6574\u3002"
+    )
+  });
+}
+
+// src/client/v9/panes/memory.ts
+var import_react11 = require("react");
+function MemoryCenter(props) {
+  const { phase, data, sel, onSelect, run, pending, counts, goto } = props;
+  const [face, setFace] = (0, import_react11.useState)("content");
+  const [query, setQuery] = (0, import_react11.useState)("");
+  const [submitted, setSubmitted] = (0, import_react11.useState)("");
+  if (phase === "loading") return Skeleton({ rows: 6, label: "\u8BFB\u53D6\u4E2D\uFF1A\u6B63\u5728\u53D6\u5168\u5E93\u6761\u76EE" });
+  if (phase === "error") {
+    return ErrorBlock({
+      title: "\u8BFB\u4E0D\u5230\u6761\u76EE\u7D22\u5F15",
+      text: "\u7D22\u5F15\u6587\u4EF6\u7F3A\u5931\u6216\u4E0D\u53EF\u8BFB\u3002\u6761\u76EE\u6B63\u6587\u901A\u5E38\u8FD8\u5728\uFF0C\u91CD\u5EFA\u7D22\u5F15\u5373\u53EF\u3002",
+      example: "\u70B9\u4E0B\u9762\u7684\u300C\u91CD\u8BD5\u300D\uFF1B\u4FEE\u597D\u540E\u8FD9\u91CC\u4F1A\u663E\u793A\u771F\u5B9E\u6761\u6570",
+      onRetry: () => {
+        data.reloadAll();
+      }
+    });
+  }
+  const rows = memoryRowsOf(data.snapshot.data, face, submitted);
+  const filteredEmpty = submitted.trim() !== "" && rows.length === 0;
+  if (phase === "empty") {
+    return EmptyBlock({
+      title: "\u5E93\u91CC\u8FD8\u6CA1\u6709\u4EFB\u4F55\u8BB0\u5FC6",
+      text: "\u8BB0\u5FC6\u662F\u786E\u8BA4\u8FC7\u7684\u6761\u76EE\uFF1B\u8BB0\u5F55\u6D41\u91CC\u7684 INBOX \u884C\u8FD8\u4E0D\u7B97\u3002\u5148\u53BB\u8BB0\u4E00\u6761\uFF0C\u786E\u8BA4\u540E\u5B83\u4F1A\u51FA\u73B0\u5728\u8FD9\u91CC\u3002",
+      hint: "INBOX \u4E0E\u8BB0\u5FC6\u5206\u5F00\u8BA1\u6570\uFF1A\u5168\u5E93 0 \u6761\u8BB0\u5FC6",
+      action: { label: "\u53BB\u8BB0\u4E00\u6761", actName: "go-capture", act: () => {
+        goto("capture");
+      } }
+    });
+  }
+  const retiring = memoryEntries(data.snapshot.data).filter((entry) => entry.expiry.level === "stale" || entry.expiry.level === "retire");
+  const head = face === "cost" ? TableHead({ columns: [{ label: "\u6807\u9898" }, { label: "\u5F52\u5C5E" }, { label: "tokens", num: true }, { label: "\u8BA1\u8D39" }] }) : TableHead({ columns: [{ label: "\u6807\u9898" }, { label: "\u5F52\u5C5E" }, { label: "\u5F15\u7528", num: true }, { label: "\u72B6\u6001" }] });
+  const emptyBlock = filteredEmpty ? (0, import_react11.createElement)(
+    "div",
+    { className: "mo-state-block" },
+    (0, import_react11.createElement)("h2", { className: "mo-state-title" }, `\u6CA1\u6709\u5339\u914D\u300C${clip(submitted, 16)}\u300D\u7684\u6761\u76EE`),
+    (0, import_react11.createElement)(
+      "p",
+      { className: "mo-state-text" },
+      "\u8FD9\u6B21\u68C0\u7D22\u5DF2\u8BB0\u4E00\u6761\u672A\u547D\u4E2D\u2014\u2014\u672A\u547D\u4E2D\u4F1A\u8FDB\u300C\u5F85\u8865\u5E93\u300D\uFF0C\u4E0D\u662F\u767D\u641C\u3002"
+    ),
+    (0, import_react11.createElement)("p", { className: "mo-state-hint mo-num" }, `\u5168\u5E93\u4ECD\u662F ${num(counts.entries)} \u6761`),
+    (0, import_react11.createElement)(
+      "div",
+      { className: "mo-state-actions" },
+      BtnGhost({
+        children: "\u6E05\u6389\u5173\u952E\u8BCD",
+        actName: "clear-filter",
+        onClick: () => {
+          setQuery("");
+          setSubmitted("");
+        }
+      })
+    )
+  ) : null;
+  const toolbar = (0, import_react11.createElement)(
+    "div",
+    { className: "mo-toolbar" },
+    (0, import_react11.createElement)("label", { className: "mo-sr-only", htmlFor: "mo-memory-search" }, "\u641C\u7D22\u6807\u9898\u4E0E\u6B63\u6587"),
+    (0, import_react11.createElement)("input", {
+      className: "mo-field",
+      id: "mo-memory-search",
+      type: "search",
+      "aria-label": "\u641C\u7D22\u6807\u9898\u4E0E\u6B63\u6587",
+      placeholder: "\u641C\u6807\u9898\u3001\u8DEF\u5F84\u6216\u8BC1\u636E\uFF08\u4F1A\u8BA1\u5165\u547D\u4E2D\u7387\uFF09",
+      value: query,
+      onChange: (event) => {
+        setQuery(event.target.value);
+      },
+      onKeyDown: (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        submitSearch();
+      }
+    }),
+    (0, import_react11.createElement)("button", {
+      type: "button",
+      className: "mo-btn",
+      "data-act": "search",
+      disabled: pending || query.trim() === "",
+      onClick: submitSearch
+    }, "\u641C")
+  );
+  function submitSearch() {
+    const keyword = query.trim();
+    setSubmitted(keyword);
+    run(
+      async () => {
+        await searchEntries(keyword, keyword !== "");
+      },
+      keyword === "" ? "\u6E05\u6389\u5173\u952E\u8BCD\uFF0C\u663E\u793A\u5168\u90E8\u6761\u76EE" : `\u5DF2\u68C0\u7D22\u300C${clip(keyword, 12)}\u300D\u5E76\u8BB0\u8D26`
+    );
+  }
+  return (0, import_react11.createElement)(
+    "div",
+    { className: "mo-pane-inner" },
+    FaceSwitch({ face, onChange: setFace }),
+    toolbar,
+    head,
+    emptyBlock === null ? (0, import_react11.createElement)(
+      "ul",
+      { className: "mo-rows", role: "list" },
+      rows.map((row) => Row({
+        spec: {
+          id: row.id,
+          title: row.title,
+          meta: row.meta,
+          source: row.group,
+          num: row.num,
+          state: row.state,
+          tone: row.tone,
+          current: sel === row.id
+        },
+        onSelect
+      }))
+    ) : emptyBlock,
+    (0, import_react11.createElement)(
+      "p",
+      { className: "mo-check-line" },
+      `${face === "cost" ? "\u6309\u4F53\u79EF\u964D\u5E8F \xB7 " : "\u5E93\u5185\u987A\u5E8F \xB7 "}${num(rows.length)} \u6761 \xB7 \u6570\u5B57\u5747\u4E3A\u4F30\u7B97`,
+      retiring.length === 0 ? " \xB7 \u6CA1\u6709\u5230\u671F\u6761\u76EE" : (0, import_react11.createElement)(
+        "span",
+        null,
+        " \xB7 ",
+        TextLink({
+          children: `\u6279\u91CF\u5F52\u6863\u5230\u671F\u7684 ${num(retiring.length)} \u6761`,
+          actName: "batch-archive",
+          onClick: () => {
+            run(
+              async () => {
+                await batchArchive(retiring.map((entry) => entry.path), "90 \u5929\u672A\u5F15\u7528\uFF0C\u6279\u91CF\u9000\u5F79");
+              },
+              `\u5DF2\u5F52\u6863 ${retiring.length} \u6761 \xB7 \u68C0\u7D22\u4E0D\u518D\u8FD4\u56DE\u5B83\u4EEC`
+            );
+          }
+        })
       )
     )
   );
 }
+function MemoryInspector(props) {
+  const { data, sel, run, pending } = props;
+  const entry = (data.snapshot.data?.entries ?? []).find((item) => !item.id.endsWith(".INBOX") && (item.id === sel || item.path === sel));
+  const path = entry?.path ?? "";
+  const detail = useBridge("detail", path === "" ? {} : { path }, [path]);
+  const [reason, setReason] = (0, import_react11.useState)("");
+  if (entry === void 0) {
+    return InspectorFrame({
+      title: "\u9009\u4E00\u6761\u8BB0\u5FC6",
+      sub: "\u5DE6\u8FB9\u70B9\u4E00\u884C\uFF0C\u8FD9\u91CC\u51FA\u6765\u6E90\u3001\u8BC1\u636E\u3001\u951A\u70B9",
+      body: (0, import_react11.createElement)(
+        "p",
+        { className: "mo-insp-text" },
+        "\u68C0\u7D22\u547D\u4E2D\u4F1A\u8BB0 recall\uFF0C\u771F\u6B63\u88AB\u5F15\u7528\u624D\u8BB0 cite\u2014\u2014\u6240\u4EE5\u547D\u4E2D\u7387\u4E0D\u662F 100% \u7684\u81EA\u5938\u6570\u3002"
+      )
+    });
+  }
+  const anchorState = detail.data?.trust.anchorState;
+  const anchorText = anchorState !== void 0 ? anchorLabelOf(anchorState) : detail.phase === "error" ? "\u8BFB\u4E0D\u5230\uFF08detail \u5931\u8D25\uFF09" : entry.anchor === null ? "\u65E0\u951A\u70B9" : "\u672A\u6838\u5BF9\uFF08\u8BFB\u53D6\u4E2D\uFF09";
+  const cited = entry.citeCount === 0 ? "\u672A\u5F15\u7528" : `\u5F15\u7528 ${num(entry.citeCount)} \u6B21`;
+  const rows = [
+    { label: "\u8DEF\u5F84", value: entry.path },
+    { label: "\u5F52\u5C5E", value: entry.domainLabel || entry.domain },
+    { label: "\u5C42\u7EA7", value: `${entry.layer} \xB7 \u6309\u9700\u8BFB\u53D6` },
+    { label: "\u4F53\u79EF", value: withUnit(entry.tokens, "tokens") },
+    { label: "\u72B6\u6001", value: statusLabelOf(entry.status) },
+    { label: "\u5F15\u7528", value: `${cited}\uFF0830 \u5929\uFF09` },
+    { label: "\u951A\u70B9", value: anchorText }
+  ];
+  const badge = anchorState === "stale" ? (0, import_react11.createElement)(
+    "div",
+    { className: "mo-verdicts" },
+    (0, import_react11.createElement)(
+      "div",
+      { className: "mo-verdict mo-verdict-warn" },
+      (0, import_react11.createElement)("span", { className: "mo-verdict-tag" }, "\u6CE8\u610F"),
+      (0, import_react11.createElement)("span", null, "\u951A\u70B9\u5BF9\u4E0D\u4E0A\uFF0C\u68C0\u7D22\u5DF2\u964D\u6743 0.4\uFF1B\u590D\u6838\u901A\u8FC7\u53EF\u6062\u590D\u3002")
+    )
+  ) : null;
+  const excerpt = detail.data?.entry.body ? clip(detail.data.entry.body.replace(/\s+/g, " "), 220) : null;
+  const isRetire = entry.status === "stale" || entry.expiry.level === "stale" || entry.expiry.level === "retire";
+  const body = (0, import_react11.createElement)(
+    "div",
+    null,
+    Props({ rows }),
+    (0, import_react11.createElement)("p", { className: "mo-insp-label" }, "\u8BC1\u636E"),
+    (0, import_react11.createElement)(
+      "p",
+      { className: "mo-insp-text" },
+      entry.evidence.length === 0 ? "\u8FD9\u6761\u6CA1\u6709\u8BC1\u636E\u8BB0\u5F55\uFF1A\u53EA\u53EF\u80FD\u662F\u4F60\u624B\u5199\u7684\uFF0C\u6216\u6765\u81EA\u66F4\u65E9\u7684\u5BFC\u5165\u3002" : `${num(entry.evidence.length)} \u6761\uFF1A${clip(entry.evidence.map((item) => item.excerpt ?? item.gate ?? item.session ?? "\u2014").join(" / "), 160)}`
+    ),
+    excerpt === null ? null : (0, import_react11.createElement)("p", { className: "mo-insp-label" }, "\u6B63\u6587\u6458\u8981"),
+    excerpt === null ? null : (0, import_react11.createElement)("p", { className: "mo-check-line" }, excerpt),
+    badge
+  );
+  if (isRetire) {
+    return InspectorFrame({
+      title: entry.title,
+      sub: `${entry.domainLabel || entry.domain} \xB7 ${withUnit(entry.tokens, "tokens")}`,
+      body,
+      foot: (0, import_react11.createElement)(
+        "div",
+        { style: { display: "flex", gap: "var(--mo-s2)" } },
+        BtnGhost({
+          children: "\u518D\u7559 90 \u5929",
+          actName: "keep",
+          disabled: pending,
+          onClick: () => {
+            run(async () => {
+              await keepEntry(path);
+            }, "\u5DF2\u518D\u7559 90 \u5929");
+          }
+        }),
+        BtnInk({
+          children: pending ? "\u5F52\u6863\u4E2D\u2026" : "\u5F52\u6863",
+          actName: "archive",
+          disabled: pending,
+          onClick: () => {
+            run(async () => {
+              await archiveEntry(path);
+            }, "\u5DF2\u5F52\u6863 \xB7 \u68C0\u7D22\u4E0D\u518D\u8FD4\u56DE\u5B83");
+          }
+        })
+      )
+    });
+  }
+  return InspectorFrame({
+    title: entry.title,
+    sub: `${entry.domainLabel || entry.domain} \xB7 ${withUnit(entry.tokens, "tokens")}`,
+    body: (0, import_react11.createElement)(
+      "div",
+      null,
+      body,
+      /*
+       * 驳回理由必须由人写：硬编码一句系统话术会让 30 天后的复查
+       * 分不清「人判的」与「系统替我判的」。
+       */
+      (0, import_react11.createElement)("p", { className: "mo-insp-label" }, "\u9A73\u56DE\u8981\u5199\u7406\u7531\uFF0830 \u5929\u5185\u4E0D\u518D\u6CE8\u5165\uFF09"),
+      (0, import_react11.createElement)("textarea", {
+        className: "mo-reason-input",
+        "aria-label": "\u9A73\u56DE\u7406\u7531",
+        placeholder: "\u4F8B\uFF1A\u8FD9\u6761\u7ED3\u8BBA\u53EA\u5BF9\u4E0A\u4E2A\u5B63\u5EA6\u7684\u76EE\u5F55\u7ED3\u6784\u6210\u7ACB",
+        value: reason,
+        onChange: (event) => {
+          setReason(event.target.value);
+        }
+      }),
+      reason.trim() === "" ? (0, import_react11.createElement)("p", { className: "mo-check-line" }, "\u7406\u7531\u4E3A\u7A7A\u4E0D\u80FD\u9A73\u56DE") : null
+    ),
+    foot: (0, import_react11.createElement)(
+      "div",
+      { style: { display: "flex", gap: "var(--mo-s2)" } },
+      BtnGhost({
+        children: pending ? "\u5904\u7406\u4E2D\u2026" : "\u9A73\u56DE",
+        actName: "reject",
+        disabled: pending || reason.trim() === "",
+        onClick: () => {
+          const why = reason.trim();
+          run(async () => {
+            await rejectEntry(path, why);
+          }, "\u5DF2\u9A73\u56DE \xB7 30 \u5929\u9759\u9ED8\uFF08\u53EF\u64A4\u9500\uFF09", {
+            label: "\u64A4\u9500\u9A73\u56DE",
+            run: () => undoReject(path)
+          });
+        }
+      }),
+      BtnInk({
+        children: pending ? "\u5904\u7406\u4E2D\u2026" : "\u786E\u8BA4",
+        actName: "confirm",
+        disabled: pending,
+        onClick: () => {
+          run(async () => {
+            await confirmEntry(path);
+          }, "\u5DF2\u786E\u8BA4");
+        }
+      })
+    )
+  });
+}
+
+// src/client/v9/panes/today.ts
+var import_react12 = require("react");
+function rowOf(clue, current) {
+  return {
+    id: clue.id,
+    title: clue.title,
+    meta: clue.meta,
+    source: clue.group,
+    num: clue.num,
+    state: clue.state,
+    tone: clue.tone,
+    current
+  };
+}
+function TodayCenter(props) {
+  const { phase, counts, sel, onSelect, data, draft, onDraft, run, pending, goto } = props;
+  if (phase === "loading") return Skeleton({ rows: 4, label: "\u8BFB\u53D6\u4E2D\uFF1A\u6B63\u5728\u6C47\u603B\u7EBF\u7D22" });
+  if (phase === "error") {
+    return ErrorBlock({
+      title: "\u8BFB\u4E0D\u5230\u4ECA\u5929\u7684\u7EBF\u7D22",
+      text: "\u6865\u6CA1\u6709\u8FD4\u56DE\u6570\u636E\u3002\u7EBF\u7D22\u4E0D\u4F1A\u6D88\u5931\u2014\u2014\u5E93\u6587\u4EF6\u8FD8\u5728\uFF0C\u91CD\u53D6\u4E00\u6B21\u5C31\u597D\u3002",
+      example: "\u70B9\u4E0B\u9762\u7684\u300C\u91CD\u8BD5\u300D\uFF1B\u4ECD\u5931\u8D25\u5C31\u68C0\u67E5\u5E93\u6839\u76EE\u5F55\u662F\u5426\u53EF\u8BFB",
+      onRetry: () => {
+        data.reloadAll();
+      }
+    });
+  }
+  if (phase === "empty") {
+    return EmptyBlock({
+      title: "\u73B0\u5728\u6CA1\u6709\u538B\u7740\u7684\u4E8B",
+      text: `\u5F85\u62CD\u677F 0 \u6761\u3001\u6D41\u8F6C\u4E2D 0 \u6761\u3001\u5F85\u8865\u5E93 0 \u6761\u3002\u5E93\u91CC ${num(counts.entries)} \u6761\u8BB0\u5FC6\u90FD\u5904\u7406\u5B8C\u4E86\uFF1B\u4E0B\u4E00\u6B21\u6355\u83B7\u4F1A\u51FA\u73B0\u5728\u8FD9\u91CC\u3002`,
+      hint: `INBOX \u5F53\u524D ${num(counts.inboxTotal)} \u6761 \xB7 \u5DF2\u7ED3 ${num(Math.max(0, counts.inboxTotal - counts.flow))} \u6761`,
+      action: { label: "\u8BB0\u4E00\u6761", actName: "go-capture", act: () => {
+        goto("capture");
+      } }
+    });
+  }
+  const clues = cluesOf({ snapshot: data.snapshot.data, overview: data.overview.data, inbox: data.inbox.data, misses: data.misses.data });
+  const submit = () => {
+    const text = draft.trim();
+    if (text === "") return;
+    run(async () => {
+      await captureOne(text, "\u60F3\u6CD5");
+      onDraft("");
+    }, "\u5DF2\u5B58\u5165 personal/INBOX.md \xB7 \u72B6\u6001 open");
+  };
+  return (0, import_react12.createElement)(
+    "div",
+    { className: "mo-pane-inner" },
+    SectionHead({
+      title: "\u7EBF\u7D22",
+      note: `${num(clues.length)} \u6761 \xB7 \u6309\u8BE5\u52A8\u624B\u7684\u987A\u5E8F \xB7 \u53F3\u5217 tokens`
+    }),
+    (0, import_react12.createElement)(
+      "ul",
+      { className: "mo-rows", role: "list" },
+      clues.map((clue) => Row({ spec: rowOf(clue, sel === clue.id), onSelect }))
+    ),
+    SectionHead({ title: "\u968F\u624B\u8BB0", note: "\u5148\u843D INBOX\uFF0C\u7B49\u4F60\u786E\u8BA4" }),
+    (0, import_react12.createElement)(
+      "div",
+      { className: "mo-toolbar" },
+      (0, import_react12.createElement)("label", { className: "mo-sr-only", htmlFor: "mo-today-capture" }, "\u968F\u624B\u8BB0\u4E00\u53E5"),
+      (0, import_react12.createElement)("input", {
+        className: "mo-field",
+        id: "mo-today-capture",
+        type: "text",
+        "aria-label": "\u968F\u624B\u8BB0\u4E00\u53E5",
+        placeholder: "\u4E00\u53E5\u8BDD\u5C31\u591F\u3002\u4F8B\uFF1A\u5BBF\u4E3B\u5BF9 git \u76F4\u88C5\u5224 not-updatable",
+        value: draft,
+        onChange: (event) => {
+          onDraft(event.target.value);
+        },
+        onKeyDown: (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            submit();
+          }
+        }
+      }),
+      (0, import_react12.createElement)("button", {
+        type: "button",
+        className: "mo-btn",
+        "data-act": "today-save",
+        disabled: pending || draft.trim() === "",
+        onClick: submit
+      }, pending ? "\u5199\u5165\u4E2D" : "\u5B58")
+    )
+  );
+}
+function TodayInspector(props) {
+  const { data, sel, pending, run, goto } = props;
+  const clues = cluesOf({ snapshot: data.snapshot.data, overview: data.overview.data, inbox: data.inbox.data, misses: data.misses.data });
+  const clue = clues.find((item) => item.id === sel) ?? clues[0];
+  if (clue === void 0) {
+    return InspectorFrame({
+      title: "\u9009\u4E00\u6761\u7EBF\u7D22",
+      sub: "\u5DE6\u8FB9\u70B9\u4E00\u884C\uFF0C\u8FD9\u91CC\u51FA\u8BE6\u60C5\u4E0E\u52A8\u4F5C",
+      body: (0, import_react12.createElement)(
+        "p",
+        { className: "mo-insp-text" },
+        "\u7EBF\u7D22\u6309\u300C\u8BE5\u52A8\u624B\u7684\u987A\u5E8F\u300D\u6392\uFF1A\u5F85\u62CD\u677F \u2192 \u7F3A\u7684\u6761\u76EE \u2192 \u8BE5\u6574\u7406\u7684 \u2192 \u6210\u672C \u2192 \u6D41\u8F6C\u3002"
+      )
+    });
+  }
+  const body = (0, import_react12.createElement)(
+    "div",
+    null,
+    Props({
+      rows: [
+        { label: "\u72B6\u6001", value: clue.state },
+        { label: "\u6570\u91CF", value: withUnit(clue.num, clue.group === "\u6210\u672C" ? "tokens" : "\u4EF6") }
+      ]
+    }),
+    (0, import_react12.createElement)("p", { className: "mo-insp-text" }, clue.detail)
+  );
+  const primary = BtnInk({
+    children: pending ? "\u5904\u7406\u4E2D\u2026" : clue.actionLabel,
+    actName: "clue-primary",
+    disabled: pending,
+    onClick: () => {
+      if (clue.action === "draft-miss") {
+        if (clue.query === void 0) {
+          run(async () => {
+            throw new Error("\u6CA1\u6709\u53EF\u5199\u8349\u7A3F\u7684\u76EE\u6807\uFF08\u672A\u547D\u4E2D\u6761\u76EE\u53EF\u80FD\u521A\u88AB\u5904\u7406\uFF09");
+          });
+          return;
+        }
+        const query = clue.query;
+        run(async () => {
+          await draftMiss(query);
+        }, "\u8349\u7A3F\u5DF2\u5199\u8FDB INBOX \xB7 \u843D\u6863\u4ECD\u8981\u4F60\u70B9\u5934");
+        return;
+      }
+      if (clue.action === "goto-todo") {
+        goto("todo", clue.gotoKey);
+        return;
+      }
+      if (clue.action === "goto-memory") {
+        goto("memory", clue.gotoKey);
+        return;
+      }
+      goto("health", clue.gotoKey);
+    }
+  });
+  const secondary = BtnGhost({
+    children: "\u5148\u4E0D\u7BA1",
+    actName: "dismiss",
+    onClick: () => {
+      goto(clue.action === "goto-health" ? "today" : "todo");
+    }
+  });
+  const costHint = clue.group === "\u6210\u672C" && data.overview.phase === "error" ? "\u8FD9\u4E00\u5E26\u7684\u6570\u5B57\u8BFB\u4E0D\u5230\uFF08\u663E\u793A \u2014\uFF09\uFF1A\u5148\u91CD\u8BD5\uFF0C\u518D\u5224\u65AD\u8BE5\u5173\u54EA\u4E00\u6761\u3002" : null;
+  return InspectorFrame({
+    title: clue.title,
+    sub: clue.group,
+    body: costHint === null ? body : (0, import_react12.createElement)(
+      "div",
+      null,
+      body,
+      (0, import_react12.createElement)(
+        "div",
+        { className: "mo-verdicts" },
+        (0, import_react12.createElement)(
+          "div",
+          { className: "mo-verdict mo-verdict-warn" },
+          (0, import_react12.createElement)("span", { className: "mo-verdict-tag" }, "\u6CE8\u610F"),
+          (0, import_react12.createElement)("span", null, costHint)
+        )
+      )
+    ),
+    foot: (0, import_react12.createElement)("div", { style: { display: "flex", gap: "var(--mo-s2)" } }, secondary, primary)
+  });
+}
+
+// src/client/v9/panes/todo.ts
+var import_react13 = require("react");
+function TodoCenter(props) {
+  const { phase, data, counts, sel, onSelect, goto, run, pending } = props;
+  const [expanded, setExpanded] = (0, import_react13.useState)({});
+  const PAGE = 6;
+  if (phase === "loading") return Skeleton({ rows: 5, label: "\u8BFB\u53D6\u4E2D\uFF1A\u6B63\u5728\u53D6\u4E09\u6BB5\u53F0\u8D26" });
+  if (phase === "error") {
+    return ErrorBlock({
+      title: "\u8BFB\u4E0D\u5230\u5F85\u529E",
+      text: "\u72B6\u6001\u673A\u67E5\u8BE2\u5931\u8D25\u3002\u5DF2\u786E\u8BA4\u7684\u6761\u76EE\u4E0D\u4F1A\u4E22\u2014\u2014\u5E93\u6587\u4EF6\u8FD8\u5728\uFF0C\u91CD\u53D6\u5373\u6062\u590D\u3002",
+      example: "\u70B9\u4E0B\u9762\u7684\u300C\u91CD\u8BD5\u300D\uFF1B\u4ECD\u5931\u8D25\u5C31\u53BB\u300C\u5E93\u5065\u5EB7\u300D\u770B\u5E93\u6839\u76EE\u5F55",
+      onRetry: () => {
+        data.reloadAll();
+      }
+    });
+  }
+  const sections = todoSectionsOf({ snapshot: data.snapshot.data, inbox: data.inbox.data, misses: data.misses.data });
+  if (phase === "empty") {
+    return EmptyBlock({
+      title: "\u4E09\u6BB5\u90FD\u7A7A\u4E86",
+      text: "\u6CA1\u6709\u5F85\u62CD\u677F\u3001\u6CA1\u6709\u6D41\u8F6C\u4E2D\u3001\u6CA1\u6709\u5F85\u8865\u5E93\u3002\u8FD9\u662F\u5E93\u5065\u5EB7\u7684\u6837\u5B50\uFF0C\u4E0D\u662F\u6545\u969C\u3002",
+      hint: `\u5F85\u62CD\u677F 0 \xB7 \u6D41\u8F6C\u4E2D 0 \xB7 \u5F85\u8865\u5E93 0 \xB7 \u8BB0\u5FC6 ${num(counts.entries)} \u6761`,
+      action: { label: "\u53BB\u770B\u8BB0\u5FC6", actName: "go-memory", act: () => {
+        goto("memory");
+      } }
+    });
+  }
+  const renderSection = (section) => {
+    const flowLines = section.rows.map((row) => row.lineIndex).filter((line) => typeof line === "number");
+    const refillQueries = section.rows.map((row) => row.title);
+    const fillableRows = section.id === "refill" ? section.rows.filter((row) => row.fillable === true) : section.rows;
+    const observingRows = section.id === "refill" ? section.rows.filter((row) => row.fillable !== true) : [];
+    const showAll = expanded[section.id] === true || section.rows.some((row) => row.key === sel);
+    const base = showAll ? section.rows : fillableRows;
+    const visible = base.slice(0, PAGE);
+    const hidden = section.rows.length - visible.length;
+    const hiddenObserving = showAll ? 0 : observingRows.filter((row) => !visible.includes(row)).length;
+    return (0, import_react13.createElement)(
+      "div",
+      { key: section.id },
+      SectionHead({ title: section.title, note: section.note }),
+      section.rows.length === 0 ? (0, import_react13.createElement)("p", { className: "mo-state-hint", style: { paddingLeft: "var(--mo-s4)" } }, section.emptyText) : (0, import_react13.createElement)(
+        "ul",
+        { className: "mo-rows", role: "list" },
+        visible.map((row) => Row({
+          spec: {
+            id: row.key,
+            title: row.title,
+            meta: row.meta,
+            source: row.group,
+            num: row.num,
+            state: row.state,
+            tone: row.tone,
+            current: sel === row.key
+          },
+          onSelect
+        }))
+      ),
+      hidden > 0 ? (0, import_react13.createElement)(
+        "p",
+        { className: "mo-check-line" },
+        TextLink({
+          children: hiddenObserving === hidden ? `\u53E6\u6709 ${num(hidden)} \u6761\u53EA\u95EE\u8FC7\u4E00\u4E24\u6B21 \xB7 \u5C55\u5F00` : `\u5C55\u5F00\u5269\u4E0B\u7684 ${num(hidden)} \u6761`,
+          actName: "expand-section",
+          onClick: () => {
+            setExpanded((prev) => ({ ...prev, [section.id]: true }));
+          }
+        })
+      ) : null,
+      /* 段级批量动作：一次处理多条，不给每条都点一遍的机会成本。 */
+      section.id === "flow" && flowLines.length > 1 ? (0, import_react13.createElement)(
+        "p",
+        { className: "mo-check-line" },
+        TextLink({
+          children: `\u628A\u8FD9\u6BB5 ${num(flowLines.length)} \u6761\u90FD\u6807\u5B8C\u6210`,
+          actName: "batch-done",
+          onClick: () => {
+            run(async () => {
+              await batchInboxState(flowLines, "done");
+            }, `\u5DF2\u628A ${flowLines.length} \u6761\u6807\u4E3A\u5B8C\u6210`);
+          }
+        })
+      ) : null,
+      section.id === "refill" && refillQueries.length > 1 ? (0, import_react13.createElement)(
+        "p",
+        { className: "mo-check-line" },
+        TextLink({
+          children: `\u7ED9\u8FD9 ${num(refillQueries.length)} \u6761\u90FD\u5199\u8349\u7A3F`,
+          actName: "batch-draft",
+          onClick: () => {
+            if (pending) return;
+            run(async () => {
+              await batchDraftMiss(refillQueries);
+            }, `\u5DF2\u4E3A ${refillQueries.length} \u6761\u5404\u5199\u4E00\u4EFD\u8349\u7A3F`);
+          }
+        })
+      ) : null
+    );
+  };
+  return (0, import_react13.createElement)(
+    "div",
+    { className: "mo-pane-inner" },
+    sections.map(renderSection)
+  );
+}
+function selectedRow(props) {
+  const sections = todoSectionsOf({ snapshot: props.data.snapshot.data, inbox: props.data.inbox.data, misses: props.data.misses.data });
+  for (const section of sections) {
+    const row = section.rows.find((item) => item.key === props.sel);
+    if (row !== void 0) return { row, section };
+  }
+  return void 0;
+}
+function DecideInspector({ row, props }) {
+  const { run, pending } = props;
+  const [reason, setReason] = (0, import_react13.useState)("");
+  const reject = () => {
+    if (row.path === void 0) return;
+    const path = row.path;
+    run(async () => {
+      await rejectEntry(path, reason);
+    }, "\u5DF2\u9A73\u56DE \xB7 30 \u5929\u5185\u4E0D\u518D\u6CE8\u5165\uFF08\u53EF\u64A4\u9500\uFF09", {
+      label: "\u64A4\u9500\u9A73\u56DE",
+      run: () => undoReject(path)
+    });
+  };
+  return InspectorFrame({
+    title: row.title,
+    sub: `${row.group} \xB7 ${row.state}`,
+    body: (0, import_react13.createElement)(
+      "div",
+      null,
+      Props({
+        rows: [
+          { label: "\u6765\u6E90", value: row.path ?? "\u2014" },
+          { label: "\u7B49\u591A\u4E45", value: withUnit(row.num, "\u5929") },
+          { label: "\u72B6\u6001", value: row.state }
+        ]
+      }),
+      (0, import_react13.createElement)(
+        "p",
+        { className: "mo-insp-text" },
+        "\u91C7\u7EB3\u540E\u8FDB\u5165\u68C0\u7D22\u4E0E\u7F6E\u9876\u901A\u9053\uFF1B\u9A73\u56DE\u843D\u6863 30 \u5929\u9759\u9ED8\u3002\u7CFB\u7EDF\u81EA\u52A8\u5347\u7EA7\u6700\u591A\u5230\u300C\u89C2\u5BDF\u5230\u300D\uFF0C\u4E0D\u4F1A\u66FF\u4F60\u786E\u8BA4\u3002"
+      ),
+      (0, import_react13.createElement)("p", { className: "mo-insp-label" }, "\u9A73\u56DE\u8981\u5199\u7406\u7531\uFF0830 \u5929\u5185\u4E0D\u518D\u6CE8\u5165\uFF09"),
+      (0, import_react13.createElement)("textarea", {
+        className: "mo-reason-input",
+        "aria-label": "\u9A73\u56DE\u7406\u7531",
+        placeholder: "\u4F8B\uFF1A\u8FD9\u6761\u53EA\u5BF9\u67D0\u4E2A\u5206\u652F\u6210\u7ACB\uFF0C\u4E0D\u8BE5\u8FDB\u4E2A\u4EBA\u57DF",
+        value: reason,
+        onChange: (event) => {
+          setReason(event.target.value);
+        }
+      }),
+      reason.trim() === "" ? (0, import_react13.createElement)("p", { className: "mo-check-line" }, "\u7406\u7531\u4E3A\u7A7A\u4E0D\u80FD\u9A73\u56DE") : null
+    ),
+    foot: (0, import_react13.createElement)(
+      "div",
+      { style: { display: "flex", gap: "var(--mo-s2)" } },
+      BtnGhost({
+        children: pending ? "\u5904\u7406\u4E2D\u2026" : "\u9A73\u56DE",
+        actName: "reject",
+        disabled: pending || reason.trim() === "",
+        onClick: reject
+      }),
+      BtnInk({
+        children: pending ? "\u5904\u7406\u4E2D\u2026" : "\u786E\u8BA4",
+        actName: "confirm",
+        disabled: pending,
+        onClick: () => {
+          if (row.path === void 0) return;
+          const path = row.path;
+          run(async () => {
+            await confirmEntry(path);
+          }, "\u5DF2\u786E\u8BA4 \xB7 \u8FD9\u6761\u4ECE\u6B64\u523B\u8D77\u53C2\u4E0E\u68C0\u7D22");
+        }
+      })
+    )
+  });
+}
+function FlowInspector({ row, props }) {
+  const { run, pending } = props;
+  const [content, setContent] = (0, import_react13.useState)(row.title);
+  const lineIndex = row.lineIndex;
+  const patch = (next, success) => {
+    if (lineIndex === void 0) return;
+    run(async () => {
+      await patchInboxRow(lineIndex, next);
+    }, success);
+  };
+  return InspectorFrame({
+    title: clip(row.title, 48),
+    sub: `${row.group} \xB7 ${row.state}`,
+    body: (0, import_react13.createElement)(
+      "div",
+      null,
+      Props({
+        rows: [
+          { label: "\u884C\u53F7", value: lineIndex === void 0 ? "\u2014" : String(lineIndex + 1) },
+          { label: "\u7B49\u591A\u4E45", value: withUnit(row.num, "\u5929") },
+          { label: "\u72B6\u6001", value: row.state }
+        ]
+      }),
+      (0, import_react13.createElement)("p", { className: "mo-insp-label" }, "\u6539\u8FD9\u4E00\u884C\u7684\u5185\u5BB9"),
+      (0, import_react13.createElement)("input", {
+        className: "mo-title-input",
+        "aria-label": "\u6539\u8FD9\u4E00\u884C\u7684\u5185\u5BB9",
+        value: content,
+        onChange: (event) => {
+          setContent(event.target.value);
+        }
+      }),
+      (0, import_react13.createElement)(
+        "p",
+        { className: "mo-insp-text" },
+        "\u8D85\u8FC7 7 \u5929\u6CA1\u52A8\u7684\u6761\u76EE\u4F1A\u964D\u6743\uFF0C\u4F46\u4E0D\u4F1A\u88AB\u5220\u2014\u2014\u964D\u6743\u53EA\u5F71\u54CD\u68C0\u7D22\u6392\u5E8F\uFF0C\u4E0D\u5F71\u54CD\u5B83\u8FD8\u5728\u5E93\u91CC\u3002"
+      ),
+      (0, import_react13.createElement)(
+        "p",
+        { className: "mo-check-line" },
+        TextLink({
+          children: "\u5347\u7EA7\u6210\u8BB0\u5FC6\u6761\u76EE",
+          actName: "promote-inbox",
+          onClick: () => {
+            if (lineIndex === void 0) return;
+            run(
+              async () => {
+                await promoteInboxRow(lineIndex);
+              },
+              "\u5DF2\u5347\u7EA7\uFF1A\u8FD9\u6761\u6210\u4E3A\u53EF\u68C0\u7D22\u7684\u8BB0\u5FC6\uFF0CINBOX \u91CC\u4FDD\u7559\u539F\u884C"
+            );
+          }
+        })
+      )
+    ),
+    foot: (0, import_react13.createElement)(
+      "div",
+      { style: { display: "flex", gap: "var(--mo-s2)", flexWrap: "wrap" } },
+      BtnGhost({
+        children: "\u4FDD\u5B58\u5185\u5BB9",
+        actName: "inbox-edit",
+        disabled: pending || content.trim() === "" || content === row.title,
+        onClick: () => {
+          patch({ content: content.trim() }, "\u5DF2\u6539\u5185\u5BB9 \xB7 \u72B6\u6001\u4E0D\u53D8");
+        }
+      }),
+      BtnGhost({
+        children: "\u4E22\u6389",
+        actName: "inbox-drop",
+        disabled: pending,
+        onClick: () => {
+          patch({ state: "dropped" }, "\u5DF2\u4E22\u6389");
+        }
+      }),
+      BtnInk({
+        children: pending ? "\u5904\u7406\u4E2D\u2026" : "\u6807\u5B8C\u6210",
+        actName: "inbox-done",
+        disabled: pending,
+        onClick: () => {
+          patch({ state: "done" }, "\u5DF2\u5B8C\u6210 \xB7 \u8FD9\u4E00\u6761\u4ECE\u6D41\u8F6C\u91CC\u51FA\u53BB\u4E86");
+        }
+      })
+    )
+  });
+}
+function RefillInspector({ row, props }) {
+  const { run, pending, data, goto } = props;
+  const fillable = row.fillable === true;
+  const threshold = data.misses.data?.fillThreshold ?? 3;
+  const [content, setContent] = (0, import_react13.useState)("");
+  const item = (data.misses.data?.pipeline["should-fill"] ?? []).concat(data.misses.data?.pipeline["observing"] ?? []).find((entry) => entry.query === row.title);
+  const remaining = item?.remainingDays ?? null;
+  const hits = item?.hits ?? 0;
+  return InspectorFrame({
+    title: `\u7F3A\uFF1A${clip(row.title, 40)}`,
+    sub: `${row.group} \xB7 ${row.state}`,
+    body: (0, import_react13.createElement)(
+      "div",
+      null,
+      Props({
+        rows: [
+          { label: "\u88AB\u95EE", value: `${num(row.num)} \u6B21` },
+          { label: "\u4F1A\u8BDD", value: `${num(item?.sessions ?? 0)} \u4E2A` },
+          { label: "\u9608\u503C", value: `${num(threshold)} \u6B21\u8D77\u5EFA\u8BAE\u8865` },
+          { label: "\u72B6\u6001", value: row.state },
+          {
+            label: "\u9A8C\u8BC1\u671F",
+            value: remaining === null ? "\u672A\u8FDB\u5165\uFF08\u8349\u7A3F\u751F\u6210\u540E\u624D\u5F00\u59CB\u8BA1\u65F6\uFF09" : `\u8FD8\u5269 ${num(remaining)} \u5929 \xB7 \u547D\u4E2D ${num(hits)} \u6B21`
+          }
+        ]
+      }),
+      (0, import_react13.createElement)(
+        "p",
+        { className: "mo-insp-text" },
+        "\u751F\u6210\u8349\u7A3F\u53EA\u4F1A\u8FDB INBOX\uFF0C\u843D\u6863\u4ECD\u9700\u4F60\u70B9\u5934\u3002\u5199\u5B8C\u540E 7 \u5929\u5185\u6709\u547D\u4E2D\u624D\u7B97\u9A8C\u8BC1\u901A\u8FC7\uFF1B\u4E00\u76F4\u6CA1\u4EBA\u518D\u95EE\uFF0C\u8FD9\u6761\u4F1A\u81EA\u5DF1\u6C89\u4E0B\u53BB\uFF0C\u4E0D\u5360\u8BB0\u5FC6\u3002"
+      ),
+      fillable ? null : (0, import_react13.createElement)(
+        "div",
+        { className: "mo-verdicts" },
+        (0, import_react13.createElement)(
+          "div",
+          { className: "mo-verdict mo-verdict-warn" },
+          (0, import_react13.createElement)("span", { className: "mo-verdict-tag" }, "\u672A\u8FBE\u7EBF"),
+          (0, import_react13.createElement)("span", null, `\u8FD8\u6CA1\u6709\u5230\u8BE5\u8865\u7684\u65F6\u5019\uFF1A\u95EE\u6EE1 ${num(threshold)} \u6B21\u624D\u7B97\u5E38\u6001\u7F3A\u53E3\u3002\u8981\u8865\u4E5F\u53EF\u4EE5\uFF0C\u53EA\u662F\u5B83\u53EF\u80FD\u53EA\u7528\u5230\u4E00\u6B21\u3002`)
+        )
+      ),
+      (0, import_react13.createElement)("p", { className: "mo-insp-label" }, "\u5DF2\u7ECF\u8865\u4E0A\u4E86\uFF1F\u628A\u5185\u5BB9\u5199\u5728\u8FD9\u91CC"),
+      (0, import_react13.createElement)("textarea", {
+        className: "mo-reason-input",
+        "aria-label": "\u8865\u4E0A\u7684\u5185\u5BB9",
+        placeholder: "\u4F8B\uFF1Agrep \u8BFB\u4E0D\u5230\u6587\u4EF6\u662F\u56E0\u4E3A\u8DEF\u5F84\u91CC\u6709\u4E2D\u6587\uFF0C\u6539\u7528 Get-Content -Encoding UTF8",
+        value: content,
+        onChange: (event) => {
+          setContent(event.target.value);
+        }
+      }),
+      (0, import_react13.createElement)(
+        "p",
+        { className: "mo-check-line" },
+        TextLink({
+          children: "\u8FD9\u6761\u4E0D\u662F\u95EE\u9898\uFF0C\u5220\u6389",
+          actName: "miss-delete",
+          onClick: () => {
+            run(async () => {
+              await deleteMiss(row.title);
+            }, "\u5DF2\u5220\u6389\u8FD9\u6761\u672A\u547D\u4E2D\u8BB0\u5F55");
+          }
+        })
+      )
+    ),
+    foot: (0, import_react13.createElement)(
+      "div",
+      { style: { display: "flex", gap: "var(--mo-s2)" } },
+      BtnGhost({ children: "\u53BB\u770B\u8BB0\u5FC6", actName: "go-memory", onClick: () => {
+        goto("memory");
+      } }),
+      BtnGhost({
+        children: pending ? "\u751F\u6210\u4E2D\u2026" : "\u5199\u8349\u7A3F",
+        actName: "draft-miss",
+        disabled: pending,
+        onClick: () => {
+          run(async () => {
+            await draftMiss(row.title);
+          }, "\u8349\u7A3F\u5DF2\u5199\u8FDB INBOX \xB7 \u843D\u6863\u4ECD\u8981\u4F60\u70B9\u5934");
+        }
+      }),
+      BtnInk({
+        children: pending ? "\u63D0\u4EA4\u4E2D\u2026" : "\u786E\u8BA4\u5DF2\u8865",
+        actName: "miss-confirm",
+        disabled: pending || content.trim() === "",
+        onClick: () => {
+          run(async () => {
+            await confirmMiss(row.title, content);
+          }, "\u5DF2\u843D\u4E00\u6761\u8BB0\u5FC6\uFF0C\u5E76\u628A\u8FD9\u95EE\u9898\u6807\u4E3A\u5DF2\u9A8C\u8BC1");
+        }
+      })
+    )
+  });
+}
+function TodoInspector(props) {
+  const found = selectedRow(props);
+  if (found === void 0) {
+    return InspectorFrame({
+      title: "\u9009\u4E00\u6761\u5F85\u529E",
+      sub: "\u5DE6\u8FB9\u70B9\u4E00\u884C\uFF0C\u8FD9\u91CC\u51FA\u52A8\u4F5C",
+      body: (0, import_react13.createElement)(
+        "p",
+        { className: "mo-insp-text" },
+        "\u5F85\u62CD\u677F\u7684\u6761\u76EE\u53EA\u6709\u4EBA\u80FD\u6539\u72B6\u6001\uFF1B\u7CFB\u7EDF\u81EA\u52A8\u5347\u7EA7\u6700\u591A\u5230\u300C\u89C2\u5BDF\u5230\u300D\uFF0C\u4E0D\u4F1A\u66FF\u4F60\u786E\u8BA4\u3002"
+      )
+    });
+  }
+  if (found.row.kind === "decide") return (0, import_react13.createElement)(DecideInspector, { key: found.row.key, row: found.row, props });
+  if (found.row.kind === "flow") return (0, import_react13.createElement)(FlowInspector, { key: found.row.key, row: found.row, props });
+  return (0, import_react13.createElement)(RefillInspector, { key: found.row.key, row: found.row, props });
+}
 
 // src/client/panel.ts
-var PANES = [
-  { id: "today", label: "\u4ECA\u5929" },
-  { id: "capture", label: "\u8BB0\u4E00\u6761" },
-  { id: "todo", label: "\u5F85\u529E" },
-  { id: "memory", label: "\u8BB0\u5FC6" },
-  { id: "health", label: "\u5E93\u5065\u5EB7" }
-];
 function PanelIcon({ size }) {
-  return (0, import_react11.createElement)(MemoryIcon, { size: typeof size === "number" ? size : 18 });
+  return (0, import_react14.createElement)(MemoryIcon, { size: typeof size === "number" ? size : 18 });
+}
+var STATUS_LEFT = "\u4F30\u7B97\u53E3\u5F84\uFF1ACJK 1 \u5B57 \u2248 1 token\uFF0C\u5176\u4F59 4 \u5B57\u7B26 \u2248 1 token\uFF1B\u975E tokenizer \u7CBE\u786E\u503C\uFF0C\u4EC5\u7528\u4E8E\u76F8\u5BF9\u6BD4\u8F83";
+function defaultKeyOf(pane, props) {
+  const { counts, data } = props;
+  if (pane === "today") {
+    const clues = cluesOf({
+      snapshot: data.snapshot.data,
+      overview: data.overview.data,
+      inbox: data.inbox.data,
+      misses: data.misses.data
+    });
+    return clues[0]?.id ?? "";
+  }
+  if (pane === "todo") {
+    const sections = todoSectionsOf({
+      snapshot: data.snapshot.data,
+      inbox: data.inbox.data,
+      misses: data.misses.data
+    });
+    for (const section of sections) {
+      if (section.rows.length > 0) return section.rows[0].key;
+    }
+    return "";
+  }
+  if (pane === "memory") {
+    const rows = memoryRowsOf(data.snapshot.data, "content", "");
+    return rows[0]?.id ?? "";
+  }
+  if (pane === "health") return "b:injected";
+  void counts;
+  return "";
 }
 function MemoryOpsPage(props) {
   const ctx = props.ctx;
-  const { cwd, project } = useSessionProject(ctx);
-  const [pane, setPane] = (0, import_react11.useState)("today");
-  const [detailPath, setDetailPath] = (0, import_react11.useState)(void 0);
+  const data = useWorkbenchData(ctx);
+  const [pane, setPane] = (0, import_react14.useState)("today");
+  const [picked, setPicked] = (0, import_react14.useState)({
+    today: "",
+    capture: "",
+    todo: "",
+    memory: "",
+    health: ""
+  });
+  const [draft, setDraft] = (0, import_react14.useState)("");
+  const [notice, setNotice] = (0, import_react14.useState)(null);
+  const [pending, setPending] = (0, import_react14.useState)(false);
+  const [bandFolded, setBandFolded] = (0, import_react14.useState)(false);
+  const [live, setLive] = (0, import_react14.useState)("");
+  const liveTimer = (0, import_react14.useRef)(null);
+  const paneRef = (0, import_react14.useRef)("today");
+  (0, import_react14.useEffect)(() => {
+    paneRef.current = pane;
+  }, [pane]);
+  (0, import_react14.useEffect)(() => () => {
+    if (liveTimer.current !== null) window.clearTimeout(liveTimer.current);
+  }, []);
   const requestedPane = usePaneRequest();
-  (0, import_react11.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     const next = consumePaneRequest();
     if (next === void 0) return;
     setPane(next);
-    if (next !== "memory") setDetailPath(void 0);
+    setNotice(null);
   }, [requestedPane]);
-  const snapshot = useBridge("snapshot", scopeBody(cwd, project), [cwd, project]);
-  const queueCount = snapshot.data?.queue.length ?? 0;
-  const openDetail = (path) => {
-    setDetailPath(path ?? void 0);
-    if (path !== null) setPane("memory");
-  };
-  let body;
-  switch (pane) {
-    case "capture":
-      body = (0, import_react11.createElement)(CapturePane);
-      break;
-    case "todo":
-      body = (0, import_react11.createElement)(TodoPane, { onOpenDetail: openDetail });
-      break;
-    case "memory":
-      body = (0, import_react11.createElement)(MemoryPane, { ctx, detailPath, onOpenDetail: openDetail });
-      break;
-    case "health":
-      body = (0, import_react11.createElement)(HealthPane, { onGotoToday: () => {
-        setPane("today");
-      } });
-      break;
-    default:
-      body = (0, import_react11.createElement)(TodayPane, { ctx, onOpenDetail: openDetail });
-  }
-  return (0, import_react11.createElement)(
-    "div",
-    { className: "dmo-root" },
-    (0, import_react11.createElement)(
-      "div",
-      { className: "dmo-head" },
-      (0, import_react11.createElement)(
-        "div",
-        { className: "dmo-head-row" },
-        (0, import_react11.createElement)("h1", { className: "dmo-app-name" }, "\u8BB0\u5FC6\u5E93"),
-        (0, import_react11.createElement)("span", { className: "dmo-scope" }, snapshot.data?.root ?? "")
-      ),
-      (0, import_react11.createElement)(
-        "nav",
-        { className: "dmo-nav", role: "tablist" },
-        PANES.map((item) => (0, import_react11.createElement)(
-          "button",
-          {
-            key: item.id,
-            type: "button",
-            role: "tab",
-            className: "dmo-nav-item",
-            "data-pane": item.id,
-            "aria-selected": pane === item.id,
-            "aria-controls": "memory-ops-tabpanel",
-            onClick: () => {
-              setPane(item.id);
-              if (item.id !== "memory") setDetailPath(void 0);
+  const counts = countsOf({
+    snapshot: data.snapshot.data,
+    overview: data.overview.data,
+    inbox: data.inbox.data,
+    misses: data.misses.data
+  });
+  const isEmpty = (() => {
+    if (pane === "today" || pane === "todo") return counts.urgent === 0;
+    if (pane === "capture") return counts.capturedToday === 0;
+    if (pane === "memory") return counts.entries === 0;
+    return counts.catalog === 0 && counts.injected === 0;
+  })();
+  const phase = phaseOf(sourcesFor(pane, data), isEmpty);
+  const selected = picked[pane] !== "" ? picked[pane] : defaultKeyOf(pane, { counts, data });
+  const announce = (0, import_react14.useCallback)((text) => {
+    if (liveTimer.current !== null) window.clearTimeout(liveTimer.current);
+    setLive("");
+    liveTimer.current = window.setTimeout(() => {
+      setLive(text);
+      liveTimer.current = null;
+    }, 30);
+  }, []);
+  const busy = (0, import_react14.useRef)(false);
+  const run = (0, import_react14.useCallback)((action, success, undo) => {
+    if (busy.current) return;
+    busy.current = true;
+    setPending(true);
+    void action().then(() => {
+      if (success !== void 0) {
+        const next = { ok: true, text: success };
+        if (undo !== void 0) {
+          next.undo = {
+            label: undo.label,
+            act: () => {
+              if (busy.current) return;
+              busy.current = true;
+              setPending(true);
+              void undo.run().then(() => {
+                setNotice({ ok: true, text: "\u5DF2\u64A4\u9500" });
+                announce("\u5DF2\u64A4\u9500");
+                setPicked((prev) => ({ ...prev, [paneRef.current]: "" }));
+                data.reloadAll();
+              }).catch((error) => {
+                setNotice({ ok: false, text: hintOf(error), kind: classify(error) });
+              }).finally(() => {
+                busy.current = false;
+                setPending(false);
+              });
             }
-          },
-          item.label,
-          item.id === "todo" && queueCount > 0 ? (0, import_react11.createElement)("span", { className: "dmo-nav-count" }, String(queueCount)) : null
-        ))
-      )
-    ),
-    (0, import_react11.createElement)("div", { className: "dmo-body", role: "tabpanel", id: "memory-ops-tabpanel" }, body)
-  );
+          };
+        }
+        setNotice(next);
+        announce(success);
+      }
+      setPicked((prev) => ({ ...prev, [paneRef.current]: "" }));
+      data.reloadAll();
+    }).catch((error) => {
+      const text = hintOf(error);
+      setNotice({ ok: false, text, kind: classify(error) });
+      announce(text);
+    }).finally(() => {
+      busy.current = false;
+      setPending(false);
+    });
+  }, [data, announce]);
+  const goto = (0, import_react14.useCallback)((next, key) => {
+    setPane(next);
+    setNotice(null);
+    if (key !== void 0) setPicked((prev) => ({ ...prev, [next]: key }));
+  }, []);
+  const onSelect = (0, import_react14.useCallback)((key) => {
+    setPicked((prev) => ({ ...prev, [pane]: key }));
+    setNotice(null);
+  }, [pane]);
+  const paneProps = {
+    data,
+    phase,
+    counts,
+    sel: selected,
+    onSelect,
+    draft,
+    onDraft: setDraft,
+    run,
+    pending,
+    notice,
+    goto
+  };
+  const lede = ledeFor(pane, phase, counts);
+  let center;
+  let inspector;
+  if (pane === "capture") {
+    center = (0, import_react14.createElement)(CaptureCenter, { ...paneProps });
+    inspector = (0, import_react14.createElement)(CaptureInspector, { ...paneProps });
+  } else if (pane === "todo") {
+    center = (0, import_react14.createElement)(TodoCenter, { ...paneProps });
+    inspector = (0, import_react14.createElement)(TodoInspector, { ...paneProps });
+  } else if (pane === "memory") {
+    center = (0, import_react14.createElement)(MemoryCenter, { ...paneProps });
+    inspector = (0, import_react14.createElement)(MemoryInspector, { ...paneProps });
+  } else if (pane === "health") {
+    center = (0, import_react14.createElement)(HealthCenter, { ...paneProps });
+    inspector = (0, import_react14.createElement)(HealthInspector, { ...paneProps });
+  } else {
+    center = (0, import_react14.createElement)(TodayCenter, { ...paneProps });
+    inspector = (0, import_react14.createElement)(TodayInspector, { ...paneProps });
+  }
+  if (phase === "error") {
+    inspector = InspectorFrame({
+      title: "\u8BFB\u4E0D\u5230\u6570\u636E",
+      sub: "state = error",
+      body: (0, import_react14.createElement)(
+        "div",
+        null,
+        (0, import_react14.createElement)(
+          "p",
+          { className: "mo-insp-text" },
+          "\u8FD9\u4E00\u5C4F\u8BFB\u4E0D\u5230\uFF0C\u68C0\u89C6\u680F\u4E0D\u5C55\u793A\u7F13\u5B58\u5185\u5BB9\u2014\u2014\u907F\u514D\u7528\u65E7\u5185\u5BB9\u5192\u5145\u65B0\u4E8B\u5B9E\u3002\u4E2D\u680F\u6709\u539F\u56E0\u4E0E\u4E0B\u4E00\u6B65\u3002"
+        ),
+        (0, import_react14.createElement)(
+          "p",
+          { className: "mo-check-line" },
+          "\u5DE6\u8F68\u8BA1\u6570\u4E0E\u9876\u6761\u8BFB\u6570\u540C\u6837\u662F\u300C\u2014\u300D\uFF1A\u8BFB\u4E0D\u5230\u4E0D\u7B49\u4E8E 0\uFF0C\u7A7A\u4E5F\u4E0D\u7B49\u4E8E 0\u3002"
+        )
+      ),
+      foot: BtnGhost({ children: "\u91CD\u8BD5", actName: "retry", onClick: () => {
+        data.reloadAll();
+      } }),
+      phase
+    });
+  } else if (phase === "loading") {
+    inspector = InspectorFrame({
+      title: "\u8BFB\u53D6\u4E2D",
+      sub: "\u6B63\u5728\u53D6\u8FD9\u4E00\u9875",
+      body: Skeleton({ rows: 3, label: "\u8BFB\u53D6\u4E2D\uFF1A\u68C0\u89C6\u680F\u5185\u5BB9\u968F\u9009\u4E2D\u9879\u66FF\u6362" }),
+      phase
+    });
+  } else if (phase === "empty") {
+    inspector = InspectorFrame({
+      title: "\u6CA1\u6709\u53EF\u9009\u7684\u6761\u76EE",
+      sub: "state = empty\uFF08\u4E0D\u662F error\uFF09",
+      body: (0, import_react14.createElement)(
+        "div",
+        null,
+        (0, import_react14.createElement)(
+          "p",
+          { className: "mo-insp-text" },
+          "\u7A7A\u6001\u4E0B\u6CA1\u6709\u6761\u76EE\u53EF\u9009\u3002\u7528\u4E2D\u680F\u7ED9\u7684\u51FA\u53E3\u7EE7\u7EED\uFF0C\u522B\u5728\u8FD9\u91CC\u627E\u4E0D\u5B58\u5728\u7684\u8BE6\u60C5\u3002"
+        ),
+        (0, import_react14.createElement)(
+          "p",
+          { className: "mo-check-line" },
+          "\u7A7A \u2260 \u8BFB\u4E0D\u5230\uFF1A\u8FD9\u91CC\u7684 0 \u662F\u6570\u51FA\u6765\u7684 0\uFF0C\u9876\u6761\u4E0E\u5DE6\u8F68\u90FD\u663E\u793A 0\u3002"
+        )
+      ),
+      phase
+    });
+  }
+  const unit = (() => {
+    if (pane === "capture") return "\u6761\u4ECA\u5929\u5DF2\u8BB0";
+    if (pane === "todo") return "\u4EF6\u538B\u7740";
+    if (pane === "memory") return "\u6761\u8BB0\u5FC6";
+    if (pane === "health") return "tokens / \u8BF7\u6C42";
+    return "\u4EF6\u8981\u52A8\u624B";
+  })();
+  return (0, import_react14.createElement)(Stage, {
+    pane,
+    phase,
+    counts,
+    lede,
+    figure: figureFor(pane, phase, counts),
+    unit,
+    bandNote: bandNoteFor(pane, phase, counts),
+    bandFigure: bandFigureFor(phase, counts),
+    bandFolded,
+    onToggleBand: () => {
+      setBandFolded((value) => !value);
+    },
+    onGoto: (next) => {
+      goto(next);
+    },
+    center,
+    inspector,
+    notice,
+    statusLeft: STATUS_LEFT,
+    statusRight: statusRightOf({ snapshot: data.snapshot.data, overview: data.overview.data, phase }),
+    live
+  });
 }
 
 // src/client/session-view.ts
-var import_react12 = require("react");
+var import_react15 = require("react");
 function SessionMemoryView(props) {
   const onGotoMisses = typeof props.onGotoMisses === "function" ? props.onGotoMisses : void 0;
   const ctx = props.ctx;
   const sessionId = typeof props.sessionId === "string" ? props.sessionId : void 0;
   const { cwd, project } = useSessionProject(ctx);
-  const [busy, setBusy] = (0, import_react12.useState)(false);
-  const [toast, setToast] = (0, import_react12.useState)(null);
+  const [busy, setBusy] = (0, import_react15.useState)(false);
+  const [toast, setToast] = (0, import_react15.useState)(null);
   const { phase, data, error, reload } = useBridge(
     "sessionMemory",
     { sessionId, ...scopeBody(cwd, project) },
@@ -2696,13 +3714,13 @@ function SessionMemoryView(props) {
       setBusy(false);
     });
   }
-  if (phase === "loading") return (0, import_react12.createElement)(Skeleton, { rows: 2, height: 60 });
-  if (phase === "error") return (0, import_react12.createElement)(ErrorState, { message: `\u8BFB\u53D6\u4F1A\u8BDD\u8BB0\u5FC6\u5931\u8D25\uFF1A${orEmpty(error)}`, onRetry: reload });
-  if (data === void 0) return (0, import_react12.createElement)(Skeleton, { rows: 1 });
+  if (phase === "loading") return (0, import_react15.createElement)(Skeleton2, { rows: 2, height: 60 });
+  if (phase === "error") return (0, import_react15.createElement)(ErrorState, { message: `\u8BFB\u53D6\u4F1A\u8BDD\u8BB0\u5FC6\u5931\u8D25\uFF1A${orEmpty(error)}`, onRetry: reload });
+  if (data === void 0) return (0, import_react15.createElement)(Skeleton2, { rows: 1 });
   const resolution = data.resolution;
   const unknownProject = resolution !== null && resolution.project === null;
   const noCwd = resolution === null && data.project === null;
-  return (0, import_react12.createElement)(
+  return (0, import_react15.createElement)(
     "div",
     { className: "dmo-session" },
     /**
@@ -2711,75 +3729,75 @@ function SessionMemoryView(props) {
      * 早先这一栏没有项目信息，用户看到一个空 tab 时完全不知道
      * 「是没注入」还是「是没认出项目」——两种情况的下一步动作完全不同。
      */
-    (0, import_react12.createElement)(
+    (0, import_react15.createElement)(
       "div",
       { className: "dmo-row-sub", style: { marginBottom: 6 } },
       data.project === null ? "\u9879\u76EE\uFF1A\u672A\u89E3\u6790" : `\u9879\u76EE\uFF1A${data.project}`,
       resolution?.matchedBy === "alias" ? ` \xB7 \u7531\u522B\u540D ${orEmpty(resolution.matchedAlias)} \u63A8\u65AD` : resolution?.matchedBy === "name" ? " \xB7 \u76EE\u5F55\u540D\u4E0E\u9879\u76EE\u540C\u540D" : "",
       resolution?.matchedBy === "prefix" ? ` \xB7 \u7531\u524D\u7F00 ${orEmpty(resolution.matchedAlias)} \u63A8\u65AD` : ""
     ),
-    (0, import_react12.createElement)(
+    (0, import_react15.createElement)(
       "div",
       { className: "dmo-session-kpis" },
-      (0, import_react12.createElement)(
+      (0, import_react15.createElement)(
         "div",
         { className: "dmo-session-kpi" },
-        (0, import_react12.createElement)("b", null, count(data.injected)),
-        (0, import_react12.createElement)("span", null, "\u672C\u6B21\u7528\u5230")
+        (0, import_react15.createElement)("b", null, count(data.injected)),
+        (0, import_react15.createElement)("span", null, "\u672C\u6B21\u7528\u5230")
       ),
-      (0, import_react12.createElement)(
+      (0, import_react15.createElement)(
         "div",
         { className: "dmo-session-kpi" },
-        (0, import_react12.createElement)("b", null, count(data.cited)),
-        (0, import_react12.createElement)("span", null, "\u5F15\u7528")
+        (0, import_react15.createElement)("b", null, count(data.cited)),
+        (0, import_react15.createElement)("span", null, "\u5F15\u7528")
       ),
-      (0, import_react12.createElement)(
+      (0, import_react15.createElement)(
         "div",
         { className: "dmo-session-kpi" },
-        (0, import_react12.createElement)("b", null, count(data.missed)),
-        (0, import_react12.createElement)("span", null, "\u672A\u547D\u4E2D")
+        (0, import_react15.createElement)("b", null, count(data.missed)),
+        (0, import_react15.createElement)("span", null, "\u672A\u547D\u4E2D")
       )
     ),
-    unknownProject ? (0, import_react12.createElement)(
+    unknownProject ? (0, import_react15.createElement)(
       "div",
       { className: "dmo-degrade" },
       `\u6CA1\u80FD\u4ECE\u5F53\u524D\u76EE\u5F55\u8BA4\u51FA\u9879\u76EE\uFF1A${orEmpty(resolution.reason)}`,
-      (0, import_react12.createElement)(
+      (0, import_react15.createElement)(
         "div",
         { className: "dmo-row-sub" },
         `\u5F53\u524D\u76EE\u5F55\uFF1A${orEmpty(resolution.cwd)}`,
         resolution.knownProjects.length === 0 ? "" : ` \xB7 \u5DF2\u77E5\u9879\u76EE\uFF1A${resolution.knownProjects.join(" / ")}`
       )
-    ) : noCwd ? (0, import_react12.createElement)(
+    ) : noCwd ? (0, import_react15.createElement)(
       "div",
       { className: "dmo-degrade" },
       "\u6CA1\u62FF\u5230\u5F53\u524D\u76EE\u5F55\uFF0C\u65E0\u6CD5\u5224\u5B9A\u9879\u76EE\uFF08\u8FD9\u4E0D\u4F1A\u5F71\u54CD\u4EFB\u52A1\uFF0C\u53EA\u662F\u8FD9\u4E00\u680F\u6CA1\u6CD5\u6309\u9879\u76EE\u8FC7\u6EE4\uFF09\u3002"
     ) : null,
-    toast === null ? null : (0, import_react12.createElement)("div", {
+    toast === null ? null : (0, import_react15.createElement)("div", {
       className: `dmo-toast ${toast.ok ? "dmo-toast-ok" : "dmo-toast-err"}`,
       role: "status"
     }, toast.text),
     // 为什么注入
-    (0, import_react12.createElement)("div", { className: "dmo-lane-head" }, "\u4E3A\u4EC0\u4E48\u6CE8\u5165"),
-    data.reasons.length === 0 ? (0, import_react12.createElement)(
+    (0, import_react15.createElement)("div", { className: "dmo-lane-head" }, "\u4E3A\u4EC0\u4E48\u6CE8\u5165"),
+    data.reasons.length === 0 ? (0, import_react15.createElement)(
       "div",
       { className: "dmo-note" },
       data.recalled === 0 ? "\u672C\u4F1A\u8BDD\u8FD8\u6CA1\u6709\u68C0\u7D22\u8BB0\u5F55\u3002\u8BB0\u5FC6\u53EA\u5728\u88AB\u68C0\u7D22\u65F6\u624D\u6CE8\u5165\u2014\u2014\u8FD9\u662F\u6210\u672C\u8BBE\u8BA1\uFF0C\u4E0D\u662F\u7F3A\u9677\u3002" : `\u672C\u4F1A\u8BDD\u6709 ${count(data.recalled)} \u6B21\u68C0\u7D22\uFF0C\u4F46\u4E8B\u4EF6\u91CC\u6CA1\u6709\u53EF\u56DE\u6307\u7684\u6761\u76EE id\uFF08\u53EF\u80FD\u662F\u65E7\u7248\u672C\u5199\u5165\u7684\u8BB0\u5F55\uFF09\u3002`
-    ) : data.reasons.map((reason) => (0, import_react12.createElement)(
+    ) : data.reasons.map((reason) => (0, import_react15.createElement)(
       "div",
       { key: reason.id, className: "dmo-card" },
-      (0, import_react12.createElement)("div", { className: "dmo-card-title" }, truncate(reason.title, 46)),
-      (0, import_react12.createElement)(
+      (0, import_react15.createElement)("div", { className: "dmo-card-title" }, truncate(reason.title, 46)),
+      (0, import_react15.createElement)(
         "div",
         { className: "dmo-card-meta" },
-        (0, import_react12.createElement)(Badge, { tone: "brand" }, reason.why),
-        (0, import_react12.createElement)("span", null, `${count(reason.tokens)} tokens`),
-        reason.at === "" ? null : (0, import_react12.createElement)("span", null, orEmpty(reason.at.slice(0, 19).replace("T", " "))),
-        reason.anchor === null ? null : (0, import_react12.createElement)(
+        (0, import_react15.createElement)(Badge, { tone: "brand" }, reason.why),
+        (0, import_react15.createElement)("span", null, `${count(reason.tokens)} tokens`),
+        reason.at === "" ? null : (0, import_react15.createElement)("span", null, orEmpty(reason.at.slice(0, 19).replace("T", " "))),
+        reason.anchor === null ? null : (0, import_react15.createElement)(
           AnchorNote,
           { state: reason.anchorState === "stale" ? "stale" : "fresh" },
           reason.anchorState === "stale" ? "\u951A\u70B9\u5931\u6548" : "\u951A\u70B9\u6709\u6548",
-          (0, import_react12.createElement)(
+          (0, import_react15.createElement)(
             "div",
             { className: "dmo-row-sub" },
             `${orEmpty(reason.anchor.path)}${reason.anchor.symbol === void 0 ? "" : ` \xB7 ${reason.anchor.symbol}`}`,
@@ -2789,20 +3807,20 @@ function SessionMemoryView(props) {
       )
     )),
     // 未命中转草稿
-    (0, import_react12.createElement)("div", { className: "dmo-lane-head", style: { marginTop: 4 } }, "\u672A\u547D\u4E2D"),
-    data.recentMisses.length === 0 ? (0, import_react12.createElement)("div", { className: "dmo-note" }, "\u672C\u4F1A\u8BDD\u6CA1\u6709\u672A\u547D\u4E2D\u3002") : data.recentMisses.map((miss, index) => (0, import_react12.createElement)(
+    (0, import_react15.createElement)("div", { className: "dmo-lane-head", style: { marginTop: 4 } }, "\u672A\u547D\u4E2D"),
+    data.recentMisses.length === 0 ? (0, import_react15.createElement)("div", { className: "dmo-note" }, "\u672C\u4F1A\u8BDD\u6CA1\u6709\u672A\u547D\u4E2D\u3002") : data.recentMisses.map((miss, index) => (0, import_react15.createElement)(
       "div",
       {
         key: `${miss.at}-${index}`,
         className: "dmo-row-item"
       },
-      (0, import_react12.createElement)(
+      (0, import_react15.createElement)(
         "div",
         { className: "dmo-row-main" },
-        (0, import_react12.createElement)("div", { className: "dmo-row-text" }, truncate(miss.query ?? "", 40)),
-        (0, import_react12.createElement)("div", { className: "dmo-row-sub" }, orEmpty(miss.at.slice(0, 19).replace("T", " ")))
+        (0, import_react15.createElement)("div", { className: "dmo-row-text" }, truncate(miss.query ?? "", 40)),
+        (0, import_react15.createElement)("div", { className: "dmo-row-sub" }, orEmpty(miss.at.slice(0, 19).replace("T", " ")))
       ),
-      (0, import_react12.createElement)(Button, {
+      (0, import_react15.createElement)(Button, {
         small: true,
         disabled: busy,
         onClick: () => {
@@ -2810,21 +3828,21 @@ function SessionMemoryView(props) {
         }
       }, "\u8F6C\u8349\u7A3F")
     )),
-    data.recentMisses.length === 0 ? null : (0, import_react12.createElement)(
+    data.recentMisses.length === 0 ? null : (0, import_react15.createElement)(
       "div",
       { className: "dmo-anchor-note", "data-state": "stale" },
-      (0, import_react12.createElement)("span", null, "\u8FD9\u4E9B\u68C0\u7D22\u843D\u7A7A\u4E86"),
-      (0, import_react12.createElement)(
+      (0, import_react15.createElement)("span", null, "\u8FD9\u4E9B\u68C0\u7D22\u843D\u7A7A\u4E86"),
+      (0, import_react15.createElement)(
         "div",
         { className: "dmo-row-sub" },
         "\u540C\u4E00\u4E2A\u95EE\u9898\u6EE1 3 \u6B21\u4F1A\u81EA\u52A8\u8FDB\u300C\u8BE5\u8865\u4E86\u300D\uFF0C\u4E5F\u53EF\u4EE5\u73B0\u5728\u5C31\u8865\u3002"
       )
     ),
-    (0, import_react12.createElement)(
+    (0, import_react15.createElement)(
       "div",
       { className: "dmo-hrow", style: { marginTop: 4 } },
-      (0, import_react12.createElement)(Button, { small: true, onClick: reload }, "\u5237\u65B0"),
-      (0, import_react12.createElement)(Button, { small: true, onClick: () => {
+      (0, import_react15.createElement)(Button, { small: true, onClick: reload }, "\u5237\u65B0"),
+      (0, import_react15.createElement)(Button, { small: true, onClick: () => {
         goMisses(true);
       } }, "\u53BB\u672A\u547D\u4E2D\u5DE5\u4F5C\u53F0")
     )
@@ -2832,17 +3850,17 @@ function SessionMemoryView(props) {
 }
 
 // src/client/capture-tab.ts
-var import_react13 = require("react");
+var import_react16 = require("react");
 var CAPTURE_KIND = "memory-ops";
-var KINDS2 = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
-function CapturePane2() {
-  const [text, setText] = (0, import_react13.useState)("");
-  const [kind, setKind] = (0, import_react13.useState)("\u60F3\u6CD5");
-  const [busy, setBusy] = (0, import_react13.useState)(false);
-  const [result, setResult] = (0, import_react13.useState)(null);
-  const [undo, setUndo] = (0, import_react13.useState)(null);
-  const [recent, setRecent] = (0, import_react13.useState)([]);
-  (0, import_react13.useEffect)(() => {
+var KINDS = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
+function CapturePane() {
+  const [text, setText] = (0, import_react16.useState)("");
+  const [kind, setKind] = (0, import_react16.useState)("\u60F3\u6CD5");
+  const [busy, setBusy] = (0, import_react16.useState)(false);
+  const [result, setResult] = (0, import_react16.useState)(null);
+  const [undo, setUndo] = (0, import_react16.useState)(null);
+  const [recent, setRecent] = (0, import_react16.useState)([]);
+  (0, import_react16.useEffect)(() => {
     void call("inbox", { domain: "personal" }).then((list) => {
       setRecent([...list.entries].reverse().slice(0, 5).map((entry) => ({
         content: entry.content,
@@ -2852,8 +3870,8 @@ function CapturePane2() {
     }).catch(() => {
     });
   }, []);
-  const [seconds, setSeconds] = (0, import_react13.useState)(0);
-  (0, import_react13.useEffect)(() => {
+  const [seconds, setSeconds] = (0, import_react16.useState)(0);
+  (0, import_react16.useEffect)(() => {
     if (undo === null) {
       setSeconds(0);
       return void 0;
@@ -2945,14 +3963,14 @@ function CapturePane2() {
       setBusy(false);
     });
   }
-  return (0, import_react13.createElement)(
+  return (0, import_react16.createElement)(
     "div",
     { className: "dmo-capture" },
     // 类型药丸：比下拉少一次点击，且五个类型常驻可见
-    (0, import_react13.createElement)(
+    (0, import_react16.createElement)(
       "div",
       { className: "dmo-types", role: "group", "aria-label": "\u8BB0\u5F55\u7C7B\u578B" },
-      KINDS2.map((item) => (0, import_react13.createElement)(Chip, {
+      KINDS.map((item) => (0, import_react16.createElement)(Chip, {
         key: item,
         label: item,
         active: kind === item,
@@ -2961,7 +3979,7 @@ function CapturePane2() {
         }
       }))
     ),
-    (0, import_react13.createElement)("textarea", {
+    (0, import_react16.createElement)("textarea", {
       className: "dmo-textarea dmo-capture-input",
       placeholder: "\u4E00\u53E5\u8BDD\u8D76\u7D27\u5B58\u4E86\uFF08\u2318/Ctrl + Enter \u63D0\u4EA4\uFF09",
       value: text,
@@ -2976,43 +3994,43 @@ function CapturePane2() {
         }
       }
     }),
-    (0, import_react13.createElement)(
+    (0, import_react16.createElement)(
       "div",
       { className: "dmo-capture-hint" },
       "\u2318/Ctrl + Enter \u5B58\u5165 \xB7 \u591A\u884C\u4F1A\u9010\u6761\u62C6\u5F00 \xB7 30 \u79D2\u5185\u53EF\u64A4\u9500"
     ),
-    (0, import_react13.createElement)(
+    (0, import_react16.createElement)(
       "div",
       { className: "dmo-capture-foot" },
-      (0, import_react13.createElement)(Button, {
+      (0, import_react16.createElement)(Button, {
         variant: "primary",
         disabled: busy || text.trim() === "",
         onClick: submit
       }, busy ? "\u5B58\u5165\u4E2D\u2026" : "\u8BB0\u4E00\u6761"),
-      undo === null ? (0, import_react13.createElement)(
+      undo === null ? (0, import_react16.createElement)(
         "span",
         { className: "dmo-row-sub", style: { marginTop: 0 } },
         `${count(text.length)} \u5B57`
-      ) : (0, import_react13.createElement)(Button, { small: true, disabled: busy, onClick: undoLast }, `\u64A4\u9500 ${seconds}s`)
+      ) : (0, import_react16.createElement)(Button, { small: true, disabled: busy, onClick: undoLast }, `\u64A4\u9500 ${seconds}s`)
     ),
     // 结果反馈：隐私拦截必须解释清楚「为什么拒」，并给脱敏后的可用文本
-    result === null ? null : result.ok ? (0, import_react13.createElement)(
+    result === null ? null : result.ok ? (0, import_react16.createElement)(
       "div",
       { className: "dmo-toast dmo-toast-ok", role: "status" },
       `\u5DF2\u5B58\u5165 ${orEmpty(result.captured?.path)}`
-    ) : (0, import_react13.createElement)(
+    ) : (0, import_react16.createElement)(
       "div",
       { className: "dmo-toast dmo-toast-err", role: "alert" },
-      (0, import_react13.createElement)("div", null, orEmpty(result.reason)),
-      result.blocked === true && result.masked !== void 0 ? (0, import_react13.createElement)(
+      (0, import_react16.createElement)("div", null, orEmpty(result.reason)),
+      result.blocked === true && result.masked !== void 0 ? (0, import_react16.createElement)(
         "div",
         { style: { marginTop: 6 } },
-        (0, import_react13.createElement)("div", { className: "dmo-label" }, "\u8131\u654F\u540E\u53EF\u7528\uFF1A"),
-        (0, import_react13.createElement)("div", { style: { wordBreak: "break-all" } }, truncate(result.masked, 120)),
-        (0, import_react13.createElement)(
+        (0, import_react16.createElement)("div", { className: "dmo-label" }, "\u8131\u654F\u540E\u53EF\u7528\uFF1A"),
+        (0, import_react16.createElement)("div", { style: { wordBreak: "break-all" } }, truncate(result.masked, 120)),
+        (0, import_react16.createElement)(
           "div",
           { style: { marginTop: 6 } },
-          (0, import_react13.createElement)(Button, {
+          (0, import_react16.createElement)(Button, {
             small: true,
             onClick: () => {
               setText(result.masked ?? "");
@@ -3021,43 +4039,43 @@ function CapturePane2() {
         )
       ) : null
     ),
-    recent.length === 0 ? null : (0, import_react13.createElement)(
+    recent.length === 0 ? null : (0, import_react16.createElement)(
       "div",
       { style: { marginTop: 10 } },
-      (0, import_react13.createElement)(
+      (0, import_react16.createElement)(
         "div",
         { className: "dmo-group-head" },
-        (0, import_react13.createElement)("h3", { className: "dmo-group-title" }, "\u521A\u521A\u6355\u83B7"),
-        (0, import_react13.createElement)("span", { className: "dmo-group-count" }, `${recent.length} \u6761`)
+        (0, import_react16.createElement)("h3", { className: "dmo-group-title" }, "\u521A\u521A\u6355\u83B7"),
+        (0, import_react16.createElement)("span", { className: "dmo-group-count" }, `${recent.length} \u6761`)
       ),
-      recent.map((item, index) => (0, import_react13.createElement)(
+      recent.map((item, index) => (0, import_react16.createElement)(
         "div",
         { key: `${item.at}-${index}`, className: "dmo-recent-row" },
-        (0, import_react13.createElement)("span", { className: "dmo-recent-main" }, truncate(item.content, 42)),
-        (0, import_react13.createElement)("span", { className: "dmo-recent-time" }, `${item.kind} \xB7 ${item.at.slice(5)}`)
+        (0, import_react16.createElement)("span", { className: "dmo-recent-main" }, truncate(item.content, 42)),
+        (0, import_react16.createElement)("span", { className: "dmo-recent-time" }, `${item.kind} \xB7 ${item.at.slice(5)}`)
       ))
     ),
-    (0, import_react13.createElement)(
+    (0, import_react16.createElement)(
       "div",
       { className: "dmo-note" },
       "\u6355\u83B7\u524D\u8FC7\u9690\u79C1\u95F8\u95E8\uFF1A\u5BC6\u94A5 / \u79C1\u94A5 / \u8EAB\u4EFD\u8BC1 / \u5185\u7F51 IP \u4F1A\u88AB\u62D2\u5199\u5E76\u7559\u5BA1\u8BA1\u3002"
     ),
-    (0, import_react13.createElement)(
+    (0, import_react16.createElement)(
       "div",
       { className: "dmo-card-meta" },
-      (0, import_react13.createElement)(Badge, { tone: "idle" }, "INBOX \u4E94\u5217"),
-      (0, import_react13.createElement)(Badge, { tone: "idle" }, "\u539F\u5B50\u5199")
+      (0, import_react16.createElement)(Badge, { tone: "idle" }, "INBOX \u4E94\u5217"),
+      (0, import_react16.createElement)(Badge, { tone: "idle" }, "\u539F\u5B50\u5199")
     )
   );
 }
 
 // src/client/remember.ts
-var import_react14 = require("react");
+var import_react17 = require("react");
 var import_react_dom = require("react-dom");
 
 // src/client/remember-logic.ts
 var COMMAND_NAME = "remember";
-var KINDS3 = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
+var KINDS2 = ["\u60F3\u6CD5", "\u8BA1\u5212", "\u95EE\u9898", "\u5F85\u529E", "\u51B3\u7B56"];
 var STORES = /* @__PURE__ */ new Map();
 function rememberStoreOf(sessionId) {
   const existing = STORES.get(sessionId);
@@ -3164,14 +4182,14 @@ function registerRemember(ctx) {
 function RememberOverlay(props) {
   const useRemember = props.useRemember;
   const state2 = typeof useRemember === "function" ? useRemember((snapshot) => snapshot) : { open: false, content: "", toast: null };
-  const [text, setText] = (0, import_react14.useState)("");
-  const [kind, setKind] = (0, import_react14.useState)("\u60F3\u6CD5");
-  const [busy, setBusy] = (0, import_react14.useState)(false);
-  const [error, setError] = (0, import_react14.useState)(null);
-  const [blocked, setBlocked] = (0, import_react14.useState)(null);
-  const inputRef = (0, import_react14.useRef)(null);
+  const [text, setText] = (0, import_react17.useState)("");
+  const [kind, setKind] = (0, import_react17.useState)("\u60F3\u6CD5");
+  const [busy, setBusy] = (0, import_react17.useState)(false);
+  const [error, setError] = (0, import_react17.useState)(null);
+  const [blocked, setBlocked] = (0, import_react17.useState)(null);
+  const inputRef = (0, import_react17.useRef)(null);
   const sessionId = typeof props.sessionId === "string" ? props.sessionId : "default";
-  (0, import_react14.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     if (!state2.open) return;
     setText(state2.content);
     setError(null);
@@ -3183,7 +4201,7 @@ function RememberOverlay(props) {
       clearTimeout(timer);
     };
   }, [state2.open, state2.content]);
-  (0, import_react14.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     if (state2.toast === null) return void 0;
     const lingerMs = state2.toast.savedContent === void 0 ? 5e3 : 3e4;
     const timer = setTimeout(() => {
@@ -3247,21 +4265,21 @@ function RememberOverlay(props) {
   if (!state2.open) {
     if (state2.toast === null) return null;
     if (typeof document === "undefined") return null;
-    return (0, import_react_dom.createPortal)((0, import_react14.createElement)(
+    return (0, import_react_dom.createPortal)((0, import_react17.createElement)(
       "div",
       {
         className: `dmo-remember-toast ${state2.toast.ok ? "dmo-toast-ok" : "dmo-toast-err"}`,
         role: "status",
         "aria-live": "polite"
       },
-      (0, import_react14.createElement)("span", null, state2.toast.text),
-      state2.toast.savedContent === void 0 ? null : (0, import_react14.createElement)("button", {
+      (0, import_react17.createElement)("span", null, state2.toast.text),
+      state2.toast.savedContent === void 0 ? null : (0, import_react17.createElement)("button", {
         type: "button",
         className: "dmo-remember-undo",
         disabled: busy,
         onClick: undo
       }, "\u64A4\u9500"),
-      (0, import_react14.createElement)("button", {
+      (0, import_react17.createElement)("button", {
         type: "button",
         className: "dmo-remember-dismiss",
         "aria-label": "\u5173\u95ED\u63D0\u793A",
@@ -3272,35 +4290,35 @@ function RememberOverlay(props) {
     ), document.body);
   }
   if (typeof document === "undefined") return null;
-  const foot = (0, import_react14.createElement)(
+  const foot = (0, import_react17.createElement)(
     "div",
     { className: "dmo-remember-foot" },
-    (0, import_react14.createElement)(
+    (0, import_react17.createElement)(
       "span",
       { className: "dmo-row-sub", style: { marginTop: 0 } },
       "\u5B58\u5165\u540E\u53EF\u5728\u6D6E\u5C42\u91CC 30 \u79D2\u5185\u64A4\u9500"
     ),
-    (0, import_react14.createElement)(
+    (0, import_react17.createElement)(
       "div",
       { className: "dmo-hrow", style: { flex: "0 0 auto" } },
-      (0, import_react14.createElement)(Button, { onClick: close }, "\u53D6\u6D88"),
-      (0, import_react14.createElement)(Button, {
+      (0, import_react17.createElement)(Button, { onClick: close }, "\u53D6\u6D88"),
+      (0, import_react17.createElement)(Button, {
         variant: "primary",
         disabled: busy || text.trim() === "",
         onClick: submit
       }, busy ? "\u5B58\u5165\u4E2D\u2026" : "\u5B58\u4E00\u6761")
     )
   );
-  const blockedBlock = blocked === null ? null : (0, import_react14.createElement)(
+  const blockedBlock = blocked === null ? null : (0, import_react17.createElement)(
     "div",
     { className: "dmo-toast dmo-toast-err", role: "alert" },
-    (0, import_react14.createElement)("div", null, blocked.reason),
-    (0, import_react14.createElement)("div", { className: "dmo-label", style: { marginTop: 6 } }, "\u8131\u654F\u540E\u53EF\u7528\uFF1A"),
-    (0, import_react14.createElement)("div", { style: { wordBreak: "break-all" } }, truncate(blocked.masked, 120)),
-    (0, import_react14.createElement)(
+    (0, import_react17.createElement)("div", null, blocked.reason),
+    (0, import_react17.createElement)("div", { className: "dmo-label", style: { marginTop: 6 } }, "\u8131\u654F\u540E\u53EF\u7528\uFF1A"),
+    (0, import_react17.createElement)("div", { style: { wordBreak: "break-all" } }, truncate(blocked.masked, 120)),
+    (0, import_react17.createElement)(
       "div",
       { style: { marginTop: 6 } },
-      (0, import_react14.createElement)(Button, {
+      (0, import_react17.createElement)(Button, {
         small: true,
         onClick: () => {
           setText(blocked.masked);
@@ -3309,22 +4327,22 @@ function RememberOverlay(props) {
       }, "\u586B\u5165\u8131\u654F\u6587\u672C")
     )
   );
-  const body = (0, import_react14.createElement)(
+  const body = (0, import_react17.createElement)(
     "div",
     { className: "dmo-remember-body" },
-    (0, import_react14.createElement)(
+    (0, import_react17.createElement)(
       "div",
       { className: "dmo-hrow" },
-      (0, import_react14.createElement)("select", {
+      (0, import_react17.createElement)("select", {
         className: "dmo-select",
         value: kind,
         "aria-label": "\u8BB0\u5F55\u7C7B\u578B",
         onChange: (event) => {
           setKind(event.target.value);
         }
-      }, KINDS3.map((item) => (0, import_react14.createElement)("option", { key: item, value: item }, item)))
+      }, KINDS2.map((item) => (0, import_react17.createElement)("option", { key: item, value: item }, item)))
     ),
-    (0, import_react14.createElement)("textarea", {
+    (0, import_react17.createElement)("textarea", {
       ref: inputRef,
       className: "dmo-textarea dmo-remember-input",
       value: text,
@@ -3335,10 +4353,10 @@ function RememberOverlay(props) {
       }
     }),
     blockedBlock,
-    error === null ? null : (0, import_react14.createElement)("div", { className: "dmo-toast dmo-toast-err", role: "alert" }, error),
+    error === null ? null : (0, import_react17.createElement)("div", { className: "dmo-toast dmo-toast-err", role: "alert" }, error),
     foot
   );
-  const card = (0, import_react14.createElement)(
+  const card = (0, import_react17.createElement)(
     "div",
     {
       className: "dmo-remember-card",
@@ -3361,11 +4379,11 @@ function RememberOverlay(props) {
         }
       }
     },
-    (0, import_react14.createElement)(
+    (0, import_react17.createElement)(
       "div",
       { className: "dmo-remember-head" },
-      (0, import_react14.createElement)("span", { className: "dmo-remember-title" }, "\u5B58\u8FDB\u8BB0\u5FC6\u5E93"),
-      (0, import_react14.createElement)("button", {
+      (0, import_react17.createElement)("span", { className: "dmo-remember-title" }, "\u5B58\u8FDB\u8BB0\u5FC6\u5E93"),
+      (0, import_react17.createElement)("button", {
         type: "button",
         className: "dmo-remember-close",
         "aria-label": "\u5173\u95ED",
@@ -3374,7 +4392,7 @@ function RememberOverlay(props) {
     ),
     body
   );
-  const backdrop = (0, import_react14.createElement)("div", {
+  const backdrop = (0, import_react17.createElement)("div", {
     className: "dmo-remember-backdrop",
     // 点遮罩关闭；卡片内的点击不冒泡上来
     onClick: close,
@@ -3460,11 +4478,11 @@ function registerCaptureTab(ctx) {
     name: "sidebar.right.pane.tab",
     key: PANEL_ID,
     inject: () => ({ ctx })
-  }, CapturePane2))));
+  }, CapturePane))));
   disposers.push(safe("sidebar.right.pane.tab.title", () => ctx.slots.inject("sidebar.right.pane.tab.title", () => ctx.slots.register({
     name: "sidebar.right.pane.tab.title",
     key: PANEL_ID
-  }, () => (0, import_react15.createElement)("span", null, "\u5FEB\u901F\u6355\u83B7")))));
+  }, () => (0, import_react18.createElement)("span", null, "\u5FEB\u901F\u6355\u83B7")))));
   return () => {
     for (const dispose of disposers) dispose();
   };
@@ -4215,10 +5233,972 @@ function installStyles() {
   };
 }
 
+// src/client/v9/styles-base.ts
+var BASE_CSS = `
+.mo-app {
+  /* \u7248\u5F0F\u6863\u4F4D\uFF08brief \xA7\u4E09 / \xA7\u56DB\uFF09 */
+  --mo-t0: 44px; --mo-t0-lh: 48px;
+  --mo-t1: 28px; --mo-t1-lh: 36px;
+  --mo-t2: 18px; --mo-t2-lh: 26px;
+  --mo-t3: 14px; --mo-t3-lh: 22px;
+  --mo-t3-lh-loose: 24px;
+  --mo-t4: 12px; --mo-t4-lh: 18px;
+
+  --mo-s1: 4px; --mo-s2: 8px; --mo-s3: 12px;
+  --mo-s4: 16px; --mo-s5: 24px; --mo-s6: 32px;
+
+  --mo-r-flat: 0;
+  --mo-r-control: 6px;
+  --mo-r-overlay: 10px;
+
+  --mo-w-rail: 212px;
+  --mo-w-insp: 360px;
+  --mo-h-topbar: 72px;
+  --mo-h-status: 28px;
+  --mo-h-band: 72px;
+  --mo-h-band-folded: 28px;
+  --mo-w-prose: 720px;
+
+  --mo-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --mo-ease: cubic-bezier(0.2, 0, 0, 1);
+  --mo-dur-state: 120ms;
+  --mo-dur-insp: 180ms;
+
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: var(--mo-h-topbar) minmax(0, 1fr) var(--mo-h-status);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-size: var(--mo-t3);
+  line-height: var(--mo-t3-lh);
+  -webkit-font-smoothing: antialiased;
+  line-break: strict;
+  overflow: hidden;
+}
+.mo-app *,
+.mo-app *::before,
+.mo-app *::after { box-sizing: border-box; }
+/*
+ * \u63A7\u4EF6\u7EE7\u627F\u5B57\u8272 \u2014\u2014 \u7528 :where() \u628A\u7279\u5F02\u6027\u538B\u5230 0\u3002
+ *
+ * \u65E9\u5148\u5199\u6210 ".mo-app button { color: inherit }"\uFF08\u7279\u5F02\u6027 0,1,1\uFF09\uFF0C
+ * \u5B83\u538B\u8FC7\u4E86\u540E\u9762 .mo-btn-ink \u7684 color\uFF080,1,0\uFF09\uFF0C\u7ED3\u679C\u58A8\u5757\u6309\u94AE\u53D8\u6210
+ * \u300C\u9ED1\u5E95\u9ED1\u5B57\u300D\u2014\u2014\u6309\u94AE\u5728\u90A3\u513F\uFF0C\u5B57\u770B\u4E0D\u89C1\u3002\u622A\u56FE\u624D\u53D1\u73B0\u7684\u3002
+ *
+ * \u26A0\uFE0F \u8FD9\u6BB5\u6CE8\u91CA\u91CC\u4E0D\u8BB8\u51FA\u73B0\u53CD\u5F15\u53F7\uFF1A\u672C\u6587\u4EF6\u6574\u4F53\u662F\u6A21\u677F\u5B57\u7B26\u4E32\uFF0C\u4E00\u4E2A\u53CD\u5F15\u53F7
+ * \u4F1A\u628A\u5B57\u7B26\u4E32\u63D0\u524D\u95ED\u5408\uFF0C\u540E\u9762\u7684 CSS \u5168\u53D8\u6210\u4EE3\u7801\u3002
+ */
+.mo-app :where(button, input, textarea, select) { font: inherit; color: inherit; }
+
+.mo-num {
+  font-family: var(--mo-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- \u9876\u6761\uFF0872\uFF09\uFF1A\u54C1\u724C + \u5206\u533A\u540D | \u5224\u5B9A\u53E5 | T0 \u8BFB\u6570 + \u5355\u4F4D ---------- */
+.mo-topbar {
+  display: grid;
+  grid-template-columns: var(--mo-w-rail) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--mo-s5);
+  padding: 0 var(--mo-s5);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.mo-brand { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mo-brand-name {
+  font-size: var(--mo-t3);
+  line-height: var(--mo-t3-lh);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.mo-brand-scope {
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mo-lede {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--mo-t3);
+  line-height: var(--mo-t3-lh-loose);
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mo-readout { display: flex; align-items: baseline; gap: var(--mo-s2); }
+.mo-t0 {
+  font-size: var(--mo-t0);
+  line-height: var(--mo-t0-lh);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-family: var(--mo-mono);
+  font-variant-numeric: tabular-nums;
+}
+.mo-unit {
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+/* ---------- \u5DE5\u4F5C\u533A\u4E09\u680F\uFF1A212 / 1fr / 360\uFF0C\u5217\u95F4\u8DDD 24 ---------- */
+.mo-workarea {
+  display: grid;
+  grid-template-columns: var(--mo-w-rail) minmax(0, 1fr) var(--mo-w-insp);
+  column-gap: var(--mo-s5);
+  padding: 0 var(--mo-s5);
+  min-height: 0;
+}
+
+/* ---------- \u5DE6\u8F68\uFF1Atablist + \u8BA1\u6570 ---------- */
+.mo-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: color-mix(in srgb, var(--dsw-alias-bg-base) 94%, var(--dsw-alias-label-primary) 6%);
+  border-right: 1px solid var(--dsw-alias-border-l3);
+  padding: var(--mo-s4) 0 var(--mo-s3);
+}
+.mo-rail-list { list-style: none; margin: 0; padding: 0; }
+.mo-tab {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--mo-s2);
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--mo-s4);
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--mo-dur-state) var(--mo-ease), color var(--mo-dur-state) var(--mo-ease);
+}
+.mo-tab-idx {
+  font-family: var(--mo-mono);
+  font-size: var(--mo-t4);
+  color: var(--dsw-alias-label-tertiary);
+}
+.mo-tab-label { font-size: var(--mo-t3); }
+.mo-tab-count {
+  font-family: var(--mo-mono);
+  font-size: var(--mo-t4);
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.mo-tab[aria-selected="true"] {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+.mo-tab[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--dsw-alias-state-business-primary);
+}
+.mo-tab[aria-selected="true"] .mo-tab-idx { color: var(--dsw-alias-label-secondary); }
+
+/* ---------- \u4E2D\u680F\uFF1A\u4E0A\u5E26\u300C\u6BCF\u8BF7\u6C42\u90FD\u5728\u300D+ \u56DE\u6267\u6761 + \u6E05\u5355 ---------- */
+.mo-center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.mo-center:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -1px;
+}
+.mo-band {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--mo-s3);
+  height: var(--mo-h-band);
+  padding: 0 var(--mo-s4);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.mo-band::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--mo-s3);
+  bottom: var(--mo-s3);
+  width: 2px;
+  background: var(--dsw-alias-state-business-primary);
+}
+.mo-band[data-folded="true"] { height: var(--mo-h-band-folded); }
+.mo-band[data-folded="true"] .mo-band-note,
+.mo-band[data-folded="true"] .mo-band-figure-unit { display: none; }
+.mo-band-tag {
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  letter-spacing: 0.08em;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+.mo-band-note {
+  min-width: 0;
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mo-band-figure { display: flex; align-items: baseline; gap: var(--mo-s1); }
+.mo-band-figure .mo-value {
+  font-family: var(--mo-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--mo-t2);
+  line-height: var(--mo-t2-lh);
+  font-weight: 600;
+}
+.mo-band-figure-unit {
+  font-size: var(--mo-t4);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--mo-s4) 0;
+}
+/* \u5199\u64CD\u4F5C\u56DE\u6267\uFF1A\u4EFB\u4F55\u5206\u533A\u7684\u56DE\u6267\u90FD\u843D\u5728\u540C\u4E00\u6761\u5E26\u4E0A\uFF0C\u64A4\u9500\u6309\u94AE\u4E0D\u4F1A\u56E0\u4E3A\u6362\u4E86\u5206\u533A\u5C31\u6D88\u5931\u3002 */
+.mo-notice-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--mo-s2);
+  padding: var(--mo-s2) var(--mo-s4);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-notice-bar[data-tone="err"] { border-bottom-color: var(--dsw-alias-state-error-primary); }
+.mo-pane-inner { padding-right: var(--mo-s4); }
+
+/* ---------- \u6E05\u5355\u884C\uFF1A\u6807\u9898 / \u5F52\u5C5E / \u6570\u5B57 / \u72B6\u6001 + \u5143\u4FE1\u606F\u72EC\u7ACB\u884C ---------- */
+.mo-rows { list-style: none; margin: 0; padding: 0; }
+.mo-row-item { margin: 0; }
+.mo-row-button {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px 96px 88px;
+  grid-template-areas:
+    "title src num state"
+    "meta  meta meta meta";
+  align-items: baseline;
+  column-gap: var(--mo-s4);
+  row-gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--mo-s2) var(--mo-s3) var(--mo-s2) var(--mo-s4);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--mo-dur-state) var(--mo-ease);
+}
+.mo-row-button[aria-current="true"] { background: var(--dsw-alias-card-fill-hover); }
+.mo-row-title {
+  grid-area: title;
+  max-width: var(--mo-w-prose);
+  font-size: var(--mo-t3);
+  line-height: var(--mo-t3-lh);
+  color: var(--dsw-alias-label-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.mo-row-title[data-dense="true"] { -webkit-line-clamp: 1; }
+.mo-row-col {
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mo-row-col-src { grid-area: src; }
+.mo-row-col-num {
+  grid-area: num;
+  text-align: right;
+  font-family: var(--mo-mono);
+  font-variant-numeric: tabular-nums;
+}
+.mo-row-col-state { grid-area: state; }
+.mo-row-meta {
+  grid-area: meta;
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* \u72B6\u6001\u523B\u5EA6\uFF1A2px \u6EE1\u884C\u9AD8\uFF0C\u6587\u5B57\u72B6\u6001\u8BCD\u540C\u65F6\u5B58\u5728\uFF08\u4E0D\u53EA\u9760\u989C\u8272\uFF09 */
+.mo-tonebar {
+  position: absolute;
+  left: 0;
+  top: var(--mo-s2);
+  bottom: var(--mo-s2);
+  width: 2px;
+}
+.mo-tonebar-inline {
+  display: inline-block;
+  width: 2px;
+  height: 10px;
+  margin-right: var(--mo-s1);
+  vertical-align: -1px;
+}
+.mo-tone-ok { background: var(--dsw-alias-state-success-primary); }
+.mo-tone-warn { background: var(--dsw-alias-state-warn-primary); }
+.mo-tone-err { background: var(--dsw-alias-state-error-primary); }
+.mo-tone-idle { background: var(--dsw-alias-state-idle-primary); }
+
+/* ---------- \u8868\u5934 ---------- */
+.mo-table-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px 96px 88px;
+  column-gap: var(--mo-s4);
+  padding: var(--mo-s2) var(--mo-s3) var(--mo-s2) var(--mo-s4);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  letter-spacing: 0.08em;
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-table-head .mo-is-num { text-align: right; }
+
+/* ---------- \u6BB5\u843D\u6807\u9898 ---------- */
+.mo-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--mo-s3);
+  margin: var(--mo-s4) 0 var(--mo-s1);
+  padding-right: var(--mo-s4);
+}
+.mo-section-head:first-child { margin-top: 0; }
+.mo-section-title {
+  margin: 0;
+  font-size: var(--mo-t2);
+  line-height: var(--mo-t2-lh);
+  font-weight: 600;
+}
+.mo-section-note {
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ---------- \u6309\u94AE\uFF08\u5706\u89D2 6\uFF1B\u4E3B\u64CD\u4F5C\u58A8\u5757\uFF09 ---------- */
+.mo-btn,
+.mo-btn-ink,
+.mo-btn-ghost,
+.mo-remember-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  min-height: 32px;
+  padding: 0 var(--mo-s4);
+  border-radius: var(--mo-r-control);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: var(--mo-t3);
+  cursor: pointer;
+  transition: background-color var(--mo-dur-state) var(--mo-ease), filter var(--mo-dur-state) var(--mo-ease), opacity var(--mo-dur-state) var(--mo-ease);
+}
+.mo-btn { background: none; color: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-border-l3); }
+.mo-btn-ink { background: var(--dsw-alias-label-primary); color: var(--dsw-alias-bg-base); }
+.mo-btn-ghost { background: none; color: var(--dsw-alias-label-secondary); border-color: var(--dsw-alias-border-l3); }
+.mo-btn[disabled],
+.mo-btn-ink[disabled],
+.mo-btn-ghost[disabled] { opacity: 0.45; cursor: not-allowed; }
+.mo-textlink {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--dsw-alias-link);
+  font: inherit;
+  font-size: var(--mo-t4);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---------- \u72B6\u6001\u5757 / \u9AA8\u67B6\uFF0844px \u7B49\u9AD8\uFF0C\u4E0D\u4F4D\u79FB\uFF09 ---------- */
+.mo-state-block { max-width: var(--mo-w-prose); padding: var(--mo-s5) 0 var(--mo-s5) var(--mo-s4); }
+.mo-state-title { margin: 0 0 var(--mo-s2); font-size: var(--mo-t2); line-height: var(--mo-t2-lh); font-weight: 600; }
+.mo-state-text {
+  margin: 0 0 var(--mo-s3);
+  max-width: 640px;
+  font-size: var(--mo-t3);
+  line-height: var(--mo-t3-lh-loose);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-state-hint {
+  margin: 0 0 var(--mo-s3);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-state-empty { padding-left: var(--mo-s4); }
+.mo-state-error {
+  border-left: 2px solid var(--dsw-alias-state-error-primary);
+  padding-left: var(--mo-s3);
+}
+.mo-skel-wrap { padding: var(--mo-s3) var(--mo-s4) 0 0; }
+.mo-skel-row {
+  height: 44px;
+  margin-bottom: var(--mo-s1);
+  background: var(--dsw-alias-bg-skeleton);
+  animation: mo-skel-breathe 1.2s ease-in-out infinite;
+}
+.mo-skel-note {
+  margin: var(--mo-s2) 0 0;
+  font-size: var(--mo-t4);
+  color: var(--dsw-alias-label-secondary);
+}
+@keyframes mo-skel-breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* ---------- \u68C0\u89C6\u680F\uFF08aside\uFF0C360\uFF09 ---------- */
+.mo-insp {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  background: color-mix(in srgb, var(--dsw-alias-bg-base) 94%, var(--dsw-alias-label-primary) 6%);
+  border-left: 1px solid var(--dsw-alias-border-l3);
+}
+.mo-insp-head {
+  padding: var(--mo-s5) var(--mo-s5) var(--mo-s3);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.mo-insp-title { margin: 0; font-size: var(--mo-t1); line-height: var(--mo-t1-lh); font-weight: 600; overflow-wrap: anywhere; }
+.mo-insp-sub {
+  margin: var(--mo-s1) 0 0;
+  font-family: var(--mo-mono);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+.mo-insp-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--mo-s4) var(--mo-s5);
+  transition: opacity var(--mo-dur-insp) var(--mo-ease);
+}
+.mo-insp-foot {
+  display: flex;
+  gap: var(--mo-s2);
+  justify-content: flex-end;
+  padding: var(--mo-s3) var(--mo-s5) var(--mo-s4);
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+.mo-insp-foot[hidden] { display: none; }
+
+/* \u5C5E\u6027\u8868 */
+.mo-props { margin: 0; }
+.mo-prop {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  column-gap: var(--mo-s2);
+  padding: 2px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+}
+.mo-prop:last-child { border-bottom: 0; }
+.mo-prop dt { color: var(--dsw-alias-label-secondary); }
+.mo-prop dd {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--mo-mono);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.mo-insp-text {
+  margin: var(--mo-s3) 0 0;
+  font-size: var(--mo-t3);
+  line-height: var(--mo-t3-lh-loose);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-insp-label {
+  margin: var(--mo-s4) 0 var(--mo-s1);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  letter-spacing: 0.08em;
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-insp-body .mo-verdicts + .mo-section-head {
+  margin-top: var(--mo-s4);
+  padding-top: var(--mo-s3);
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+/* \u6821\u9A8C\u884C\uFF1A\u62D2 / \u8B66 \u5206\u5F00\uFF0C\u4E92\u4E0D\u77ED\u8DEF */
+.mo-verdicts { margin: var(--mo-s3) 0 0; display: flex; flex-direction: column; gap: var(--mo-s1); }
+.mo-verdict {
+  display: flex;
+  gap: var(--mo-s2);
+  align-items: baseline;
+  padding-left: var(--mo-s2);
+  border-left: 2px solid var(--dsw-alias-border-l3);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-verdict-refuse { border-left-color: var(--dsw-alias-state-error-primary); }
+.mo-verdict-warn { border-left-color: var(--dsw-alias-state-warn-primary); }
+.mo-verdict-ok { border-left-color: var(--dsw-alias-state-success-primary); }
+.mo-verdict-tag {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-family: var(--mo-mono);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* \u751F\u6548\u65F6\u673A */
+.mo-effect {
+  margin: var(--mo-s3) 0 0;
+  padding-left: var(--mo-s2);
+  border-left: 1px solid var(--dsw-alias-border-l3);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ---------- \u72B6\u6001\u6761\uFF08role=status\uFF09 ---------- */
+.mo-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mo-s5);
+  height: var(--mo-h-status);
+  padding: 0 var(--mo-s5);
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-statusbar .mo-num { font-size: var(--mo-t4); }
+.mo-status-left {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mo-status-right { flex: 0 0 auto; }
+
+/* ---------- \u4EA4\u4E92\u4E09\u6001\uFF08brief \xA7\u4E03-1\uFF09 ---------- */
+.mo-btn:hover,
+.mo-btn-ink:hover,
+.mo-btn-ghost:hover,
+.mo-kindbtn:hover,
+.mo-tab:hover,
+.mo-row-button:hover,
+.mo-textlink:hover,
+.mo-face-btn:hover,
+.mo-bucket-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.mo-btn-ink:hover { background: var(--dsw-alias-label-primary); filter: brightness(0.9); }
+
+.mo-btn:active,
+.mo-btn-ink:active,
+.mo-btn-ghost:active,
+.mo-kindbtn:active,
+.mo-tab:active,
+.mo-row-button:active,
+.mo-textlink:active,
+.mo-face-btn:active,
+.mo-bucket-row:active { background: var(--dsw-alias-interactive-bg-active); }
+
+.mo-btn:focus-visible,
+.mo-btn-ink:focus-visible,
+.mo-btn-ghost:focus-visible,
+.mo-kindbtn:focus-visible,
+.mo-tab:focus-visible,
+.mo-row-button:focus-visible,
+.mo-textlink:focus-visible,
+.mo-face-btn:focus-visible,
+.mo-bucket-row:focus-visible,
+.mo-field:focus-visible,
+.mo-title-input:focus-visible,
+.mo-reason-input:focus-visible,
+.mo-capture-input:focus-visible,
+.mo-remember-close:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+.mo-field:focus-visible,
+.mo-title-input:focus-visible,
+.mo-reason-input:focus-visible,
+.mo-capture-input:focus-visible { outline-offset: -1px; }
+.mo-tab:focus-visible,
+.mo-row-button:focus-visible,
+.mo-bucket-row:focus-visible { outline-offset: -1px; }
+
+/* ---------- \u52A8\u6548\u964D\u7EA7\uFF08brief \xA7\u516D\uFF09 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .mo-app *,
+  .mo-app *::before,
+  .mo-app *::after,
+  .mo-remember-backdrop,
+  .mo-remember-backdrop * {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+  }
+  .mo-skel-row { opacity: 1; }
+}
+
+/* ---------- \u5C4F\u8BFB\u4E13\u7528 ---------- */
+.mo-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+`;
+
+// src/client/v9/styles-panes.ts
+var PANE_CSS = `
+/* ---------- \u53CC\u9762\u5F00\u5173\uFF08\u5185\u5BB9\u9762 \u21C4 \u6210\u672C\u9762\uFF09---------- */
+.mo-faces {
+  display: flex;
+  align-items: center;
+  gap: var(--mo-s3);
+  padding: 0 var(--mo-s3) var(--mo-s3) 0;
+}
+.mo-face-switch {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--mo-r-control);
+  overflow: hidden;
+}
+.mo-face-btn {
+  min-height: 32px;
+  padding: 0 var(--mo-s3);
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: var(--mo-t4);
+  cursor: pointer;
+  transition: color var(--mo-dur-state) var(--mo-ease), background-color var(--mo-dur-state) var(--mo-ease);
+}
+.mo-face-btn[aria-checked="true"] {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--dsw-alias-state-business-primary);
+}
+.mo-face-note {
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ---------- \u5DE5\u5177\u5E26\uFF08\u641C\u7D22 / \u7C7B\u578B\u7B7E / \u8F93\u5165\uFF09---------- */
+.mo-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--mo-s2);
+  padding: 0 var(--mo-s3) var(--mo-s3) 0;
+}
+.mo-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 var(--mo-s3);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--mo-r-control);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: var(--mo-t3);
+}
+.mo-field::placeholder { color: var(--dsw-alias-label-tertiary); }
+.mo-kindbtn {
+  min-width: 44px;
+  min-height: 28px;
+  padding: 0 var(--mo-s2);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--mo-r-control);
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: var(--mo-t4);
+  cursor: pointer;
+  transition: background-color var(--mo-dur-state) var(--mo-ease), color var(--mo-dur-state) var(--mo-ease);
+}
+.mo-kindbtn[aria-pressed="true"] {
+  color: var(--dsw-alias-label-primary);
+  border-color: var(--dsw-alias-label-primary);
+}
+
+/* ---------- \u8BB0\u4E00\u6761 ---------- */
+.mo-capture-box { padding-right: var(--mo-s4); }
+.mo-capture-input {
+  width: 100%;
+  min-height: 120px;
+  padding: var(--mo-s3);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--mo-r-control);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: var(--mo-t3);
+  line-height: var(--mo-t3-lh-loose);
+  resize: vertical;
+}
+.mo-capture-note {
+  margin: var(--mo-s2) 0 var(--mo-s3);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-capture-actions { display: flex; align-items: center; gap: var(--mo-s3); }
+.mo-inline-done {
+  display: flex;
+  align-items: center;
+  gap: var(--mo-s2);
+  margin-top: var(--mo-s3);
+  padding: var(--mo-s2) var(--mo-s3);
+  border-left: 2px solid var(--dsw-alias-state-success-primary);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-inline-done[data-tone="err"] { border-left-color: var(--dsw-alias-state-error-primary); }
+
+/* ---------- \u68C0\u89C6\u680F\u7F16\u8F91\u6001\uFF1A\u5355\u884C\u8F93\u5165 / \u9A73\u56DE\u7406\u7531 ---------- */
+.mo-title-input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 var(--mo-s3);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--mo-r-control);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: var(--mo-t3);
+}
+.mo-reason-input {
+  width: 100%;
+  min-height: 72px;
+  padding: var(--mo-s2) var(--mo-s3);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--mo-r-control);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: var(--mo-t3);
+  line-height: var(--mo-t3-lh);
+  resize: vertical;
+}
+.mo-reason-input[aria-invalid="true"] { border-color: var(--dsw-alias-state-error-primary); }
+
+/* diff\uFF1A\u4E0A\u4E0B\u53E0\uFF0C\u5220\u9664\u884C 2px danger + \u5220\u9664\u7EBF\uFF0C\u63D2\u5165\u884C 2px ok */
+.mo-diff {
+  margin: var(--mo-s2) 0 0;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+.mo-diff-line {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  column-gap: var(--mo-s2);
+  padding: var(--mo-s1) 0 var(--mo-s1) var(--mo-s2);
+  font-size: var(--mo-t3);
+  line-height: var(--mo-t3-lh);
+}
+.mo-diff-line::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--mo-s1);
+  bottom: var(--mo-s1);
+  width: 2px;
+}
+.mo-diff-removed::before { background: var(--dsw-alias-state-error-primary); }
+.mo-diff-added::before { background: var(--dsw-alias-state-success-primary); }
+.mo-diff-removed .mo-diff-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-diff-no {
+  font-family: var(--mo-mono);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t3-lh);
+  color: var(--dsw-alias-label-tertiary);
+}
+.mo-diff-text { overflow-wrap: anywhere; }
+
+/* ---------- \u6876\u884C\uFF08V1\uFF09---------- */
+.mo-bucket-rows { list-style: none; margin: 0; padding: 0; }
+.mo-bucket-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--mo-s3);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--mo-s2) var(--mo-s3) var(--mo-s2) var(--mo-s4);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--mo-dur-state) var(--mo-ease);
+}
+.mo-bucket-row[aria-current="true"] { background: var(--dsw-alias-card-fill-hover); }
+.mo-ops-row { min-height: 32px; }
+.mo-bucket-name { font-size: var(--mo-t3); }
+.mo-bucket-note {
+  grid-column: 1 / -1;
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-bucket-num {
+  font-family: var(--mo-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--mo-t3);
+  text-align: right;
+}
+.mo-bucket-num[data-unknown="true"] { color: var(--dsw-alias-label-secondary); }
+
+/* meter\uFF1A\u84DD = \u4F60\u80FD\u52A8\uFF0C\u7070 = \u52A8\u4E0D\u4E86\uFF1B\u4E0D\u53EF\u8BFB\u6876\u4E0D\u5165\u767E\u5206\u6BD4 */
+.mo-meter-wrap { padding: var(--mo-s2) var(--mo-s4) var(--mo-s2) 0; }
+.mo-meter {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  border-radius: var(--mo-r-flat);
+  overflow: hidden;
+}
+.mo-meter-seg { height: 100%; }
+.mo-meter-fixed { background: var(--dsw-alias-state-idle-primary); }
+.mo-meter-own { background: var(--dsw-alias-state-business-primary); }
+.mo-meter-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mo-s4);
+  margin-top: var(--mo-s2);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+}
+.mo-legend-item { display: inline-flex; align-items: center; gap: var(--mo-s1); }
+.mo-check-line {
+  margin: var(--mo-s2) 0 0;
+  font-family: var(--mo-mono);
+  font-size: var(--mo-t4);
+  line-height: var(--mo-t4-lh);
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- /remember \u6D6E\u5C42\uFF08\u56DE\u5F52\u951A\u70B9\uFF1A\u5FC5\u987B position: fixed\uFF09---------- */
+.mo-remember-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--dsw-alias-bg-mask-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+.mo-remember-backdrop[hidden] { display: none; }
+.mo-remember-dialog {
+  width: 560px;
+  max-width: calc(100vw - var(--mo-s6));
+  padding: var(--mo-s5);
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--mo-r-overlay);
+}
+.mo-remember-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--mo-s3);
+  margin-bottom: var(--mo-s3);
+}
+.mo-remember-title { margin: 0; font-size: var(--mo-t2); line-height: var(--mo-t2-lh); font-weight: 600; }
+.mo-remember-close {
+  min-width: 44px;
+  min-height: 28px;
+  padding: 0 var(--mo-s2);
+  background: none;
+  border: 1px solid var(--dsw-alias-border-l3);
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--mo-t4);
+}
+
+/* ---------- \u7A7A\u6001\u51FA\u53E3\u6309\u94AE\u7684\u5BF9\u9F50 ---------- */
+.mo-state-actions { display: flex; gap: var(--mo-s2); align-items: center; }
+`;
+
+// src/client/v9/styles.ts
+var STYLE_ID2 = "dsh-memory-ops-v9-style";
+var V9_CSS = `${BASE_CSS}
+${PANE_CSS}`;
+function installV9Styles() {
+  if (typeof document === "undefined") return () => {
+  };
+  const existing = document.getElementById(STYLE_ID2);
+  if (existing !== null) return () => {
+  };
+  const style = document.createElement("style");
+  style.id = STYLE_ID2;
+  style.textContent = V9_CSS;
+  document.head.append(style);
+  return () => {
+    style.remove();
+  };
+}
+
 // src/client/index.ts
 var inject = ["slots"];
 function apply(ctx) {
   const disposers = [];
+  disposers.push(installV9Styles());
   disposers.push(installStyles());
   disposers.push(registerMemoryPanel(ctx));
   disposers.push(registerSessionView(ctx));
