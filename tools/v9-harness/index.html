@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>v9 面板 harness</title>
+<!-- 宿主 token 的真实值复刻（构建时从 prototype/tokens.css 复制到输出目录） -->
+<link rel="stylesheet" href="./tokens.css">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body { background: var(--dsw-alias-bg-base); }
+  #root { height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="./bundle.js"></script>
+</body>
+</html>

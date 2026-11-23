@@ -21,3 +21,7 @@ lib/
 
 # 一次性诊断产物（asar 抽取、临时脚本输出），不入库
 .tmp/
+
+# v9 harness 的桥数据夹具：内容是真实个人库（标题/路径/未命中问题），
+# 入库等于把个人记忆一起推上去。用 scripts/capture-fixtures.mjs 本地重抓。
+tools/v9-harness/fixtures.json
