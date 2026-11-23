@@ -1,28 +1,20 @@
 /* ============================================================
- * tokens.css —— 原型专用：宿主 token 的**真实值**复刻
+ * tokens.css —— 原型专用：宿主 token 的真实值复刻（v9）
  *
- * ⚠️ 落地规则（design/direction-card.md §零/§五）：
- * 本文件整体在移植进 packages/dsh-plugin 时必须删除。
- * 插件运行在宿主内，`--dsw-alias-*` 由宿主提供真实值。
+ * ⚠️ 移植进 packages/dsh-plugin 时整文件删除：插件运行在宿主内，
+ * `--dsw-alias-*` 由宿主提供真实值。本文件是唯一允许字面色值的文件。
  *
- * v4 的教训：这里的 oklch 占位值与宿主真实值不符——
- * 宿主浅色主题里 bg-layer-1/2 都是纯白、border-l1 是 4% 黑，
- * 于是「分层」和「分组」在亮色下全部隐形（这就是「太素」的根因）。
- * v5 改为**逐字抄录宿主 design-platform.css 的两套别名块**
- * （来源：app.asar 内 dsh-client-ui-theme/src/styles/design-platform.css，
- * 浅色块 + body[data-ds-dark-theme] 深色块）。
- * 本原型因此同时是主题回归测试：切 data-ds-dark-theme 与宿主行为一致。
- *
- * 只抄本原型用到的别名；未列出的宿主别名在本文件缺席是刻意的，
- * 缺席即「不许用」，防止随手抓一个没验证过对比度的 token。
+ * 宿主别名逐字沿用 v5 起抄录的两套值——它们是回归测试基准，不是自由度。
+ * 切 body[data-ds-dark-theme] 必须与宿主行为一致。
+ * v9 只改「尺度 / 版式 / 动效」段：字阶 44/28/18/14/12，圆角 0/6/10，
+ * 画布 1614×900，三栏 212 / 1fr / 360。
  * ============================================================ */
 
 :root {
-  /* —— 浅色（宿主 body 默认块）—— */
+  /* —— 浅色 —— */
   --dsw-alias-bg-base: rgb(255, 255, 255);
   --dsw-alias-bg-layer-1: rgb(255, 255, 255);
   --dsw-alias-bg-layer-2: rgb(255, 255, 255);
-  --dsw-alias-bg-overlay: rgb(233, 236, 242);
   --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.24);
   --dsw-alias-bg-skeleton: rgba(0, 0, 0, 0.04);
   --dsw-alias-bg-module-platform: rgb(245, 246, 247);
@@ -42,14 +34,11 @@
   --dsw-alias-border-l3: rgba(0, 0, 0, 0.12);
   --dsw-alias-border-l4: rgba(0, 0, 0, 0.16);
 
-  /* 强调蓝：宿主业务色（不是 brand——brand 在浅色下是近黑，见方向卡 §零-3） */
   --dsw-alias-state-business-primary: rgb(65, 118, 230);
   --dsw-alias-button-info-fill: rgb(65, 118, 230);
   --dsw-alias-button-info-hover: rgb(122, 170, 255);
   --dsw-alias-link: rgb(65, 118, 230);
 
-  /* 语义三色（文字色另配：浅色下 amber-500 / green-500 直接做小字对比不足，
-     徽标文字一律 label-primary，颜色由 tint 底 + 圆点承担——方向卡 §七-2） */
   --dsw-alias-state-warn-primary: rgb(245, 158, 11);
   --dsw-alias-state-warn-label: rgb(221, 134, 41);
   --dsw-alias-state-warn-tertiary: rgb(254, 245, 231);
@@ -58,30 +47,38 @@
   --dsw-alias-state-error-primary: rgb(236, 19, 19);
   --dsw-alias-state-error-secondary: rgb(242, 90, 90);
   --dsw-alias-state-idle-primary: rgb(212, 212, 212);
-  --dsw-alias-state-done-primary: rgb(124, 58, 237);
 
-  --dsw-alias-tooltip-bg: rgb(33, 33, 35);
-  --dsw-alias-tooltip-label: rgb(255, 255, 255);
+  /* —— 尺度（v9：桌面版，T0 只给数字）—— */
+  --t0: 44px;  --t0-lh: 48px;
+  --t1: 28px;  --t1-lh: 36px;
+  --t2: 18px;  --t2-lh: 26px;
+  --t3: 14px;  --t3-lh: 22px;
+  --t3-lh-loose: 24px;
+  --t4: 12px;  --t4-lh: 18px;
 
-  /* —— 尺度（docs/product.md §六，非发明）—— */
-  --t1: 24px;  --t1-lh: 32px;
-  --t2: 20px;  --t2-lh: 28px;
-  --t3: 16px;  --t3-lh: 24px;
-  --t4: 14px;  --t4-lh: 22px;
-  --t5: 12px;  --t5-lh: 18px;
+  --s1: 4px;   --s2: 8px;   --s3: 12px;
+  --s4: 16px;  --s5: 24px;  --s6: 32px;
 
-  --s1: 4px;  --s2: 8px;  --s3: 12px;
-  --s4: 16px; --s5: 24px; --s6: 32px;
-
-  --r-row: 0;
+  /* 圆角三档（brief §四） */
+  --r-flat: 0;
   --r-control: 6px;
-  --r-container: 8px;   /* v6：卡片与容器档（与插件 --r-container 同名同值，v5 叫 --r-card 是漂移源） */
-  --r-overlay: 12px;
+  --r-overlay: 10px;
+
+  /* 版式（brief §零） */
+  --w-canvas: 1614px;
+  --h-canvas: 900px;
+  --w-rail: 212px;
+  --w-insp: 360px;
+  --h-topbar: 72px;
+  --h-status: 28px;
+  --h-band: 72px;
+  --h-band-folded: 28px;
+  --w-prose: 720px;
 
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --dur-state: 120ms;
-  --dur-overlay: 180ms;
+  --dur-insp: 180ms;
 }
 
 /* —— 深色（宿主 body[data-ds-dark-theme] 块，逐字对应）—— */
@@ -89,7 +86,6 @@ body[data-ds-dark-theme] {
   --dsw-alias-bg-base: rgb(21, 21, 23);
   --dsw-alias-bg-layer-1: rgb(35, 35, 36);
   --dsw-alias-bg-layer-2: rgb(44, 44, 46);
-  --dsw-alias-bg-overlay: rgb(97, 102, 107);
   --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.5);
   --dsw-alias-bg-skeleton: rgba(255, 255, 255, 0.08);
   --dsw-alias-bg-module-platform: rgb(53, 54, 56);
@@ -122,14 +118,8 @@ body[data-ds-dark-theme] {
   --dsw-alias-state-error-primary: rgb(242, 90, 90);
   --dsw-alias-state-error-secondary: rgb(242, 90, 90);
   --dsw-alias-state-idle-primary: rgb(84, 85, 87);
-  --dsw-alias-state-done-primary: rgb(167, 139, 250);
-
-  --dsw-alias-tooltip-bg: rgb(67, 69, 74);
-  --dsw-alias-tooltip-label: rgb(255, 255, 255);
 }
 
 /* ============================================================
- * 本文件只放「值」，不放任何「规则」。
- * 动效降级（prefers-reduced-motion）在 app.css——本文件落地时整段删除，
- * 放在这里的规则会随之消失。
+ * 本文件只放「值」，不放「规则」：动效降级在 app.css。
  * ============================================================ */

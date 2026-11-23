@@ -1,25 +1,133 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>记忆库 v6 · 可运行原型</title>
+<meta charset="utf-8">
+<title>记忆库 v9 · 三栏工作台（原型）</title>
+<meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="app.css">
-<link rel="stylesheet" href="app-pages.css">
 </head>
 <body>
-<div class="stage">
-  <!-- 宿主侧栏的真实宽度是 400px，这里按原尺寸还原 -->
-  <div class="sidebar" id="panel" role="application" aria-label="记忆库面板"></div>
-  <aside class="harness" id="harness" aria-label="原型控制台"></aside>
+<div class="app" id="app">
+
+  <!-- 顶条：品牌 · 判定句 · T0 读数（每页唯一最大字号，只给数字） -->
+  <header class="topbar" role="banner">
+    <div class="brand">
+      <span class="brand-name">记忆库</span>
+      <span class="brand-scope num" id="scope">今天</span>
+    </div>
+    <div id="ledeSlot"></div>
+    <div class="top-right">
+      <div class="readout">
+        <span id="figureSlot"></span>
+        <span class="unit" id="unitSlot">件要动手</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="workarea">
+
+    <!-- 左轨：5 个分区 + 原型控制台 -->
+    <div class="rail">
+    <nav class="rail-tabs" role="tablist" aria-label="记忆库分区" aria-orientation="vertical">
+      <ul class="rail-list">
+        <li>
+          <button type="button" class="tab" role="tab" id="tab-today" aria-controls="pane-host" aria-selected="true" tabindex="0">
+            <span class="tab-idx num">01</span><span class="tab-label">今天</span><span class="tab-count num" id="cnt-today">3</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="tab" role="tab" id="tab-capture" aria-controls="pane-host" aria-selected="false" tabindex="-1">
+            <span class="tab-idx num">02</span><span class="tab-label">记一条</span><span class="tab-count num" id="cnt-capture">2</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="tab" role="tab" id="tab-todo" aria-controls="pane-host" aria-selected="false" tabindex="-1">
+            <span class="tab-idx num">03</span><span class="tab-label">待办</span><span class="tab-count num" id="cnt-todo">8</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="tab" role="tab" id="tab-memory" aria-controls="pane-host" aria-selected="false" tabindex="-1">
+            <span class="tab-idx num">04</span><span class="tab-label">记忆</span><span class="tab-count num" id="cnt-memory">42</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="tab" role="tab" id="tab-health" aria-controls="pane-host" aria-selected="false" tabindex="-1">
+            <span class="tab-idx num">05</span><span class="tab-label">库健康</span><span class="tab-count num" id="cnt-health">236</span>
+          </button>
+        </li>
+      </ul>
+    </nav>
+
+      <div class="rail-foot">
+        <p class="rail-foot-title">原型控制台</p>
+        <div class="dev-row">
+          <button type="button" class="dev-btn" data-phase="normal" aria-pressed="true">正常</button>
+          <button type="button" class="dev-btn" data-phase="loading" aria-pressed="false">加载</button>
+          <button type="button" class="dev-btn" data-phase="empty" aria-pressed="false">空</button>
+          <button type="button" class="dev-btn" data-phase="error" aria-pressed="false">错误</button>
+        </div>
+        <div class="dev-row">
+          <button type="button" class="dev-btn" data-theme="light" aria-pressed="true">浅色</button>
+          <button type="button" class="dev-btn" data-theme="dark" aria-pressed="false">深色</button>
+          <button type="button" class="dev-btn" data-host="1" aria-pressed="false">宿主可读</button>
+          <button type="button" class="dev-btn" id="devRemember" data-open-remember>打开 /remember</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 中栏：双车道 = 上带「每请求都在」+ 下方清单 -->
+    <main class="center" id="pane-host" role="tabpanel" aria-labelledby="tab-today" tabindex="0">
+      <section class="band" id="band" data-folded="false" aria-label="每请求都在">
+        <span class="band-tag">每请求都在</span>
+        <span class="band-note" id="bandNote">置顶 2 条 · 全部注入 · 段预算 256 已用 65</span>
+        <button type="button" class="textlink" id="bandFold" aria-expanded="true" aria-controls="bandNote">折起</button>
+        <span class="band-figure">
+          <span class="value num" id="bandValue">236</span>
+          <span class="band-figure-unit">tokens</span>
+        </span>
+      </section>
+      <div class="pane" id="paneBody"></div>
+    </main>
+
+    <!-- 检视栏：选什么就看什么、改什么 -->
+    <aside class="insp" aria-labelledby="inspTitle">
+      <div class="insp-head">
+        <h2 class="insp-title" id="inspTitle">选一条线索</h2>
+        <p class="insp-sub num" id="inspSub">左边点一行，这里出详情与动作</p>
+      </div>
+      <div class="insp-body" id="inspBody"></div>
+      <div class="insp-foot" id="inspFoot"></div>
+    </aside>
+
+  </div>
+
+  <footer class="statusbar" role="status">
+    <span class="status-left">估算口径：CJK 1 字 ≈ 1 token，其余 4 字符 ≈ 1 token；非 tokenizer 精确值，仅用于相对比较</span>
+    <span class="status-right num" id="statusRight">真实库快照 · 42 条记忆 · 2026-11-21</span>
+  </footer>
+
 </div>
 
-<!--
-  用经典脚本按依赖顺序加载，不用 ES module：
-  file:// 协议下 module 会被 CORS 拦掉，页面白屏（实测确认）。
-  原型必须能双击打开，所以这里牺牲模块化换取可用性。
--->
+<div class="sr-only" aria-live="polite" id="live"></div>
+
+<!-- 浮层：/remember（S4 表面。回归锚点：必须是 position: fixed + inset: 0） -->
+<div class="remember-backdrop" id="rememberBackdrop" hidden>
+  <div class="remember-dialog" role="dialog" aria-modal="true" aria-labelledby="rememberTitle">
+    <div class="remember-head">
+      <h2 class="remember-title" id="rememberTitle">记一条</h2>
+      <button type="button" class="remember-close" id="rememberClose">关闭</button>
+    </div>
+    <label class="sr-only" for="rememberText">要记的内容</label>
+    <textarea class="capture-input" id="rememberText" aria-label="要记的内容" placeholder="一句话就够；存进 INBOX 后仍需你确认"> </textarea>
+    <p class="capture-note">存入后浮层关闭，状态条留回执与撤销入口；隐私命中时浮层不关闭，框内解释原因。</p>
+    <div class="capture-actions">
+      <button type="button" class="btn-ghost" id="rememberSubmit">存进去</button>
+      <span class="section-note num">0 tokens</span>
+    </div>
+  </div>
+</div>
+
 <script src="data.js"></script>
 <script src="ui.js"></script>
 <script src="pane-today.js"></script>

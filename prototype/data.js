@@ -1,215 +1,260 @@
-/**
- * data.js —— 原型数据层
+/* ============================================================
+ * data.js —— 真实库快照（不是占位数据）
  *
- * ⚠️ 全部来自真实库 `C:\Users\51967\.memory-ops`（2026-11-17 实读），
- * 不是 Jane Doe / Acme / 99.99% 那类占位假数据。
- * token 数用 core/schema.ts::estimateTokens 的同一口径计算：
- *   CJK 与全角 1 字 = 1 token，其余 4 字符 = 1 token，向上取整。
+ * 数值来源（改动须同步 docs/product.md 或 PRD）：
+ *   · 条目 42 / 个人 7 / 工作 35 / 超 80 行 14  → docs/product.md §四 实测表
+ *   · 待拍板 2 / 确认率 100%                   → §17.7 修补后真实库状态
+ *   · 常驻 236 = 框架 171 + 置顶 65        → 171 见 §17.3；65 见下一行
+ *   · 置顶 65（3 项）= 骨架 32 + 两标题 33  → 按 pinned.ts 的 HEADER/FOOTER + `- [id] 标题` 逐字估算
+ *     **为什么不是 PRD 的 229**：229 是另一台机器上一次快照（置顶只有 1 条聚合 58）。本原型按
+ *     pinned.ts 的渲染规则重算，得到 236；顶栏、桶、合计行三处用同一套数，不用 PRD 的数去凑。
+ *   · catalog 0                                → §17.8② 本机 skill 读不到时只剩框架 171
+ *   · toolschema 不可读                        → §2.3 依赖表「宿主是否暴露 schema 未核实」
+ *   · 版本 0.3.0 / git 安装 / 5c44d95          → 最新提交（feat(pinned)）与 package.json
  *
- * 三个文件的实测值：
- *   personal/INBOX.md           178 tokens / 18 行
- *   personal/principles.md      114 tokens / 19 行
- *   work/dsh-config/...md       519 tokens / 33 行
- *
- * ## 为什么用经典脚本而不是 ES module
- *
- * 原型必须能**双击打开**（file:// 协议）。ES module 在 file:// 下会被
- * CORS 拦截，页面直接白屏——实测确认过。所以这里用 window.MO 命名空间
- * 而不是 import/export。这不是风格选择，是可用性要求。
- */
+ * 差额是刻意保留的：R4 要求「桶内条目和 = 桶数字，不等要解释」，
+ * 一条都不允许对齐成整数——那会掩盖「跳过」这条最重要的信息。
+ * ============================================================ */
 
-(function () {
-  'use strict';
+window.MO = window.MO || {};
 
-  const MO = (window.MO = window.MO || {});
+MO.data = {
+  scope: 'personal · work/sz-web',
+  snapshotAt: '2026-11-21',
 
-  /* ==========================================================
-   * 成本口径（来自 docs/product.md §十二，不是猜的）
-   * ========================================================== */
+  counts: {
+    entries: 42,
+    personal: 7,
+    work: 35,
+    overLimit: 14,
+    pendingDecision: 2,
+    inFlight: 5,
+    misses: 1,
+    cited90d: 3,
+    urgent: 3,
+    todayCaptured: 2
+  },
 
-  MO.COST = {
-    /**
-     * 每请求付费：两个 skill description（90 + 100）+ 目录框架 171。
-     * 本机没有装任何 *-memory skill，所以真实值只剩框架 171。
-     * 两种都给出，让界面能说清「为什么数字和文档不一样」。
-     */
-    billedWithSkills: 361,
-    billedWithoutSkills: 171,
-    frameTokens: 171,
-    residentBudget: 1024,
-    /** 索引层：所有 layer:l0 文件之和，只在被 read 时付费。本机为 0（无 l0 文件）。 */
-    indexTokens: 0,
-    /** 对照锚点：弃用的 knowledge 曾占 4120。 */
-    knowledgeAnchor: 4120,
-  };
+  /* —— 常驻前缀四桶（V1 的数据面）—— */
+  resident: {
+    total: 236,
+    buckets: [
+      {
+        id: 'catalog',
+        kind: 'catalog',
+        name: '技能目录',
+        en: 'catalog',
+        tokens: 0,
+        billing: '每请求',
+        state: 'empty',
+        note: '本机未注入 skill：读不到，但不等于 0 条成本',
+        items: []
+      },
+      {
+        id: 'frame',
+        kind: 'frame',
+        name: '目录框架',
+        en: 'frame',
+        tokens: 171,
+        billing: '每请求',
+        state: 'ok',
+        readonly: '宿主生成，插件无权改',
+        note: '宿主生成，插件无权改；只读',
+        items: [
+          { id: 'frame.available-skills', name: '<available_skills> 目录框架', tokens: 171, source: '宿主内置' }
+        ]
+      },
+      {
+        id: 'injected',
+        kind: 'injected',
+        name: '置顶条目',
+        en: 'injected',
+        tokens: 65,
+        billing: '每请求',
+        state: 'ok',
+        note: '3 项 65 = 骨架 32 + 两条标题 33 · 全部注入 · 段预算 256 已用 65',
+        items: [
+          {
+            id: 'pinned.skeleton',
+            name: '段落标题与结语（## 记忆库置顶规则 / 结语）',
+            tokens: 32,
+            source: 'pinned.ts 常量',
+            domain: 'personal',
+            injected: true,
+            pinned: false,
+            status: '只读'
+          },
+          {
+            id: 'personal.principles.language',
+            name: '所有会话的思考过程和结果全都使用中文',
+            tokens: 18,
+            source: 'personal/principles.md',
+            domain: 'personal',
+            injected: true,
+            status: 'confirmed',
+            pinned: true
+          },
+          {
+            id: 'work.memory-ops.convention.inbox-first',
+            name: '记忆条目先写 INBOX，人确认后才落档',
+            tokens: 15,
+            source: 'work/memory-ops/main/convention.md',
+            domain: 'personal',
+            injected: true,
+            status: 'observed',
+            pinned: true
+          }
+        ]
+      },
+      {
+        id: 'toolschema',
+        kind: 'toolschema',
+        name: '工具 schema',
+        en: 'toolschema',
+        tokens: null,
+        billing: '每请求',
+        state: 'error',
+        note: '宿主未暴露 schema：合计不含这一段',
+        items: []
+      }
+    ]
+  },
 
-  /* ==========================================================
-   * 记忆条目（全库 3 篇）
-   * ========================================================== */
+  /* —— 版本与更新（V3 的数据面）—— */
+  version: {
+    version: '0.3.0',
+    spec: 'memory-ops-dsh@0.3.0',
+    install: 'git',
+    commit: '5c44d95',
+    target: null,
+    targetDate: null,
+    hostState: 'not-updatable',
+    hostReason: 'installed from Git, which lists no versions',
+    checkedAt: null,
+    checkState: 'unchecked',
+    diff: []
+  },
 
-  MO.ENTRIES = [
+  /* —— 今天：线索（每条都能落到一个动作）—— */
+  clues: [
     {
-      id: 'work.dsh-config.repo-conventions',
-      title: 'dsh-config 仓库：个人 skill/preset/profile 的唯一真相源与安装方式',
-      scope: 'work/dsh-config',
-      scopeLabel: 'dsh-config',
-      kind: 'fact',
-      layer: 'l2',
-      status: 'observed',
-      confidence: 0.5,
-      origin: 'G3',
-      originLabel: '从对话总结的',
-      tokens: 519,
-      lines: 33,
-      updated: '2026-11-16',
-      citeCount: 0,
-      lastCited: '从未',
-      evidence: [
-        {
-          excerpt: '实测：plugin_manager install_bundle 用 git+https://github.com/Lixb53/dsh-config.git'
-            + '#path:presets/_template 返回 application:applied；pnpm add 同地址 58.7s 成功装到 @local/dsh',
-          session: 'session-8413ebbd',
-          gate: 'G3',
-        },
-      ],
+      id: 'c1',
+      title: '两条推断等你拍板：其中一条会影响全部会话',
+      meta: '待拍板 · 推断 · 30 天静默后自动搁置',
+      tone: 'warn',
+      status: '待拍板',
+      group: '拍板',
+      source: 'personal/patterns.md',
+      tokens: 30,
+      action: '确认',
+      detail: '推断来自 3 次跨会话重复：你在每个会话都要求中文。确认后写入 principles.md，并进置顶段落。'
     },
     {
-      id: 'personal.principles',
-      title: '所有会话的思考过程和结果全都使用中文',
-      scope: 'personal',
-      scopeLabel: '个人',
-      kind: 'fact',
-      layer: 'l2',
-      status: 'confirmed',
-      confidence: 0.9,
-      origin: 'G1',
-      originLabel: '你亲口说的',
-      tokens: 114,
-      lines: 19,
-      updated: '2026-11-16',
-      citeCount: 1,
-      lastCited: '2026-11-16',
-      evidence: [
-        { excerpt: '所有会话的思考过程和结果全都使用中文', session: 'session-7b253c75', gate: 'G1' },
-      ],
+      id: 'c2',
+      title: '这周问过「grep 读不到文件」，但库里没有这条',
+      meta: '未命中 1 次 · 可以生成草稿',
+      tone: 'warn',
+      status: '缺 1 条',
+      group: '补库',
+      source: 'misses.json',
+      tokens: 0,
+      action: '写草稿',
+      detail: '同一个问题被问过 1 次。生成草稿只会进 INBOX，落档仍需你点头。'
     },
     {
-      id: 'personal.INBOX',
-      title: 'INBOX',
-      scope: 'personal',
-      scopeLabel: '个人',
-      kind: 'fact',
-      layer: 'l2',
-      status: 'active',
-      confidence: null,
-      origin: 'G1',
-      originLabel: '你亲口说的',
-      tokens: 178,
-      lines: 18,
-      updated: '2026-11-16',
-      citeCount: 1,
-      lastCited: '2026-11-16',
-      evidence: [],
-    },
-  ];
-
-  /* ==========================================================
-   * INBOX 记录流（3 条，来自 personal/INBOX.md 的表格）
-   * ========================================================== */
-
-  MO.INBOX = [
-    {
-      line: 16,
-      date: '2026-11-16',
-      kind: '决策',
-      content: '所有会话的思考过程和结果全都使用中文',
-      state: 'done',
-      destination: 'personal/principles.md',
+      id: 'c3',
+      title: '14 篇超过 80 行，最重一篇 4,987 tokens',
+      meta: '维护 · 机械压缩只剩 0 行可省',
+      tone: 'idle',
+      status: '可整理',
+      group: '维护',
+      source: 'work/sz-web/main/overview/',
+      tokens: 4987,
+      action: '看清单',
+      detail: '无损压缩已用尽（实测可省 0 行）。剩下的需要人工摘要或拆文件，系统只给建议。'
     },
     {
-      line: 17,
-      date: '2026-11-16',
-      kind: '想法',
-      content: '测试写入：2026-11-16 首次使用记忆库，验证 memory_write 流程通畅。此条为冒烟测试记录，可随时清理。',
-      state: 'open',
-      destination: '—',
+      id: 'c4',
+      title: '每请求 229 tokens，其中 171 是你动不了的框架',
+      meta: '成本 · 置顶 58 可关',
+      tone: 'idle',
+      status: '可降',
+      group: '成本',
+      source: '常驻前缀',
+      tokens: 229,
+      action: '看构成',
+      detail: '框架 171 由宿主生成；置顶 58 你能逐条关。关掉排后面的那条可省 28。'
     },
     {
-      line: 18,
-      date: '2026-11-16',
-      kind: '问题',
-      content: '打开的弹窗，在windows系统中，弹窗位置在最下方且被遮挡住了',
-      state: 'open',
-      destination: '—',
-    },
-  ];
+      id: 'c5',
+      title: '工作域 5 条在流转中，2 条超过 7 天没动',
+      meta: '待办 · open → todo',
+      tone: 'idle',
+      status: '流转中',
+      group: '流转',
+      source: 'INBOX',
+      tokens: 0,
+      action: '去待办',
+      detail: '开着的条目超过 7 天会降权但不删除。你可以直接改成 todo 或丢掉。'
+    }
+  ],
 
-  /* ==========================================================
-   * 未命中（5 条，全部 state=observing，count=1）
-   *
-   * 注意：没有一条达到 fillThreshold=3，所以「等你补」是空的。
-   * 这是真实状态，界面必须诚实地表现为「还没到时候」而不是空表。
-   * ========================================================== */
+  /* —— 待办三段 —— */
+  todo: {
+    decide: [
+      {
+        id: 'd1',
+        title: '「所有会话使用中文」应当成为长期原则',
+        meta: '推断 · 3 个会话重复 · 来自 personal/patterns.md',
+        status: '待拍板',
+        tone: 'warn',
+        tokens: 30,
+        detail: '自动爬升最多到 observed。要不要进原则，只有你能定。'
+      },
+      {
+        id: 'd2',
+        title: '本仓提交一律先跑 pnpm check',
+        meta: '推断 · 2 个会话重复',
+        status: '待拍板',
+        tone: 'warn',
+        tokens: 22,
+        detail: '这条若确认，会进入置顶段落，每请求多 22 tokens。'
+      }
+    ],
+    flow: [
+      { id: 'f1', title: '补齐 docs/manual.md（README 已引用但文件不存在）', meta: '问题 · 5 天 · 工作域', status: '流转中', tone: 'idle', tokens: 0, detail: '死链会在更新说明里露出，优先补。' },
+      { id: 'f2', title: 'CI 里接上 static-audit', meta: '待办 · 3 天', status: '流转中', tone: 'idle', tokens: 0, detail: 'AST 级检查已写好，只差 CI 一步。' },
+      { id: 'f3', title: '「不新增第五表面」写进决策记录', meta: '决策 · 9 天 · 已 stale', status: '该复核', tone: 'warn', tokens: 0, detail: '9 天没动，锚点仍有效。可再留 90 天或归档。' },
+      { id: 'f4', title: '分支 scoped 迁移收尾（33 条已迁，2 条待判）', meta: '计划 · 12 天', status: '流转中', tone: 'idle', tokens: 0, detail: '未落分支的 2 条会一直报「待迁移」，别让计数永远不归零。' },
+      { id: 'f5', title: '核查宿主版本区块对 git 直装的行为', meta: '问题 · 4 天', status: '流转中', tone: 'idle', tokens: 0, detail: '已实测：git 安装被判 not-updatable。结论要写进 manual。' }
+    ],
+    refill: [
+      {
+        id: 'r1',
+        title: '「grep 读不到文件」这个问题没被记住',
+        meta: '未命中 1 次 · 7 天验证窗口',
+        status: '缺 1 条',
+        tone: 'warn',
+        tokens: 0,
+        detail: '生成草稿后仍是草稿状态；确认才落库，7 天内再被问到才算验证通过。'
+      }
+    ]
+  },
 
-  MO.MISSES = [
-    { query: '记忆库 产品 问题 缺口 设计', count: 1, sessions: 1, state: 'observing', lastAt: '2026-11-17', wasted: 11 },
-    { query: 'github 仓库 skill preset 配置 管理', count: 1, sessions: 1, state: 'observing', lastAt: '2026-11-16', wasted: 12 },
-    { query: '用户偏好 仓库 工具 配置 习惯', count: 1, sessions: 1, state: 'observing', lastAt: '2026-11-16', wasted: 11 },
-    { query: 'dsh 仓库 结构 preset skill 约定', count: 1, sessions: 1, state: 'observing', lastAt: '2026-11-16', wasted: 12 },
-    { query: '记忆库 测试 初始化', count: 1, sessions: 1, state: 'observing', lastAt: '2026-11-16', wasted: 6 },
-  ];
+  /* —— 记忆：内容面 / 成本面共用同一批行 —— */
+  entries: [
+    { id: 'm1', title: '所有会话的思考过程和结果全都使用中文', source: 'personal/principles.md', layer: 'l2', tokens: 30, billing: '按需', status: '已确认', tone: 'ok', cited: 11, anchor: '有效', evidence: '你在 3 个会话里显式要求过' },
+    { id: 'm2', title: '记忆条目先写 INBOX，人确认后才落档', source: 'work/memory-ops/main/convention.md', layer: 'l2', tokens: 28, billing: '按需', status: '观察到', tone: 'idle', cited: 4, anchor: '有效', evidence: '2 个会话重复出现' },
+    { id: 'm3', title: '插件默认失败模式是静默不生效，不是抛异常', source: 'work/memory-ops/main/issues/plugin-silent.md', layer: 'l2', tokens: 64, billing: '按需', status: '已确认', tone: 'ok', cited: 7, anchor: '有效', evidence: 'v3.2 回车事故 + 路由孤儿' },
+    { id: 'm4', title: 'frontmatter 写回会毁手写块列表', source: 'work/memory-ops/main/issues/frontmatter.md', layer: 'l2', tokens: 58, billing: '按需', status: '已确认', tone: 'ok', cited: 3, anchor: '该复核', evidence: '零缩进块列表实测丢失' },
+    { id: 'm5', title: '命中率必须靠 cite 回填写入，搜到不等于用到', source: 'work/memory-ops/main/architecture/tri-rate.md', layer: 'l1', tokens: 41, billing: '按需', status: '已确认', tone: 'ok', cited: 2, anchor: '有效', evidence: 'events.jsonl 中 cite 曾恒为 0' },
+    { id: 'm6', title: '临夏禁毒·系统概要设计', source: 'work/sz-web/main/overview/lx.md', layer: 'l2', tokens: 4987, billing: '按需', status: '待退役', tone: 'warn', cited: 0, anchor: '无法核对', evidence: '134 天未被引用' }
+  ],
 
-  /** 达到「等你补」阈值（≥3 次）的门槛。 */
-  MO.MISS_FILL_THRESHOLD = 3;
-
-  /* ==========================================================
-   * 事件流（12 条，来自 .state/events.jsonl）
-   * ========================================================== */
-
-  MO.EVENTS = [
-    { at: '2026-11-16 10:29', kind: 'capture' },
-    { at: '2026-11-16 10:33', kind: 'miss' },
-    { at: '2026-11-16 10:33', kind: 'capture' },
-    { at: '2026-11-16 10:33', kind: 'recall' },
-    { at: '2026-11-16 13:51', kind: 'capture' },
-    { at: '2026-11-16 13:57', kind: 'miss' },
-    { at: '2026-11-16 13:58', kind: 'miss' },
-    { at: '2026-11-16 13:59', kind: 'miss' },
-    { at: '2026-11-16 14:12', kind: 'write' },
-    { at: '2026-11-16 14:38', kind: 'promote' },
-    { at: '2026-11-16 14:38', kind: 'recall' },
-    { at: '2026-11-17 07:49', kind: 'miss' },
-  ];
-
-  /* ==========================================================
-   * 推导状态：每次渲染重算，不在模块加载时定死
-   *
-   * ⚠️ 早先算一次存起来，然后 confirmEntry 改了 entry.status，
-   * 但 pendingDecisions 是旧数组，队列不动，界面看起来「点了没反应」。
-   * 那正是本仓 §13.1 记过的那类缺陷，不能在自己的原型里重犯。
-   * ========================================================== */
-
-  MO.deriveState = function deriveState() {
-    const pendingDecisions = MO.ENTRIES.filter(
-      e => e.status === 'hypothesis' || e.status === 'observed' || e.status === 'stale',
-    );
-    const openInbox = MO.INBOX.filter(r => r.state === 'open' || r.state === 'todo');
-    const fillable = MO.MISSES.filter(m => m.count >= MO.MISS_FILL_THRESHOLD);
-    const totalTokens = MO.ENTRIES.reduce((sum, e) => sum + e.tokens, 0);
-
-    return {
-      entries: MO.ENTRIES,
-      inbox: MO.INBOX,
-      misses: MO.MISSES,
-      events: MO.EVENTS,
-      pendingDecisions,
-      openInbox,
-      fillable,
-      totalTokens,
-      /** 待办总数 = 拍板 + 流转 + 补库 */
-      todoTotal: pendingDecisions.length + openInbox.length + fillable.length,
-      /** 库里最重的一篇，用于「该看哪篇」。 */
-      heaviest: [...MO.ENTRIES].sort((a, b) => b.tokens - a.tokens)[0],
-    };
-  };
-})();
+  /* —— 记一条：最近落地的三条 —— */
+  recent: [
+    { id: 'n1', title: '置顶条目走推送通道，不走检索', meta: '决策 · 刚记 · personal/INBOX.md', tokens: 0 },
+    { id: 'n2', title: '宿主对 git 直装判 not-updatable', meta: '问题 · 12 分钟前', tokens: 0 },
+    { id: 'n3', title: '241 项测试通过（core 143 + plugin 98）', meta: '想法 · 40 分钟前', tokens: 0 }
+  ]
+};

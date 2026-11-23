@@ -1,645 +1,559 @@
-/**
- * app.js —— 记忆库 v5 原型：组装 + 状态 + 动作
+/* ============================================================
+ * app.js —— 外壳：左轨导航 / 顶条读数 / 双车道带 / 检视栏 / 深链 / 状态
  *
- * 本文件只做四件事：维护状态、分派动作、拼装外壳、绑定事件。
- * 每个页面的渲染在 pane-*.js 里，共享原语在 ui.js 里。
- *
- * 经典脚本拼接顺序：data.js → ui.js → pane-*.js → app.js
- * （file:// 下 ES module 被 CORS 拦，原型必须双击可开。）
- *
- * v4→v5 新增：主题开关。切换机制与宿主完全一致——
- * 在 body 上挂/摘 data-ds-dark-theme，整套别名换值（tokens.css 两块）。
- * 这就是「主题自动跟随」的回归测试：插件落地后由宿主挂这个属性。
- */
+ * 三个承重约束（design/brief.md §八）：
+ *   1. 每页恰好 1 个 T0，且只给数字
+ *   2. 判定句 ≤20 字、单行
+ *   3. 主操作整页唯一：墨块只出现在检视栏底部（记一条除外，它在输入框旁）
+ * ============================================================ */
 
-(function () {
-  'use strict';
+window.MO = window.MO || {};
 
-  const MO = window.MO;
-  const { esc } = MO;
+MO.state = {
+  pane: 'today',
+  phase: 'normal',
+  face: 'content',
+  sel: { today: 'c1', capture: '', todo: 'd1', memory: 'm1', health: 'injected' },
+  bandFolded: false,
+  kind: '决策',
+  draft: '',
+  done: '',
+  captureError: '',
+  capturePending: false,
+  edit: null,
+  saving: false,
+  saved: '',
+  reason: '',
+  todoDone: '',
+  check: 'unchecked',
+  hostMode: false,
+  checkedAt: '',
+  query: ''
+};
 
-  /* ==========================================================
-   * 状态
-   * ========================================================== */
+MO.cfg = {
+  today: { idx: '01', label: '今天', render: MO.renderToday, inspect: MO.inspectToday, unit: '件要动手' },
+  capture: { idx: '02', label: '记一条', render: MO.renderCapture, inspect: MO.inspectCapture, unit: '条今天已记' },
+  todo: { idx: '03', label: '待办', render: MO.renderTodo, inspect: MO.inspectTodo, unit: '件压着' },
+  memory: { idx: '04', label: '记忆', render: MO.renderMemory, inspect: MO.inspectMemory, unit: '条记忆' },
+  health: { idx: '05', label: '库健康', render: MO.renderHealth, inspect: MO.inspectHealth, unit: 'tokens / 请求' }
+};
 
-  const state = {
-    pane: 'today',      // today | capture | todo | memory | health
-    detailPath: null,   // 记忆详情路径
-    phase: 'ready',     // ready | loading | empty | error
-    filterStatus: '',
-    filterScope: '',
-    query: '',
-    submitted: '',
-    captureText: '',
-    captureKind: '想法',
-    /** 刚写入的那批记录，供撤销；null 表示没有可撤销的。 */
-    lastCapture: null,
-    openOverlay: null,  // null | 'privacy'
-    openRemember: false, // /remember 弹窗演示（插件 bug 的可视化回归锚点）
-    lastAction: null,   // { ok, text } 就地反馈
-    theme: 'light',     // light | dark —— 与宿主同机制（body[data-ds-dark-theme]）
+MO.scopeLine = '真实库快照 · personal · work/sz-web';
+
+MO.ctx = function () {
+  var s = MO.state;
+  return {
+    phase: s.phase,
+    sel: s.sel,
+    face: s.face,
+    query: s.query,
+    kind: s.kind,
+    draft: s.draft,
+    done: s.done,
+    captureError: s.captureError,
+    capturePending: s.capturePending,
+    edit: s.edit,
+    saving: s.saving,
+    saved: s.saved,
+    reason: s.reason,
+    todoDone: s.todoDone,
+    check: s.check,
+    hostMode: s.hostMode,
+    checkedAt: s.checkedAt
   };
+};
 
-  /** 派生状态每次渲染重算（不在模块加载时定死——v4 教训保留）。 */
-  let data = MO.deriveState();
+/** 判定句：字面量在此集中，长度受 lint 机检（≤20 字）。empty/error 不沿用正常态文案。 */
+MO.ledeFor = function (key) {
+  if (MO.state.phase === 'empty') {
+    if (key === 'today') return MO.lede('现在没有压着的事');
+    if (key === 'capture') return MO.lede('今天还没记任何一条');
+    if (key === 'todo') return MO.lede('三段都空了');
+    if (key === 'memory') return MO.lede('这条筛选下没有条目');
+    return MO.lede('没有任何常驻内容');
+  }
+  if (MO.state.phase === 'error') return MO.lede('读不到数据，先重试');
+  if (key === 'today') return MO.lede('3 件要动手，先拍这 2 条');
+  if (key === 'capture') return MO.lede('写一条，落进个人 INBOX');
+  if (key === 'todo') return MO.lede('8 件压着，先清待拍板');
+  if (key === 'memory') return MO.lede('42 条里 3 条 90 天未引用');
+  return MO.lede('236 里你能关的只有 65');
+};
 
-  const PANES = [
-    { id: 'today', label: '今天' },
-    { id: 'capture', label: '记一条' },
-    { id: 'todo', label: '待办' },
-    { id: 'memory', label: '记忆' },
-    { id: 'health', label: '库健康' },
-  ];
+/** T0 读数：实参必须是数字（lint 机检 T0 只给数字）。error/loading 显示「—」，不许显示 0。 */
+MO.figureFor = function (key, data) {
+  if (MO.state.phase === 'error' || MO.state.phase === 'loading') return MO.figure('—');
+  if (MO.state.phase === 'empty') return MO.figure(0);
+  if (key === 'today') return MO.figure(data.counts.urgent);
+  if (key === 'capture') return MO.figure(data.counts.todayCaptured);
+  if (key === 'todo') return MO.figure(data.counts.pendingDecision + data.counts.inFlight + data.counts.misses);
+  if (key === 'memory') return MO.figure(data.counts.entries);
+  return MO.figure(data.resident.total);
+};
 
-  /* ==========================================================
-   * 外壳
-   * ========================================================== */
+MO.countFor = function (key) {
+  if (key === 'today') return MO.data.counts.urgent;
+  if (key === 'capture') return MO.data.counts.todayCaptured;
+  if (key === 'todo') return MO.data.counts.pendingDecision + MO.data.counts.inFlight + MO.data.counts.misses;
+  if (key === 'memory') return MO.data.counts.entries;
+  return MO.data.resident.total;
+};
 
-  function renderNav() {
-    return PANES.map(pane => {
-      let badge = 0;
-      if (pane.id === 'todo') badge = data.todoTotal;
-      else if (pane.id === 'memory') badge = data.entries.length;
-      const suffix = badge > 0 ? `<span class="nav-count">${badge}</span>` : '';
-      return `<button class="nav-item" role="tab" data-action="goto" data-pane="${pane.id}"
-        aria-selected="${state.pane === pane.id}">${pane.label}${suffix}</button>`;
-    }).join('');
+MO.announce = function (text) {
+  var live = document.getElementById('live');
+  if (live) live.textContent = text;
+};
+
+MO.render = function () {
+  var state = MO.state;
+  var key = state.pane;
+  var cfg = MO.cfg[key];
+  var ctx = MO.ctx();
+
+  /* 左轨 */
+  Object.keys(MO.cfg).forEach(function (k) {
+    var btn = document.getElementById('tab-' + k);
+    if (!btn) return;
+    btn.setAttribute('aria-selected', k === key ? 'true' : 'false');
+    btn.setAttribute('tabindex', k === key ? '0' : '-1');
+    var cnt = document.getElementById('cnt-' + k);
+    if (cnt) cnt.textContent = MO.num(MO.countFor(k));
+  });
+  var panel = document.getElementById('pane-host');
+  if (panel) panel.setAttribute('aria-labelledby', 'tab-' + key);
+
+  /* 顶条 */
+  var ledeSlot = document.getElementById('ledeSlot');
+  if (ledeSlot) ledeSlot.innerHTML = MO.ledeFor(key);
+  var scopeSlot = document.getElementById('scope');
+  if (scopeSlot) scopeSlot.textContent = cfg.label;
+  var figureSlot = document.getElementById('figureSlot');
+  if (figureSlot) figureSlot.innerHTML = MO.figureFor(key, MO.data);
+  var unitSlot = document.getElementById('unitSlot');
+  if (unitSlot) unitSlot.textContent = cfg.unit;
+
+  /* 双车道带 */
+  var band = document.getElementById('band');
+  var bandNote = document.getElementById('bandNote');
+  var bandValue = document.getElementById('bandValue');
+  var foldBtn = document.getElementById('bandFold');
+  if (band) band.setAttribute('data-folded', state.bandFolded ? 'true' : 'false');
+  if (bandNote) {
+    if (state.phase === 'error') bandNote.textContent = '读不到：这一带的数字显示为 —';
+    else if (state.phase === 'loading') bandNote.textContent = '读取中';
+    else if (state.phase === 'empty') bandNote.textContent = '0 条置顶 · 没有每请求成本';
+    else if (key === 'health') bandNote.textContent = '四桶 236 · 你只能动置顶那 65';
+    else bandNote.textContent = '置顶 2 条 · 全部注入 · 段预算 256 已用 65';
+  }
+  if (bandValue) {
+    bandValue.textContent = (state.phase === 'error' || state.phase === 'loading')
+      ? '—'
+      : MO.num(MO.data.resident.total);
+  }
+  if (foldBtn) {
+    foldBtn.setAttribute('aria-expanded', state.bandFolded ? 'false' : 'true');
+    foldBtn.textContent = state.bandFolded ? '展开' : '折起';
   }
 
-  function renderBody() {
-    switch (state.pane) {
-      case 'capture': return MO.renderCapture(state, data);
-      case 'todo': return MO.renderTodo(state, data);
-      case 'memory': return MO.renderMemory(state, data);
-      case 'health': return MO.renderHealth(state, data);
-      default: return MO.renderToday(state, data);
-    }
-  }
+  /* 中栏 */
+  var body = document.getElementById('paneBody');
+  if (body) body.innerHTML = cfg.render(MO.data, ctx);
 
-  /**
-   * 隐私闸门浮层。演示拦截交互：拒写时必须同时给出脱敏版本。
-   * 真实实现在 core/privacy.ts。
-   */
-  function renderOverlay() {
-    if (state.openOverlay === null) return '';
-    return `<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="ov-title">
-      <div class="overlay-card">
-        <h2 class="overlay-title" id="ov-title">检测到疑似密钥，已拒写</h2>
-        <p class="overlay-body">这段里有像 <code>gho_…</code> 的令牌。记忆库是明文 Markdown，
-          密钥写进去会被 agent 读到。下面是可以直接用的脱敏版本。</p>
-        <div class="overlay-actions">
-          <button class="btn btn-quiet" data-action="close-overlay">取消</button>
-          <button class="btn btn-primary" data-action="use-masked">填入脱敏版本</button>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  /** 主题落地：与宿主同一机制——body 上的 data-ds-dark-theme。 */
-  function applyTheme() {
-    if (state.theme === 'dark') document.body.setAttribute('data-ds-dark-theme', '');
-    else document.body.removeAttribute('data-ds-dark-theme');
-  }
-
-  /**
-   * /remember 弹窗演示。
-   *
-   * 为什么原型里要有它：插件端该弹窗在 v4 因 styles.ts 删光 .dmo-remember-*
-   * 而「挂载了但不可见」（用户报的 bug）。原型用同一套结构 + .remember-* 类
-   * 把它画出来，作为该 bug 的**可视化回归锚点**——这块 CSS 不许再变成死代码。
-   */
-  function renderRemember() {
-    if (state.openRemember !== true) return '';
-    return `<div class="remember-backdrop" data-action="close-remember" role="presentation">
-      <div class="remember-card" role="dialog" aria-modal="true" aria-label="存进记忆库"
-        data-action="noop-stop">
-        <div class="remember-head">
-          <span class="remember-title">存进记忆库</span>
-          <button class="remember-close" data-action="close-remember" aria-label="关闭">×</button>
-        </div>
-        <div class="kindrow" role="group" aria-label="记录类型">
-          ${['想法', '计划', '问题', '待办', '决策'].map(k =>
-            `<button class="kindbtn" data-action="set-kind" data-kind="${k}" aria-pressed="${state.captureKind === k}">${k}</button>`).join('')}
-        </div>
-        <textarea class="remember-input" data-field="captureText"
-          aria-label="捕获内容" placeholder="一句话赶紧存了（Ctrl+Enter 提交，Esc 取消）">${esc(state.captureText)}</textarea>
-        <div class="remember-foot">
-          <span class="meta">存入后可在浮层里 30 秒内撤销</span>
-          <span class="card-actions">
-            ${MO.button('取消', 'data-action="close-remember"')}
-            ${MO.primary('存一条', 'data-action="capture-remember"', state.captureText.trim() === '')}
-          </span>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  function render() {
-    data = MO.deriveState();
-    applyTheme();
-
-    document.getElementById('panel').innerHTML = `
-      <div class="panel-head">
-        <div class="panel-title-row">
-          <h1 class="panel-title">记忆库</h1>
-          <span class="panel-scope">${esc('C:\\Users\\51967\\.memory-ops')}</span>
-        </div>
-        <div class="nav" role="tablist">${renderNav()}</div>
-      </div>
-      <div class="panel-body" role="tabpanel">${renderBody()}</div>
-      ${renderOverlay()}
-      ${renderRemember()}`;
-
-    renderHarness();
-    syncFocus();
-    syncHash();
-  }
-
-  /* ==========================================================
-   * 深链：#<pane>/<phase>，例如 #todo/error；?theme=dark 给截图用
-   * ========================================================== */
-
-  /**
-   * 「成功」态注入的反馈必须**真的改数据**（v4 三轮评审的教训保留：
-   * 用文案代替行为 = 伪造动作结果）。
-   */
-  function successActionFor(pane) {
-    if (pane === 'capture' || pane === 'today') {
-      const maxLine = MO.INBOX.reduce((max, row) => Math.max(max, row.line), 0);
-      MO.INBOX.unshift({
-        line: maxLine + 1,
-        date: '2026-11-18',
-        kind: state.captureKind,
-        content: '（验收注入）成功态示例条目',
-        state: 'open',
-        destination: '—',
-      });
-      state.lastCapture = { lines: [maxLine + 1], content: '（验收注入）成功态示例条目' };
-      return { ok: true, source: 'capture', text: '已存入记录流（想法）' };
-    }
-    if (pane === 'todo') {
-      const first = data.pendingDecisions[0];
-      let left = 0;
-      if (first !== undefined) {
-        first.status = 'confirmed';
-        first.confidence = 0.9;
-        left = data.pendingDecisions.filter(e => e.id !== first.id).length;
-      }
-      return {
-        ok: true,
-        text: '已确认（观察中 → 已确认）'
-          + (left === 0 ? ' · 待拍板清空了' : ` · 还剩 ${left} 条`),
-      };
-    }
-    if (pane === 'memory') {
-      const entry = data.entries[0];
-      const title = entry === undefined ? '' : entry.title.slice(0, 10);
-      if (entry !== undefined) {
-        entry.status = 'archived';
-        entry.confidence = 0;
-      }
-      return { ok: true, text: `已归档「${title}…」，之后仍可检索` };
-    }
-    return { ok: true, text: '重新读到了' };
-  }
-
-  function syncHash() {
-    const hash = `#${state.pane}/${state.phase}`;
-    if (window.location.hash !== hash) {
-      window.history.replaceState(null, '', hash);
-    }
-  }
-
-  function applyHash() {
-    const raw = window.location.hash.replace(/^#/, '');
-    if (raw === '') return;
-    const [pane, phase] = raw.split('/');
-    if (PANES.some(p => p.id === pane)) state.pane = pane;
-    if (phase === 'ready' || phase === 'loading' || phase === 'empty'
-      || phase === 'error' || phase === 'success') {
-      state.phase = phase;
-      if (phase === 'success') {
-        data = MO.deriveState();
-        state.lastAction = successActionFor(state.pane);
-      }
-    }
-  }
-
-  /* ==========================================================
-   * 原型控制台（验收四态 + 主题；不属产品界面）
-   * ========================================================== */
-
-  const PHASES = [
-    { id: 'ready', label: '正常' },
-    { id: 'loading', label: '加载中' },
-    { id: 'empty', label: '空' },
-    { id: 'error', label: '出错' },
-    { id: 'success', label: '成功' },
-  ];
-
-  function renderHarness() {
-    const phaseButtons = PHASES.map(phase => `<button class="kindbtn" data-action="set-phase"
-      data-phase="${phase.id}" aria-pressed="${state.phase === phase.id}">${phase.label}</button>`)
-      .join('');
-
-    const paneButtons = PANES.map(pane => `<button class="kindbtn" data-action="goto"
-      data-pane="${pane.id}" aria-pressed="${state.pane === pane.id}">${pane.label}</button>`)
-      .join('');
-
-    const themeButtons = [
-      { id: 'light', label: '浅色' },
-      { id: 'dark', label: '深色' },
-    ].map(t => `<button class="kindbtn" data-action="set-theme"
-      data-theme="${t.id}" aria-pressed="${state.theme === t.id}">${t.label}</button>`).join('');
-
-    document.getElementById('harness').innerHTML = `
-      <p class="harness-title">原型控制台 · 不属产品界面</p>
-      <div class="harness-group">
-        <span class="harness-label">切换页面</span>
-        <div class="kindrow">${paneButtons}</div>
-      </div>
-      <div class="harness-group">
-        <span class="harness-label">主题（与宿主同机制）</span>
-        <div class="kindrow">${themeButtons}</div>
-        <p class="harness-note">切换 = body 挂/摘 data-ds-dark-theme。
-          插件落地后这个属性由宿主控制，界面自动跟随。</p>
-      </div>
-      <div class="harness-group">
-        <span class="harness-label">切换状态（四态验收）</span>
-        <div class="kindrow">${phaseButtons}</div>
-        <p class="harness-note">四态：空 / 载 / 错 / 成。每页都能切。
-          「成功」注入一条真实动作结果再渲染。</p>
-      </div>
-      <div class="harness-group">
-        <span class="harness-label">/remember 弹窗（bug 回归锚点）</span>
-        <div class="kindrow">
-          <button class="kindbtn" data-action="open-remember">打开弹窗</button>
-        </div>
-        <p class="harness-note">插件端该弹窗曾因样式类被删而「挂载了但不可见」。
-          原型用同一结构演示正常形态。</p>
-      </div>
-      <div class="harness-group">
-        <span class="harness-label">截图核对</span>
-        <div class="kindrow">
-          <button class="kindbtn" data-action="toggle-unfold"
-            aria-pressed="${document.body.dataset.unfold === '1'}">${
-    document.body.dataset.unfold === '1' ? '收起面板' : '展开面板'}</button>
-        </div>
-      </div>
-      <div class="harness-group">
-        <span class="harness-label">数据来源</span>
-        <p class="harness-note" style="margin-top:0">
-          真实库 3 条记忆 / 3 条记录 / 5 条未命中。
-          token 用 core 同口径实算。颜色全部来自宿主真实别名值。</p>
-      </div>`;
-  }
-
-  /* ==========================================================
-   * 焦点管理（WCAG）：存选择器而不是节点（v4 裁决保留）
-   * ========================================================== */
-
-  let lastFocusSelector = null;
-
-  function selectorOf(el) {
-    if (el === null || el === undefined || typeof el.dataset !== 'object') return null;
-    const action = el.dataset.action;
-    if (action === undefined) return null;
-    let sel = `[data-action="${action}"]`;
-    if (el.dataset.path !== undefined) sel += `[data-path="${el.dataset.path}"]`;
-    else if (el.dataset.pane !== undefined) sel += `[data-pane="${el.dataset.pane}"]`;
-    else if (el.dataset.line !== undefined) sel += `[data-line="${el.dataset.line}"]`;
-    return sel;
-  }
-
-  function syncFocus() {
-    // v6 评审 P1-5：/remember 弹窗与隐私浮层走同一套焦点规则
-    //（§七-5：打开移焦、关闭回焦）。早先只管 .overlay。
-    const overlay = document.querySelector('.overlay') ?? document.querySelector('.remember-backdrop');
-
-    if (overlay !== null && lastFocusSelector === null) {
-      lastFocusSelector = selectorOf(document.activeElement) ?? '';
-      // 弹窗里第一个可输入元素优先（textarea），否则第一个按钮
-      const first = overlay.querySelector('textarea') ?? overlay.querySelector('button');
-      if (first !== null) first.focus();
-      return;
-    }
-
-    if (overlay === null && lastFocusSelector !== null) {
-      let target = null;
-      if (lastFocusSelector !== '') {
-        target = document.querySelector(`#panel ${lastFocusSelector}`);
-      }
-      if (target === null) {
-        target = document.querySelector('#panel [data-field="captureText"]');
-      }
-      if (target !== null && target.disabled !== true) target.focus();
-      lastFocusSelector = null;
-    }
-  }
-
-  /* ==========================================================
-   * 动作
-   * ========================================================== */
-
-  function looksSecret(text) {
-    return /gho_[A-Za-z0-9]{10,}|sk-[A-Za-z0-9]{16,}/.test(text);
-  }
-
-  function confirmEntry(path) {
-    const entry = data.entries.find(e => e.id === path);
-    if (entry === undefined) return;
-    const before = MO.statusLabel(entry.status);
-    entry.status = 'confirmed';
-    entry.confidence = 0.9;
-    const remaining = data.pendingDecisions.filter(e => e.id !== path).length;
-    state.lastAction = {
-      ok: true,
-      source: 'suggest',
-      text: `已确认（${before} → 已确认）`
-        + (remaining > 0 ? ` · 还剩 ${remaining} 条待拍板` : ' · 待拍板清空了'),
+  /* 检视栏 */
+  var insp = cfg.inspect(MO.data, ctx);
+  if (state.phase === 'error') {
+    insp = {
+      title: '读不到数据',
+      sub: 'state = error',
+      body: '<p class="insp-text">这一屏读不到，检视栏不展示缓存内容——避免用旧内容冒充新事实。中栏有原因与下一步。</p>',
+      foot: '<button type="button" class="btn-ghost" data-act="retry">重试</button>'
+    };
+  } else if (state.phase === 'empty') {
+    insp = {
+      title: '没有可选的条目',
+      sub: 'state = empty（不是 error）',
+      body: '<p class="insp-text">空态下没有条目可选。用中栏给的出口继续，别在这里找不存在的详情。</p>',
+      foot: ''
     };
   }
-
-  /** 提交捕获。返回 'empty' | 'blocked' | 'ok' | 'failed'。真的写入，不伪造。 */
-  function submitCapture() {
-    const text = state.captureText.trim();
-    if (text === '') return 'empty';
-    if (looksSecret(text)) {
-      state.openOverlay = 'privacy';
-      return 'blocked';
-    }
-    if (text.startsWith('#fail')) {
-      state.lastAction = {
-        ok: false,
-        source: 'capture',
-        text: '没存上：磁盘写入被拒绝（示例）。内容还在输入框里，可以重试。',
-      };
-      return 'failed';   // 不清空 captureText——「失败时不许清空输入」
-    }
-
-    const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
-    const maxLine = MO.INBOX.reduce((max, row) => Math.max(max, row.line), 0);
-    const today = '2026-11-18';
-
-    const created = lines.map((line, index) => ({
-      line: maxLine + index + 1,
-      date: today,
-      kind: state.captureKind,
-      content: line,
-      state: 'open',
-      destination: '—',
-    }));
-    MO.INBOX.unshift(...created);
-
-    state.captureText = '';
-    state.lastCapture = {
-      lines: created.map(row => row.line),
-      content: lines.length === 1 ? lines[0] : `${lines[0]}…等 ${lines.length} 条`,
-    };
-    state.lastAction = {
-      ok: true,
-      source: 'capture',
-      text: lines.length === 1
-        ? `已存入记录流（${state.captureKind}）`
-        : `已拆成 ${lines.length} 条存入记录流（${state.captureKind}）`,
-    };
-    return 'ok';
+  var title = document.getElementById('inspTitle');
+  var sub = document.getElementById('inspSub');
+  var inspBody = document.getElementById('inspBody');
+  var inspFoot = document.getElementById('inspFoot');
+  if (title) title.textContent = insp.title || '';
+  if (sub) sub.textContent = insp.sub || '';
+  if (inspBody) inspBody.innerHTML = insp.body || '';
+  if (inspFoot) {
+    inspFoot.innerHTML = insp.foot || '';
+    inspFoot.hidden = !insp.foot;
   }
 
-  /** 撤销刚写入的记录：真的从 MO.INBOX 里移除。 */
-  function undoCapture() {
-    if (state.lastCapture === null) return;
-    const { lines, content } = state.lastCapture;
-    for (let i = MO.INBOX.length - 1; i >= 0; i -= 1) {
-      if (lines.indexOf(MO.INBOX[i].line) >= 0) MO.INBOX.splice(i, 1);
-    }
-    state.lastCapture = null;
-    const brief = content.length > 20 ? `${content.slice(0, 20)}…` : content;
-    state.lastAction = { ok: true, source: 'capture', text: `已撤销：「${brief}」` };
+  /* 驳回理由：不重渲染，避免输入被抹掉 */
+  var reason = document.getElementById('reasonInput');
+  if (reason) {
+    reason.addEventListener('input', function () {
+      MO.state.reason = reason.value;
+      reason.removeAttribute('aria-invalid');
+    });
   }
 
-  function act(action, el) {
-    const dataset = el.dataset;
-
-    switch (action) {
-      case 'goto':
-        state.pane = dataset.pane;
-        if (dataset.pane !== 'memory') state.detailPath = null;
-        state.lastAction = null;
-        if (state.phase !== 'ready') state.phase = 'ready';
-        break;
-
-      case 'set-theme':
-        state.theme = dataset.theme;
-        break;
-
-      case 'open-detail':
-        state.detailPath = dataset.path;
-        state.pane = 'memory';
-        state.lastAction = null;
-        break;
-
-      case 'back-to-list':
-        state.detailPath = null;
-        state.lastAction = null;
-        break;
-
-      case 'suggest-confirm':
-      case 'confirm':
-        confirmEntry(dataset.path);
-        break;
-
-      case 'archive': {
-        const entry = data.entries.find(e => e.id === dataset.path);
-        if (entry !== undefined) {
-          entry.status = 'archived';
-          entry.confidence = 0;
-        }
-        const name = entry === undefined ? '' : entry.title.slice(0, 12);
-        state.lastAction = { ok: true, source: 'memory', text: `已归档「${name}…」，之后仍可检索` };
-        break;
-      }
-
-      case 'inbox-done': {
-        const row = data.inbox.find(r => String(r.line) === String(dataset.line));
-        if (row !== undefined) row.state = 'done';
-        state.lastAction = { ok: true, text: '标为已完成，从待办移除了' };
-        break;
-      }
-
-      case 'inbox-drop': {
-        const row = data.inbox.find(r => String(r.line) === String(dataset.line));
-        if (row !== undefined) row.state = 'dropped';
-        state.lastAction = { ok: true, text: '丢掉了，不再出现在待办里' };
-        break;
-      }
-
-      case 'set-kind':
-        state.captureKind = dataset.kind;
-        break;
-
-      case 'capture':
-        if (submitCapture() === 'empty') return;
-        break;
-
-      case 'undo-capture':
-        undoCapture();
-        break;
-
-      case 'close-overlay':
-        state.openOverlay = null;
-        break;
-
-      case 'open-remember':
-        state.openRemember = true;
-        break;
-
-      case 'close-remember':
-        state.openRemember = false;
-        break;
-
-      case 'capture-remember': {
-        const outcome = submitCapture();
-        if (outcome === 'ok' || outcome === 'failed') state.openRemember = false;
-        if (outcome === 'empty') return;
-        break;
-      }
-
-      case 'use-masked':
-        state.openOverlay = null;
-        state.captureText = state.captureText.replace(/gho_[A-Za-z0-9]+/g, 'gho_****');
-        break;
-
-      case 'retry':
-        state.phase = 'ready';
-        state.lastAction = { ok: true, text: '重新读到了' };
-        break;
-
-      case 'search':
-        state.submitted = state.query;
-        state.lastAction = null;
-        break;
-
-      case 'clear-search':
-        state.query = '';
-        state.submitted = '';
-        break;
-
-      case 'clear-filter':
-        state.filterStatus = '';
-        state.filterScope = '';
-        state.query = '';
-        state.submitted = '';
-        break;
-
-      case 'filter-status':
-        state.filterStatus = dataset.status;
-        break;
-
-      case 'filter-scope':
-        state.filterScope = dataset.scope;
-        break;
-
-      case 'set-phase':
-        state.phase = dataset.phase;
-        state.lastAction = null;
-        if (dataset.phase === 'success') {
-          data = MO.deriveState();
-          state.lastAction = successActionFor(state.pane);
-        }
-        break;
-
-      case 'toggle-unfold':
-        document.body.dataset.unfold = document.body.dataset.unfold === '1' ? '0' : '1';
-        break;
-
-      case 'noop':
-        state.lastAction = {
-          ok: true,
-          text: '原型未接这一条动作（对应路由已保留，见 design/implementation-plan.md）',
-        };
-        break;
-
-      default:
-        return;
-    }
-
-    render();
+  /* 状态条 */
+  var right = document.getElementById('statusRight');
+  if (right) {
+    right.textContent = MO.scopeLine + ' · ' + MO.num(MO.data.counts.entries) + ' 条记忆 · ' + MO.data.snapshotAt;
   }
 
-  /* ==========================================================
-   * 事件
-   * ========================================================== */
-
-  document.addEventListener('click', (event) => {
-    const el = event.target.closest('[data-action]');
-    if (el === null) return;
-    // 弹窗卡片容器：它存在的唯一目的是挡住遮罩的「点外面关闭」。
-    // 这里不能 preventDefault——否则卡片内 textarea 的点击行为会被吃掉。
-    if (el.dataset.action === 'noop-stop') return;
-    event.preventDefault();
-    act(el.dataset.action, el);
+  /* 控制台按钮态 */
+  document.querySelectorAll('[data-phase]').forEach(function (b) {
+    b.setAttribute('aria-pressed', b.getAttribute('data-phase') === state.phase ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-theme]').forEach(function (b) {
+    var dark = document.body.hasAttribute('data-ds-dark-theme');
+    var want = b.getAttribute('data-theme') === 'dark';
+    b.setAttribute('aria-pressed', dark === want ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-face]').forEach(function (b) {
+    b.setAttribute('aria-checked', b.getAttribute('data-face') === state.face ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-host]').forEach(function (b) {
+    b.setAttribute('aria-pressed', state.hostMode ? 'true' : 'false');
   });
 
-  /** 输入只更新状态 + 主按钮可用态，不整页重绘（重绘会把光标顶掉）。 */
-  document.addEventListener('input', (event) => {
-    const field = event.target.dataset.field;
-    if (field === undefined) return;
+  /* 捕获表单：重新挂监听（元素每次重渲染都会换） */
+  MO.submitCapture(state, MO.announce, MO.render);
+  var input = document.getElementById('captureText');
+  if (input) {
+    input.addEventListener('input', function () {
+      state.draft = input.value;
+      var count = document.getElementById('captureCount');
+      if (count) count.textContent = MO.estTokens(input.value) + ' tokens';
+    });
+  }
 
-    if (field === 'query') {
-      state.query = event.target.value;
+  /* 编辑输入框：重渲染后恢复焦点与光标 */
+  var pin = document.getElementById('pinTitle');
+  if (pin && state.edit) {
+    pin.addEventListener('input', function () {
+      state.edit.draft = pin.value;
+      state.saved = '';
+      var pos = pin.selectionStart;
+      MO.render();
+      var again = document.getElementById('pinTitle');
+      if (again) {
+        again.focus();
+        try { again.setSelectionRange(pos, pos); } catch (err) { /* 老浏览器忽略 */ }
+      }
+    });
+  }
+};
+
+/* ---------------- 事件 ---------------- */
+MO.goto = function (key, phase) {
+  if (MO.cfg[key]) MO.state.pane = key;
+  if (phase) MO.state.phase = phase;
+  MO.state.edit = null;
+  MO.state.saved = '';
+  MO.state.captureError = '';
+  MO.state.done = '';
+  MO.render();
+  var hash = '#' + MO.state.pane + '/' + (MO.state.phase === 'normal' ? '' : MO.state.phase);
+  if (history.replaceState) history.replaceState(null, '', hash);
+};
+
+MO.onAct = function (act, el) {
+  var s = MO.state;
+  if (act === 'today-save') {
+    var todayInput = document.getElementById('todayCapture');
+    var value = todayInput ? todayInput.value : '';
+    if (value.trim() === '') { MO.announce('内容为空，未写入'); return undefined; }
+    var privacy = MO.findPrivacyHit(value);
+    if (privacy) { MO.announce('隐私闸门拦下：' + privacy); return undefined; }
+    todayInput.value = '';
+    MO.announce('已存入 personal/INBOX.md');
+    return undefined;
+  }
+  if (act === 'go-capture') return MO.goto('capture');
+  if (act === 'go-memory') return MO.goto('memory');
+  if (act === 'focus-capture') {
+    var input = document.getElementById('captureText');
+    if (input) input.focus();
+    return undefined;
+  }
+  if (act === 'retry') { MO.announce('已重试读取'); return MO.render(); }
+  if (act === 'edit') {
+    var id = el.getAttribute('data-id');
+    var item = MO.pick(MO.data.resident.buckets[2].items, id);
+    s.edit = { id: id, draft: item ? item.name : '' };
+    s.saved = '';
+    return MO.render();
+  }
+  if (act === 'cancel-edit') { s.edit = null; s.saved = ''; return MO.render(); }
+  if (act === 'unpin') {
+    s.edit = null;
+    s.saved = '';
+    MO.announce('已取消置顶，条目本身保留');
+    return MO.render();
+  }
+  if (act === 'save-pin') return MO.savePin();
+  if (act === 'check-update') return MO.checkUpdate();
+  if (act === 'reject') {
+    if (s.pane === 'todo') {
+      if (!s.reason || s.reason.trim() === '') {
+        var reasonEl = document.getElementById('reasonInput');
+        if (reasonEl) { reasonEl.setAttribute('aria-invalid', 'true'); reasonEl.focus(); }
+        MO.announce('驳回要写理由：否则 30 天后没人知道为什么');
+        return undefined;
+      }
+      s.todoDone = '已驳回，理由已记 · 30 天内不再注入';
+      s.reason = '';
+      MO.announce(s.todoDone);
+      return MO.render();
+    }
+    s.todoDone = '已驳回 · 30 天内不再注入（可撤销）';
+    MO.announce(s.todoDone);
+    return MO.render();
+  }
+  if (act === 'confirm' || act === 'archive' || act === 'keep' || act === 'dismiss' || act === 'clue-primary') {
+    s.todoDone = '已执行：' + el.textContent.trim();
+    MO.announce(s.todoDone);
+    return MO.render();
+  }
+  if (act === 'undo') {
+    s.done = '';
+    s.captureError = '';
+    MO.announce('已撤销');
+    return MO.render();
+  }
+  if (act === 'mask') {
+    s.captureError = '';
+    s.draft = '';
+    MO.announce('已填入脱敏文本');
+    return MO.render();
+  }
+  if (act === 'copy-cmd') { MO.announce('命令已复制：pnpm add memory-ops-dsh@latest'); return undefined; }
+  if (act === 'go-host') { MO.announce('已在宿主插件页打开版本区块'); return undefined; }
+  if (act === 'check-anchors' || act === 'compact' || act === 'review') {
+    MO.announce(el.textContent.trim() + '：完成，0 处变更');
+    return undefined;
+  }
+  if (act === 'search') {
+    var searchEl = document.getElementById('memorySearch');
+    s.query = searchEl ? searchEl.value : '';
+    MO.announce(s.query ? '已检索「' + s.query + '」并记账' : '清掉关键词，显示全部条目');
+    return MO.render();
+  }
+  if (act === 'clear-filter') { s.query = ''; return MO.render(); }
+  if (act === 'fold-budget') { s.bandFolded = !s.bandFolded; return MO.render(); }
+  return undefined;
+};
+
+MO.savePin = function () {
+  var s = MO.state;
+  if (!s.edit || s.saving) return undefined;
+  var verdicts = MO.judge(s.edit.draft, MO.estTokens(s.edit.draft));
+  if (verdicts.refuse.length > 0) {
+    MO.announce('还有「拒」级问题，保存未执行');
+    return MO.render();
+  }
+  var btn = document.getElementById('savePin');
+  if (btn) btn.disabled = true;
+  s.saving = true;
+  MO.render();
+  window.setTimeout(function () {
+    s.saving = false;
+    s.saved = '写回 personal/principles.md（1 行）· 新会话生效';
+    s.edit = null;
+    MO.announce('已保存：personal/principles.md，改了 1 行');
+    MO.render();
+  }, 800);
+};
+
+MO.checkUpdate = function () {
+  var s = MO.state;
+  if (s.check === 'checking') return undefined;
+  s.check = 'checking';
+  MO.render();
+  window.setTimeout(function () {
+    if (s.hostMode) {
+      s.check = 'ok';
+      s.checkedAt = '2026-11-21 22:41';
+      MO.announce('检查完成：可更新到 0.4.0，7 条改动');
+    } else {
+      s.check = 'failed';
+      s.checkedAt = '2026-11-21 22:41';
+      MO.announce('检查失败：网络不可达，可重试');
+    }
+    MO.render();
+  }, 900);
+};
+
+/* ---------------- 启动 ---------------- */
+MO.boot = function () {
+  document.addEventListener('click', function (event) {
+    var target = event.target.closest('[data-select],[data-act],[data-face],[data-phase],[data-theme],[data-host],[data-open-remember],[data-pane],[data-kind]');
+    if (!target) return;
+
+    var paneTarget = target.getAttribute('data-pane');
+    if (paneTarget) {
+      MO.goto(paneTarget);
       return;
     }
 
-    state.captureText = event.target.value;
-    const box = event.target.closest('.capture');
-    const submit = box === null ? null : box.querySelector('[data-action="capture"]');
-    if (submit !== null) submit.disabled = event.target.value.trim() === '';
+    var kindTarget = target.getAttribute('data-kind');
+    if (kindTarget) {
+      MO.state.kind = kindTarget;
+      MO.announce('类型：' + kindTarget);
+      MO.render();
+      return;
+    }
+
+    if (target.hasAttribute('data-host')) {
+      MO.state.hostMode = !MO.state.hostMode;
+      MO.state.check = 'unchecked';
+      MO.announce(MO.state.hostMode ? '模拟宿主可读版本区块' : '回到 git 直装形态');
+      MO.render();
+      return;
+    }
+
+    var select = target.getAttribute('data-select');
+    if (select) {
+      var pane = MO.state.pane;
+      MO.state.sel[pane] = select;
+      MO.state.edit = null;
+      MO.state.todoDone = '';
+      MO.state.saved = '';
+      MO.render();
+      return;
+    }
+
+    var face = target.getAttribute('data-face');
+    if (face) {
+      MO.state.face = face;
+      MO.announce(face === 'cost' ? '切到成本面' : '切到内容面');
+      MO.render();
+      return;
+    }
+
+    var phase = target.getAttribute('data-phase');
+    if (phase) { MO.goto(MO.state.pane, phase); return; }
+
+    var theme = target.getAttribute('data-theme');
+    if (theme) {
+      if (theme === 'dark') document.body.setAttribute('data-ds-dark-theme', '');
+      else document.body.removeAttribute('data-ds-dark-theme');
+      MO.announce(theme === 'dark' ? '深色主题' : '浅色主题');
+      MO.render();
+      return;
+    }
+
+    if (target.hasAttribute('data-open-remember')) { MO.openRemember(); return; }
+
+    var act = target.getAttribute('data-act');
+    if (act) MO.onAct(act, target);
   });
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && state.openOverlay !== null) {
-      state.openOverlay = null;
-      render();
+  document.addEventListener('keydown', function (event) {
+    var s = MO.state;
+    if (event.key === 'Escape' && !document.getElementById('rememberBackdrop').hidden) {
+      MO.closeRemember();
       return;
     }
-    if (event.key === 'Escape' && state.openRemember === true) {
-      state.openRemember = false;
-      render();
-      return;
-    }
-
-    const isCaptureField = event.target.dataset
-      && event.target.dataset.field === 'captureText';
-
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && isCaptureField) {
+    var active = document.activeElement;
+    var isTab = active && active.getAttribute && active.getAttribute('role') === 'tab';
+    if (isTab && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End')) {
       event.preventDefault();
-      submitCapture();
-      render();
-      return;
-    }
-
-    if (event.key === 'Enter' && event.target.dataset
-      && event.target.dataset.field === 'query') {
-      state.submitted = state.query;
-      render();
+      MO.tabKey(event.key);
     }
   });
 
-  window.addEventListener('hashchange', () => {
-    applyHash();
-    render();
+  document.getElementById('bandFold').addEventListener('click', function () {
+    MO.state.bandFolded = !MO.state.bandFolded;
+    MO.render();
   });
 
-  applyHash();
+  document.getElementById('rememberClose').addEventListener('click', function () { MO.closeRemember(); });
+  document.getElementById('rememberBackdrop').addEventListener('click', function (event) {
+    if (event.target.id === 'rememberBackdrop') MO.closeRemember();
+  });
 
-  /* 截图核对开关：?unfold=1 撑开面板；?theme=dark 直接进深色。 */
-  if (window.location.search.indexOf('unfold=1') >= 0) {
-    document.body.dataset.unfold = '1';
-  }
-  if (window.location.search.indexOf('theme=dark') >= 0) {
-    state.theme = 'dark';
-  }
+  MO.applyHash();
+  window.addEventListener('hashchange', function () {
+    MO.applyHash();
+    MO.render();
+  });
+  MO.render();
 
-  render();
-})();
+  var rememberBtn = document.getElementById('devRemember');
+  if (rememberBtn) rememberBtn.addEventListener('click', function () { MO.openRemember(); });
+
+  var rememberSubmit = document.getElementById('rememberSubmit');
+  if (rememberSubmit) {
+    rememberSubmit.addEventListener('click', function () {
+      var field = document.getElementById('rememberText');
+      if (!field) return;
+      var text = field.value;
+      if (text.trim() === '') {
+        MO.announce('内容为空，未写入');
+        return;
+      }
+      var hit = MO.findPrivacyHit(text);
+      if (hit) {
+        MO.announce('隐私闸门拦下：' + hit + '；浮层不关闭');
+        return;
+      }
+      field.value = '';
+      MO.closeRemember();
+      MO.announce('已存入 personal/INBOX.md');
+    });
+  }
+};
+
+MO.tabKey = function (keyName) {
+  var keys = Object.keys(MO.cfg);
+  var i = keys.indexOf(MO.state.pane);
+  var next = i;
+  if (keyName === 'ArrowDown') next = (i + 1) % keys.length;
+  if (keyName === 'ArrowUp') next = (i - 1 + keys.length) % keys.length;
+  if (keyName === 'Home') next = 0;
+  if (keyName === 'End') next = keys.length - 1;
+  var target = keys[next];
+  MO.goto(target);
+  var btn = document.getElementById('tab-' + target);
+  if (btn) btn.focus();
+};
+
+MO.applyHash = function () {
+  var raw = (location.hash || '').replace(/^#/, '');
+  if (!raw) return;
+  var parts = raw.split('/');
+  var pane = parts[0];
+  var phase = parts[1] || 'normal';
+  if (!MO.cfg[pane]) return;
+  MO.state.pane = pane;
+  MO.state.phase = (phase === 'loading' || phase === 'empty' || phase === 'error') ? phase : 'normal';
+  /* 深链必须重置上一屏的瞬时态：否则错误态会带着可点的「保存」进来 */
+  MO.state.edit = null;
+  MO.state.saved = '';
+  MO.state.done = '';
+  MO.state.captureError = '';
+  MO.state.todoDone = '';
+};
+
+/* /remember 浮层：打开移焦、关闭回焦（brief §七-5） */
+MO.openRemember = function () {
+  var backdrop = document.getElementById('rememberBackdrop');
+  backdrop.hidden = false;
+  var field = document.getElementById('rememberText');
+  if (field) field.focus();
+  MO.announce('已打开 /remember');
+};
+
+MO.closeRemember = function () {
+  var backdrop = document.getElementById('rememberBackdrop');
+  backdrop.hidden = true;
+  var opener = document.getElementById('devRemember');
+  if (opener) opener.focus();
+};
+
+document.addEventListener('DOMContentLoaded', MO.boot);

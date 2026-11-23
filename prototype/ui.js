@@ -1,193 +1,110 @@
+/* ============================================================
+ * ui.js —— 纯函数工具层（无 DOM 依赖，便于单测与复用）
+ *
+ * 约定：
+ *   · 所有 HTML 片段由这里或 pane 文件拼装，必须自行转义
+ *   · MO.figure 的实参必须是数字或 '—'（lint 机检 T0 只给数字）
+ *   · MO.lede 的实参 ≤20 字（lint 机检判定句长度）
+ * ============================================================ */
+
+window.MO = window.MO || {};
+
+/** HTML 转义。用户内容一律过这里。 */
+MO.esc = function (value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+  });
+};
+
+/** 数字：null / undefined 显示「—」，不许显示 0（error ≠ empty ≠ 0）。 */
+MO.num = function (n) {
+  if (n === null || n === undefined) return '—';
+  var v = Number(n);
+  if (!isFinite(v)) return '—';
+  return v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+};
+
+/** 全页唯一的 T0 读数：只接受数字或 '—'。 */
+MO.figure = function (v) {
+  return '<span class="t0 num" id="figure">' + MO.num(v) + '</span>';
+};
+
+/** 判定句：≤20 字，单行。 */
+MO.lede = function (text) {
+  return '<p class="lede" id="lede">' + MO.esc(text) + '</p>';
+};
+
 /**
- * ui.js —— 共享 UI 原语与格式化（v5 卡片仪表盘）
- *
- * 只放「与业务无关、到处都要用」的东西。所有函数返回 HTML 字符串。
- * 经典脚本 + window.MO：原型必须双击可开（file:// 下 ES module 被 CORS 拦）。
- *
- * v4→v5 的 API 变化：
- *   tag()   → badge()：圆角 0 的描边签换成 tint 底 + 圆点 + 文字徽标
- *   新增 tile()：指标卡（必须可点，方向卡 §八-1）
- *   新增 card() / cardQuiet()：重卡 / 静卡容器
+ * token 估算：CJK 1 字 ≈ 1 token，其余 4 字符 ≈ 1 token。
+ * 与 core/schema.ts 的 estimateTokens 同口径；状态条必须声明这是估算。
  */
+MO.estTokens = function (text) {
+  var s = String(text == null ? '' : text);
+  var cjk = (s.match(/[\u3400-\u4dbf\u4e00-\u9fff]/g) || []).length;
+  var rest = s.length - cjk;
+  return Math.round(cjk + rest / 4);
+};
 
-(function () {
-  'use strict';
+/** 状态 → 刻度色。文字状态词必须同时出现（不只靠颜色）。 */
+MO.toneOf = function (tone) {
+  if (tone === 'warn' || tone === 'err' || tone === 'ok') return tone;
+  return 'idle';
+};
 
-  const MO = (window.MO = window.MO || {});
+/** 按 id 在数组里取一项；找不到返回 null（不抛错，调用方给空态）。 */
+MO.pick = function (list, id) {
+  var arr = list || [];
+  for (var i = 0; i < arr.length; i += 1) {
+    if (arr[i] && arr[i].id === id) return arr[i];
+  }
+  return null;
+};
 
-  /* ==========================================================
-   * 转义
-   * ========================================================== */
+/** 一行清单：标题 + 元信息 + 四列（标题 / 来源 / 数字 / 状态）。 */
+MO.row = function (opt) {
+  var tone = MO.toneOf(opt.tone);
+  var current = opt.current ? ' aria-current="true"' : '';
+  var id = MO.esc(opt.id);
+  return '' +
+    '<li class="row-item">' +
+      '<button type="button" class="row-button" data-select="' + id + '"' + current + '>' +
+        '<span class="tonebar tone-' + tone + '"></span>' +
+        '<span class="row-title' + (opt.dense ? ' dense' : '') + '">' + MO.esc(opt.title) + '</span>' +
+        '<span class="row-col row-col-src">' + MO.esc(opt.source || '') + '</span>' +
+        '<span class="row-col row-col-num num">' + MO.num(opt.num !== undefined ? opt.num : opt.tokens) + '</span>' +
+        '<span class="row-col row-col-state"><span class="tonebar-inline tone-' + tone + '"></span>' + MO.esc(opt.state || opt.status || '') + '</span>' +
+        '<span class="row-meta">' + MO.esc(opt.meta || '') + '</span>' +
+      '</button>' +
+    '</li>';
+};
 
-  MO.esc = (value) => String(value === undefined || value === null ? '' : value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+/** 骨架行：与真实行等高，不位移。 */
+MO.skeleton = function (n, label) {
+  var out = '<div class="skel-wrap" role="presentation">';
+  for (var i = 0; i < n; i += 1) out += '<div class="skel-row"></div>';
+  out += '<p class="skel-note">' + MO.esc(label || '读取中') + '</p>';
+  out += '</div>';
+  return out;
+};
 
-  /* ==========================================================
-   * 术语表：界面强制用右列，见 information-architecture.md §四
-   * ========================================================== */
+/** 空态：说真话 + 给出口，不画插画。 */
+MO.empty = function (opt) {
+  return '' +
+    '<div class="state-block state-empty">' +
+      '<h2 class="state-title">' + MO.esc(opt.title) + '</h2>' +
+      '<p class="state-text">' + MO.esc(opt.text) + '</p>' +
+      (opt.hint ? '<p class="state-hint num">' + MO.esc(opt.hint) + '</p>' : '') +
+      (opt.action ? '<button type="button" class="btn-ghost" data-act="' + MO.esc(opt.action.act) + '">' + MO.esc(opt.action.label) + '</button>' : '') +
+    '</div>';
+};
 
-  MO.STATUS_LABEL = {
-    hypothesis: '候选',
-    observed: '观察中',
-    reinforced: '较可信',
-    confirmed: '已确认',
-    rejected: '已驳回',
-    stale: '待复核',
-    archived: '已归档',
-    active: '有效',
-  };
-
-  /** 状态 → 徽标 tone（tint 底 + 圆点色）。 */
-  MO.STATUS_TONE = {
-    hypothesis: 'warn',
-    observed: 'warn',
-    reinforced: 'live',
-    confirmed: 'ok',
-    rejected: 'err',
-    stale: 'warn',
-    archived: '',
-    active: '',
-  };
-
-  MO.INBOX_STATE_LABEL = {
-    open: '未开始',
-    todo: '进行中',
-    done: '已完成',
-    dropped: '已丢弃',
-  };
-
-  MO.INBOX_STATE_TONE = {
-    open: 'warn',
-    todo: 'live',
-    done: 'ok',
-    dropped: '',
-  };
-
-  /** 状态 → 中文；未知值原样返回（不遮住数据问题）。 */
-  MO.statusLabel = (status) => MO.STATUS_LABEL[status] || status;
-
-  /* ==========================================================
-   * 原子件
-   * ========================================================== */
-
-  /** 徽标：tint 底 + 圆点 + 文字。颜色只是加速识别，文字才是信息。 */
-  MO.badge = function badge(text, tone) {
-    const attr = tone === undefined || tone === '' ? '' : ` data-tone="${MO.esc(tone)}"`;
-    return `<span class="badge"${attr}>${MO.esc(text)}</span>`;
-  };
-
-  /**
-   * KPI 账带（v6）。
-   *
-   * 硬规矩（方向卡 §七-6）：数字不许裸奔——每格必须可点（goto 到对应分区）。
-   * 首格 = 本页主指标（数字业务蓝、左对齐）；其余数字右对齐同一基线。
-   */
-  MO.tape = function tape(cells) {
-    return `<div class="tape" role="group" aria-label="全局指标">${cells.map(cell =>
-      `<button data-action="goto" data-pane="${MO.esc(cell.pane)}">
-        <span class="v">${MO.esc(cell.value)}</span>
-        <span class="k">${MO.esc(cell.label)}</span>
-      </button>`).join('')}</div>`;
-  };
-
-  /** 重卡容器：每屏 ≤1，放主操作。 */
-  MO.card = function card(inner, extraClass) {
-    return `<section class="card${extraClass ? ' ' + extraClass : ''}">${inner}</section>`;
-  };
-
-  /** 静卡容器：次级内容。 */
-  MO.cardQuiet = function cardQuiet(inner, extraClass) {
-    return `<section class="card-quiet${extraClass ? ' ' + extraClass : ''}">${inner}</section>`;
-  };
-
-  /** 区块标题行（卡片外部用；卡片内部用 .card-label）。 */
-  MO.sectionHead = function sectionHead(title, count, action) {
-    return `<div class="section-head">
-      <h2 class="section-title">${MO.esc(title)}</h2>
-      ${count === undefined || count === '' ? '' : `<span class="section-count">${MO.esc(count)}</span>`}
-      ${action === undefined || action === '' ? '' : `<span class="section-action">${action}</span>`}
-    </div>`;
-  };
-
-  /** 骨架屏：高度与真实内容接近，切换不塌陷。 */
-  MO.skeleton = function skeleton(rows, height) {
-    const n = rows === undefined ? 3 : rows;
-    const h = height === undefined ? 52 : height;
-    let out = '';
-    for (let i = 0; i < n; i += 1) {
-      out += `<div class="skeleton" style="height:${h}px;margin-bottom:var(--s2)"></div>`;
-    }
-    return out;
-  };
-
-  /**
-   * 错误态：必须说「怎么解决」，不只报告「出错」。
-   * @param {string} title - 一句话说清发生了什么
-   * @param {string} body  - 为什么、以及用户能做什么
-   * @param {string} actions - 按钮 HTML
-   */
-  MO.errorState = function errorState(title, body, actions) {
-    return `<div class="alert" role="alert">
-      <p class="alert-title">${MO.esc(title)}</p>
-      <p class="alert-body">${MO.esc(body)}</p>
-      ${actions === undefined || actions === '' ? '' : `<div class="alert-actions">${actions}</div>`}
-    </div>`;
-  };
-
-  /** 空态：不是一句灰字，而是标题 + 解释 + 出口。 */
-  MO.emptyState = function emptyState(title, body, actions) {
-    return `<div class="empty">
-      <p class="empty-title">${MO.esc(title)}</p>
-      <p class="empty-body">${MO.esc(body)}</p>
-      ${actions === undefined || actions === '' ? '' : `<div class="empty-actions">${actions}</div>`}
-    </div>`;
-  };
-
-  /** 提示条：tint 底 + 圆点信号，不用左侧彩边。 */
-  MO.notice = function notice(title, text, tone) {
-    const attr = tone === undefined || tone === '' ? '' : ` data-tone="${MO.esc(tone)}"`;
-    return `<div class="notice"${attr}>
-      <p class="notice-title">${MO.esc(title)}</p>
-      <p class="notice-text">${MO.esc(text)}</p>
-    </div>`;
-  };
-
-  /**
-   * 就地反馈：不弹 toast、不盖住内容。
-   * @param result  { ok, text }
-   * @param undoable 为 true 时附带一个真实的撤销按钮（不许伪造承诺）。
-   */
-  MO.inlineResult = function inlineResult(result, undoable) {
-    if (result === null || result === undefined) return '';
-    const undo = undoable === true
-      ? `<button class="textlink" data-action="undo-capture">撤销</button>`
-      : '';
-    return `<div class="inline-done" data-tone="${result.ok ? 'ok' : 'err'}" role="status">
-      <span class="inline-done-text">${MO.esc(result.text)}</span>
-      ${undo}
-    </div>`;
-  };
-
-  /**
-   * 主按钮（每屏唯一蓝实底）。
-   * small=true 降为 T5 尺寸——用于行内动作，避免一行按钮喧宾夺主。
-   */
-  MO.primary = function primary(text, attrs, disabled, small) {
-    const cls = small === true ? 'btn btn-primary btn-sm' : 'btn btn-primary';
-    return `<button class="${cls}" ${attrs || ''}${disabled === true ? ' disabled' : ''}>${MO.esc(text)}</button>`;
-  };
-
-  /** 次级按钮。 */
-  MO.button = function button(text, attrs, extraClass) {
-    const cls = extraClass === undefined || extraClass === '' ? 'btn' : `btn ${extraClass}`;
-    return `<button class="${cls}" ${attrs || ''}>${MO.esc(text)}</button>`;
-  };
-
-  /** 文字链。 */
-  MO.textLink = function textLink(text, attrs) {
-    return `<button class="textlink" ${attrs || ''}>${MO.esc(text)}</button>`;
-  };
-})();
+/** 错误态：原因 + 下一步 + 示例值。 */
+MO.errorBlock = function (opt) {
+  return '' +
+    '<div class="state-block state-error" role="alert">' +
+      '<h2 class="state-title">' + MO.esc(opt.title) + '</h2>' +
+      '<p class="state-text">' + MO.esc(opt.text) + '</p>' +
+      (opt.example ? '<p class="state-hint num">示例：' + MO.esc(opt.example) + '</p>' : '') +
+      '<button type="button" class="btn-ghost" data-act="retry">重试</button>' +
+    '</div>';
+};
